@@ -1,0 +1,6 @@
+<div id="logs-{{ source }}"
+     hx-get="/admin/_partial/logs/{{ source }}"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML">
+    <pre class="log-box">{% if lines %}{{ lines | join('\n') }}{% else %}(no log lines yet){% endif %}</pre>
+</div>
