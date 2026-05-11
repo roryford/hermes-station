@@ -64,6 +64,23 @@ jobs:
           done
           test "$code" = "200"
 
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: install e2e deps + chromium
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[dev,e2e]"
+          .venv/bin/playwright install --with-deps chromium
+
+      - name: e2e (real browser through proxy)
+        env:
+          HERMES_STATION_E2E_URL: http://127.0.0.1:8787
+          HERMES_STATION_E2E_PASSWORD: ci
+        run: .venv/bin/pytest tests/e2e -q
+
       - name: container logs on failure
         if: failure()
         run: docker logs hs-smoke || true
