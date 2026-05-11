@@ -10,6 +10,9 @@ Notable behaviors:
 - Strips hop-by-hop headers per RFC 7230.
 - Strips our own admin session cookie before forwarding, so a logged-in admin
   session doesn't leak into WebUI's cookie jar.
+- Injects X-Forwarded-Host / X-Real-Host / X-Forwarded-Proto so hermes-webui's
+  CSRF check (which compares browser Origin against the request's Host family)
+  sees the public hostname instead of the loopback we connect to.
 - Drops the upstream `content-encoding` header because httpx returns the
   decompressed body — passing the original encoding back would confuse the
   client.
@@ -96,6 +99,16 @@ async def proxy_to_webui(request: Request) -> Response:
         headers["cookie"] = cookie
     elif "cookie" in headers:
         del headers["cookie"]
+
+    # hermes-webui's CSRF check matches the browser's Origin against Host /
+    # X-Forwarded-Host / X-Real-Host. httpx will set Host to the loopback
+    # upstream, so without these the public hostname never appears in the
+    # allowed-host set and every browser POST is rejected.
+    original_host = request.headers.get("host")
+    if original_host:
+        headers.setdefault("x-forwarded-host", original_host)
+        headers.setdefault("x-real-host", original_host)
+    headers.setdefault("x-forwarded-proto", request.url.scheme)
 
     body = await request.body()
 
