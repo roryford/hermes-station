@@ -1,0 +1,126 @@
+{# Auto-refreshing status fragment for the dashboard.
+   The wrapping <div id="status-panel"> is the hx-swap="outerHTML" target;
+   every refresh replaces this whole block. #}
+<div id="status-panel"
+     hx-get="/admin/_partial/status"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+
+    <section class="card">
+        <div class="card-header">
+            <h2>Supervisors</h2>
+            <span class="muted">autostart: <code>{{ autostart_mode }}</code></span>
+        </div>
+        <div class="grid">
+            <div>
+                <h3>WebUI</h3>
+                <p>
+                    <span class="badge {{ webui.badge.tone }}">{{ webui.badge.label }}</span>
+                </p>
+                <dl class="kv">
+                    <dt>Running</dt><dd>{{ "yes" if webui.running else "no" }}</dd>
+                    <dt>Healthy</dt><dd>{{ "yes" if webui.healthy else "no" }}</dd>
+                </dl>
+                <div class="row" style="margin-top: 0.75rem;">
+                    <button type="button" class="btn small"
+                            hx-post="/admin/api/webui/start"
+                            hx-target="#status-panel"
+                            hx-swap="outerHTML"
+                            {% if webui.running %}disabled{% endif %}>Start</button>
+                    <button type="button" class="btn small danger"
+                            hx-post="/admin/api/webui/stop"
+                            hx-target="#status-panel"
+                            hx-swap="outerHTML"
+                            hx-confirm="Stop the WebUI? Active chat sessions will disconnect."
+                            {% if not webui.running %}disabled{% endif %}>Stop</button>
+                    <button type="button" class="btn small ghost"
+                            hx-post="/admin/api/webui/restart"
+                            hx-target="#status-panel"
+                            hx-swap="outerHTML">Restart</button>
+                </div>
+            </div>
+            <div>
+                <h3>Gateway</h3>
+                <p>
+                    <span class="badge {{ gateway.badge.tone }}">{{ gateway.badge.label }}</span>
+                </p>
+                <dl class="kv">
+                    <dt>Running</dt><dd>{{ "yes" if gateway.running else "no" }}</dd>
+                    <dt>Healthy</dt><dd>{{ "yes" if gateway.healthy else "no" }}</dd>
+                    <dt>State</dt><dd><code>{{ gateway.state }}</code></dd>
+                </dl>
+                <div class="row" style="margin-top: 0.75rem;">
+                    <button type="button" class="btn small"
+                            hx-post="/admin/api/gateway/start"
+                            hx-target="#status-panel"
+                            hx-swap="outerHTML"
+                            {% if gateway.running %}disabled{% endif %}>Start</button>
+                    <button type="button" class="btn small danger"
+                            hx-post="/admin/api/gateway/stop"
+                            hx-target="#status-panel"
+                            hx-swap="outerHTML"
+                            hx-confirm="Stop the gateway? Channels will go offline."
+                            {% if not gateway.running %}disabled{% endif %}>Stop</button>
+                    <button type="button" class="btn small ghost"
+                            hx-post="/admin/api/gateway/restart"
+                            hx-target="#status-panel"
+                            hx-swap="outerHTML">Restart</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2>Model &amp; Channels</h2>
+            <a class="btn small ghost" href="/admin/settings">Edit</a>
+        </div>
+        <div class="grid">
+            <div>
+                <h3>Provider</h3>
+                {% if provider.configured %}
+                    <dl class="kv">
+                        <dt>Provider</dt><dd>{{ provider.label }}</dd>
+                        <dt>Model</dt><dd><code>{{ provider.default or "—" }}</code></dd>
+                        {% if provider.base_url %}
+                            <dt>Base URL</dt><dd class="mono">{{ provider.base_url }}</dd>
+                        {% endif %}
+                    </dl>
+                {% else %}
+                    <p class="muted">No provider configured. <a href="/admin/settings">Set one up</a>.</p>
+                {% endif %}
+            </div>
+            <div>
+                <h3>Channels</h3>
+                {% if channels %}
+                    <div class="row">
+                        {% for channel in channels %}
+                            <span class="badge {{ 'success' if channel.enabled else 'muted' }}">
+                                {{ channel.label }}: {{ "enabled" if channel.enabled else "unconfigured" }}
+                            </span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted">No channels in the catalog.</p>
+                {% endif %}
+                <p style="margin-top: 0.75rem;">
+                    <a href="/admin/pairings">Pending pairings: {{ pending_pairings }}</a>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <details>
+            <summary><strong>Paths</strong></summary>
+            <dl class="kv mono" style="margin-top: 0.75rem;">
+                <dt>hermes_home</dt><dd>{{ paths.hermes_home }}</dd>
+                <dt>config_path</dt><dd>{{ paths.config_path }}</dd>
+                <dt>env_path</dt><dd>{{ paths.env_path }}</dd>
+                <dt>webui_state_dir</dt><dd>{{ paths.webui_state_dir }}</dd>
+                <dt>workspace_dir</dt><dd>{{ paths.workspace_dir }}</dd>
+            </dl>
+        </details>
+    </section>
+
+</div>

@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+{% block title %}Settings · hermes-station admin{% endblock %}
+
+{% block content %}
+    <h1>Settings</h1>
+
+    {# Provider card — extracted into a partial so it can be re-rendered atomically
+       by the /admin/_partial/provider/setup endpoint. #}
+    {% include "admin/_provider_card.html" %}
+
+    {# Channels card — same pattern. #}
+    {% include "admin/_channels_card.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Toggle the "base URL" field visibility based on whether the selected
+    // provider in the dropdown requires it. Kept inline so we don't add another
+    // static asset for a 6-line behavior.
+    function syncBaseUrlVisibility(root) {
+        const scope = root || document;
+        const select = scope.querySelector('select[name="provider"]');
+        const baseUrlField = scope.querySelector('[data-field="base_url"]');
+        if (!select || !baseUrlField) return;
+        const option = select.options[select.selectedIndex];
+        const requires = option && option.dataset.requiresBaseUrl === "true";
+        baseUrlField.style.display = requires ? "" : "none";
+    }
+    document.addEventListener("DOMContentLoaded", () => syncBaseUrlVisibility(document));
+    document.addEventListener("change", (event) => {
+        if (event.target && event.target.matches('select[name="provider"]')) {
+            syncBaseUrlVisibility(event.target.closest("form") || document);
+        }
+    });
+    // Re-run after HTMX swaps the provider card back in.
+    document.addEventListener("htmx:afterSwap", (event) => syncBaseUrlVisibility(event.target));
+</script>
+{% endblock %}

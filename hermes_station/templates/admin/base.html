@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{% block title %}hermes-station · admin{% endblock %}</title>
+    <link rel="stylesheet" href="/admin/static/admin.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/admin">hermes-station</a>
+        <nav>
+            <a href="/admin" {% if active == "dashboard" %}class="active"{% endif %}>Dashboard</a>
+            <a href="/admin/settings" {% if active == "settings" %}class="active"{% endif %}>Settings</a>
+            <a href="/admin/pairings" {% if active == "pairings" %}class="active"{% endif %}>Pairings</a>
+            <a href="/" target="_blank" rel="noopener">WebUI ↗</a>
+        </nav>
+        <form method="post" action="/admin/logout" class="logout">
+            <button type="submit">Log out</button>
+        </form>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

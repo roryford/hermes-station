@@ -1,0 +1,13 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<div id="status-panel"
+     hx-get="/admin/_partial/status"
+     hx-trigger="load, every 5s"
+     hx-swap="outerHTML">
+    <div class="card">
+        <p class="muted">Loading status…</p>
+    </div>
+</div>
+{% endblock %}

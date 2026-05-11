@@ -1,0 +1,104 @@
+{# Pairings panel fragment. The outer div id matches the placeholder in pairings.html
+   so approve/deny/revoke POSTs swap the whole thing in place. #}
+<div id="pairings-panel">
+    <section class="card">
+        <div class="card-header">
+            <h2>Pending pairings</h2>
+            <span class="badge muted">{{ pending|length }}</span>
+        </div>
+        {% if pending %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Metadata</th>
+                        <th style="width: 1%; white-space: nowrap;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in pending %}
+                        <tr>
+                            <td class="mono">{{ entry.user_id }}</td>
+                            <td>
+                                {% set meta_keys = entry.keys()|list %}
+                                {% for key in meta_keys if key != "user_id" %}
+                                    <div class="muted" style="font-size:0.82rem;">
+                                        <span style="color:var(--text-dim);">{{ key }}:</span> {{ entry[key] }}
+                                    </div>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                <div class="row">
+                                    <button
+                                        type="button"
+                                        class="btn small"
+                                        hx-post="/admin/_partial/pairing/approve"
+                                        hx-vals='{"user_id": "{{ entry.user_id }}"}'
+                                        hx-target="#pairings-panel"
+                                        hx-swap="outerHTML"
+                                    >Approve</button>
+                                    <button
+                                        type="button"
+                                        class="btn small danger"
+                                        hx-post="/admin/_partial/pairing/deny"
+                                        hx-vals='{"user_id": "{{ entry.user_id }}"}'
+                                        hx-target="#pairings-panel"
+                                        hx-swap="outerHTML"
+                                    >Deny</button>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="muted">No pending pairings.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2>Approved users</h2>
+            <span class="badge muted">{{ approved|length }}</span>
+        </div>
+        {% if approved %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Metadata</th>
+                        <th style="width: 1%; white-space: nowrap;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in approved %}
+                        <tr>
+                            <td class="mono">{{ entry.user_id }}</td>
+                            <td>
+                                {% set meta_keys = entry.keys()|list %}
+                                {% for key in meta_keys if key != "user_id" %}
+                                    <div class="muted" style="font-size:0.82rem;">
+                                        <span style="color:var(--text-dim);">{{ key }}:</span> {{ entry[key] }}
+                                    </div>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                <button
+                                    type="button"
+                                    class="btn small danger"
+                                    hx-post="/admin/_partial/pairing/revoke"
+                                    hx-vals='{"user_id": "{{ entry.user_id }}"}'
+                                    hx-target="#pairings-panel"
+                                    hx-swap="outerHTML"
+                                    hx-confirm="Revoke access for {{ entry.user_id }}?"
+                                >Revoke</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="muted">No approved users.</p>
+        {% endif %}
+    </section>
+</div>

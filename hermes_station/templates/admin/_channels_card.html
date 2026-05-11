@@ -1,0 +1,60 @@
+{# Channels card. Like the provider card, this is included inline on the main
+   settings page and also returned as a fragment by POST /admin/_partial/channels/save. #}
+<section class="card" id="channels-card">
+    <div class="card-header">
+        <h2>Channels</h2>
+    </div>
+
+    {% if alert %}
+        <div class="alert {{ alert.kind }}">{{ alert.message }}</div>
+    {% endif %}
+
+    <p class="muted" style="margin-top:0;">Existing values are masked. Leaving a field blank keeps the stored value unchanged.</p>
+
+    <form
+        hx-post="/admin/_partial/channels/save"
+        hx-target="#channels-card"
+        hx-swap="outerHTML"
+    >
+        <div class="grid">
+            {% for channel in channels %}
+                <div class="card" style="margin:0;background:var(--surface-2);">
+                    <div class="card-header">
+                        <h3 style="margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:0.95rem;">{{ channel.label }}</h3>
+                        {% if channel.enabled %}
+                            <span class="badge success">Enabled</span>
+                        {% else %}
+                            <span class="badge muted">Disabled</span>
+                        {% endif %}
+                    </div>
+                    <div class="field">
+                        <label for="ch-{{ channel.slug }}-primary">{{ channel.primary_key }}</label>
+                        <input
+                            type="text"
+                            id="ch-{{ channel.slug }}-primary"
+                            name="{{ channel.primary_key }}"
+                            placeholder="{{ channel.primary_value or 'not set' }}"
+                            autocomplete="off"
+                        >
+                    </div>
+                    {% if channel.secondary_key %}
+                        <div class="field">
+                            <label for="ch-{{ channel.slug }}-secondary">{{ channel.secondary_key }}</label>
+                            <input
+                                type="text"
+                                id="ch-{{ channel.slug }}-secondary"
+                                name="{{ channel.secondary_key }}"
+                                placeholder="{{ channel.secondary_value or 'not set' }}"
+                                autocomplete="off"
+                            >
+                        </div>
+                    {% endif %}
+                    <div class="field-hint">{{ channel.hint }}</div>
+                </div>
+            {% endfor %}
+        </div>
+        <div class="row" style="margin-top:1rem;">
+            <button type="submit" class="btn">Save all channels</button>
+        </div>
+    </form>
+</section>
