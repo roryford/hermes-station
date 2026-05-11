@@ -12,7 +12,11 @@ from pathlib import Path
 import pytest
 
 from hermes_station.gateway import Gateway, should_autostart
-from hermes_station.proxy import _filter_request_headers, _strip_our_cookies
+import httpx
+from starlette.applications import Starlette
+from starlette.routing import Route
+
+from hermes_station.proxy import _filter_request_headers, _strip_our_cookies, proxy_to_webui
 from hermes_station.webui import WebUIProcess
 
 
@@ -107,6 +111,49 @@ def test_strip_our_cookies_passes_through_other_cookies() -> None:
 def test_strip_our_cookies_handles_empty() -> None:
     assert _strip_our_cookies(None) == ""
     assert _strip_our_cookies("") == ""
+
+
+# ───────────────────────── proxy forwards Host so webui's CSRF check passes
+# Regression: hermes-webui rejects browser POSTs when the request's Origin
+# host doesn't match Host / X-Forwarded-Host / X-Real-Host. httpx overwrites
+# Host with the loopback upstream, so the proxy must inject the forwarded
+# headers — otherwise login + session creation silently 403.
+
+
+async def test_proxy_forwards_host_and_scheme_for_csrf() -> None:
+    captured: dict[str, httpx.Headers] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = request.headers
+        return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
+
+    class _FakeWebUI:
+        INTERNAL_HOST = "127.0.0.1"
+        INTERNAL_PORT = 8788
+
+    async def _route(request):  # type: ignore[no-untyped-def]
+        return await proxy_to_webui(request)
+
+    app = Starlette(routes=[Route("/{path:path}", _route, methods=["POST"])])
+    app.state.webui = _FakeWebUI()
+    app.state.proxy_client = httpx.AsyncClient(transport=httpx.MockTransport(_handler))
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://station.example.com"
+    ) as client:
+        resp = await client.post(
+            "/api/auth/login",
+            headers={"Origin": "https://station.example.com"},
+            json={"password": "x"},
+        )
+
+    await app.state.proxy_client.aclose()
+
+    assert resp.status_code == 200
+    fwd = captured["headers"]
+    assert fwd.get("x-forwarded-host") == "station.example.com"
+    assert fwd.get("x-real-host") == "station.example.com"
+    assert fwd.get("x-forwarded-proto") == "https"
 
 
 # ────────────────────────────────────────────────── supervisor state defaults
