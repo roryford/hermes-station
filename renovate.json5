@@ -1,0 +1,53 @@
+{
+    $schema: "https://docs.renovatebot.com/renovate-schema.json",
+    extends: ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
+
+    // Both upstreams release fast (hermes-webui ships multiple times per day).
+    // Batch into one weekly PR per upstream — see README.md "Upstream tracking".
+    schedule: ["before 6am on monday"],
+    timezone: "Australia/Sydney",
+    prHourlyLimit: 0,
+    prConcurrentLimit: 5,
+
+    // hermes-agent: tracked via pyproject.toml git URL (pep621 manager handles it natively).
+    // hermes-webui: tracked via Dockerfile ARG (custom regex manager below).
+    customManagers: [
+        {
+            customType: "regex",
+            description: "Track HERMES_WEBUI_VERSION in Dockerfile as a github-tags datasource",
+            fileMatch: ["(^|/)Dockerfile$"],
+            matchStrings: [
+                "ARG HERMES_WEBUI_VERSION=(?<currentValue>v[\\d.]+)",
+            ],
+            depNameTemplate: "nesquena/hermes-webui",
+            datasourceTemplate: "github-tags",
+        },
+    ],
+
+    packageRules: [
+        {
+            description: "Group hermes-agent bumps",
+            matchPackageNames: ["hermes-agent"],
+            groupName: "hermes-agent",
+            commitMessagePrefix: "chore(deps):",
+            // Auto-merge if CI is green — single-user product, low blast radius.
+            automerge: true,
+            automergeType: "pr",
+        },
+        {
+            description: "Group hermes-webui bumps",
+            matchPackageNames: ["nesquena/hermes-webui"],
+            groupName: "hermes-webui",
+            commitMessagePrefix: "chore(deps):",
+            automerge: true,
+            automergeType: "pr",
+        },
+        {
+            description: "Group all other deps together; require manual merge",
+            matchPackageNames: ["*"],
+            excludePackageNames: ["hermes-agent", "nesquena/hermes-webui"],
+            groupName: "tooling",
+            automerge: false,
+        },
+    ],
+}

@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+.env.local
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.tmp-*/
+*.sqlite3
+*.db
+
+# Realistic /data fixture is sanitized locally and not committed — see tests/fixtures/README.md
+tests/fixtures/data-realistic/
