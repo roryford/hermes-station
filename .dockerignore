@@ -13,5 +13,4 @@ dist
 build
 docs
 tests
-README.md
 renovate.json5
