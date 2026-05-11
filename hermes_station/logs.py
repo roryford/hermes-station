@@ -11,12 +11,14 @@ Three sources are surfaced:
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections import deque
 
 _BUFFER_SIZE = 500
 _FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 _GATEWAY_LOGGER_NAMES = ("gateway", "hermes_station.gateway")
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 
 class LogBuffer:
@@ -25,8 +27,9 @@ class LogBuffer:
         self._lock = threading.Lock()
 
     def append(self, line: str) -> None:
+        cleaned = _ANSI_ESCAPE_RE.sub("", line).replace("\r", "")
         with self._lock:
-            self._lines.append(line)
+            self._lines.append(cleaned)
 
     def tail(self, n: int) -> list[str]:
         with self._lock:
