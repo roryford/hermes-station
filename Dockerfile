@@ -26,11 +26,13 @@ RUN uv pip install --system --no-cache ".[hermes]" \
     && uv pip install --system --no-cache -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
+# HERMES_WEBUI_AGENT_DIR is intentionally not set here — hermes_station/webui.py
+# defaults it to the Python site-packages dir at process start, where pip installs
+# the hermes-agent source tree (including run_agent.py).
 ENV HOME=/data \
     HERMES_HOME=/data/.hermes \
     HERMES_CONFIG_PATH=/data/.hermes/config.yaml \
     HERMES_WEBUI_STATE_DIR=/data/webui \
-    HERMES_WEBUI_AGENT_DIR=/opt/hermes-webui \
     HERMES_WORKSPACE_DIR=/data/workspace \
     HERMES_GATEWAY_AUTOSTART=auto \
     HERMES_WEBUI_SRC=/opt/hermes-webui \
