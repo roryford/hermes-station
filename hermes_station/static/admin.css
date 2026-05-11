@@ -218,8 +218,9 @@ th { color: var(--text-dim); font-weight: 600; font-size: 0.82rem; text-transfor
 
 .log-box {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 0.78rem;
-    line-height: 1.4;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text);
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -229,4 +230,8 @@ th { color: var(--text-dim); font-weight: 600; font-size: 0.82rem; text-transfor
     white-space: pre-wrap;
     word-break: break-word;
     margin: 0;
+}
+
+.logs-grid {
+    grid-template-columns: 1fr;
 }

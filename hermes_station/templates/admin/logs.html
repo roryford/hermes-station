@@ -2,7 +2,8 @@
 {% block title %}hermes-station · {{ title }}{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
-<div class="grid logs-grid">
+<div class="grid logs-grid"
+     hx-on:htmx:after-swap="const p = event.target.querySelector('.log-box'); if (p) p.scrollTop = p.scrollHeight;">
     {% for source in sources %}
     <section class="card">
         <div class="card-header">
