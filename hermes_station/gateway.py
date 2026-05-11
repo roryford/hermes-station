@@ -24,6 +24,7 @@ import json
 import logging
 import os
 from contextlib import suppress
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -37,11 +38,16 @@ class Gateway:
     BACKOFF_BASE_SECONDS = 5.0
     BACKOFF_MAX_SECONDS = 60.0
     SHUTDOWN_TIMEOUT_SECONDS = 30.0
+    # Refresh interval for updated_at in gateway_state.json. The hermes-webui
+    # considers the gateway stale after 120 s (two cron ticks); 30 s keeps us
+    # well inside that window even if a tick is delayed.
+    HEARTBEAT_INTERVAL_SECONDS = 30.0
 
     def __init__(self, *, hermes_home: Path) -> None:
         self.hermes_home = hermes_home
         self.task: asyncio.Task[Any] | None = None
         self._supervisor_task: asyncio.Task[None] | None = None
+        self._heartbeat_task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
 
     @property
@@ -73,9 +79,17 @@ class Gateway:
         self._supervisor_task = asyncio.create_task(
             self._supervise(), name="hermes-station.gateway-supervisor"
         )
+        self._heartbeat_task = asyncio.create_task(
+            self._refresh_updated_at(), name="hermes-station.gateway-heartbeat"
+        )
 
     async def stop(self) -> None:
         self._stopping.set()
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._heartbeat_task
+            self._heartbeat_task = None
         if self._supervisor_task and not self._supervisor_task.done():
             self._supervisor_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -118,6 +132,36 @@ class Gateway:
         finally:
             loop.add_signal_handler = original_add_signal_handler  # type: ignore[assignment]
             self.task = None
+
+    async def _refresh_updated_at(self) -> None:
+        """Keep gateway_state.json's updated_at fresh for the WebUI heartbeat.
+
+        hermes-webui (agent_health.py) treats a gateway_state.json with
+        gateway_state=="running" AND updated_at < 120 s old as proof the
+        gateway is alive (#1879 cross-container fallback). The gateway task
+        writes this field on state transitions but not on every tick in the
+        in-process setup, so the PID file from the previous container is stale
+        after a Railway restart and the freshness check fails. We patch the
+        timestamp here every HEARTBEAT_INTERVAL_SECONDS while the gateway is
+        in the running state.
+        """
+        while not self._stopping.is_set():
+            try:
+                await asyncio.sleep(self.HEARTBEAT_INTERVAL_SECONDS)
+            except asyncio.CancelledError:
+                return
+            if self._stopping.is_set():
+                return
+            if self.gateway_state != "running":
+                continue
+            try:
+                state = self.read_state()
+                state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                self.state_path.write_text(
+                    json.dumps(state, separators=(",", ":")), encoding="utf-8"
+                )
+            except (OSError, json.JSONDecodeError):
+                pass
 
     async def _supervise(self) -> None:
         backoff = self.BACKOFF_BASE_SECONDS
