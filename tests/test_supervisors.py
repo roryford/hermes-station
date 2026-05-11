@@ -156,6 +156,95 @@ async def test_proxy_forwards_host_and_scheme_for_csrf() -> None:
     assert fwd.get("x-forwarded-proto") == "https"
 
 
+# ───────────────── proxy preserves Content-Encoding so gzipped JSON works
+# Regression: hermes-webui gzips responses >1KB. The proxy uses
+# httpx.aiter_raw(), which yields the original compressed bytes, so the
+# Content-Encoding header has to ride along — otherwise the browser sees
+# gzipped bytes labelled as application/json and renders "Failed to load
+# session" once a session payload crosses the gzip threshold.
+
+
+async def test_proxy_preserves_content_encoding_for_gzip() -> None:
+    import gzip
+
+    payload = b'{"hello":"world"}' * 200  # ~3.5KB, gzips well
+    gzipped = gzip.compress(payload)
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "application/json",
+                "content-encoding": "gzip",
+                "content-length": str(len(gzipped)),
+            },
+            stream=httpx.ByteStream(gzipped),
+        )
+
+    class _FakeWebUI:
+        INTERNAL_HOST = "127.0.0.1"
+        INTERNAL_PORT = 8788
+
+    async def _route(request):  # type: ignore[no-untyped-def]
+        return await proxy_to_webui(request)
+
+    app = Starlette(routes=[Route("/{path:path}", _route, methods=["GET"])])
+    app.state.webui = _FakeWebUI()
+    app.state.proxy_client = httpx.AsyncClient(transport=httpx.MockTransport(_handler))
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://station.test"
+    ) as client:
+        resp = await client.get("/api/session")
+
+    await app.state.proxy_client.aclose()
+
+    assert resp.status_code == 200
+    assert resp.headers.get("content-encoding") == "gzip"
+    # httpx's client decodes Content-Encoding transparently, so by the time
+    # resp.content is read it's already the decompressed payload. The header
+    # surviving the proxy is the actual regression target.
+    assert resp.content == payload
+
+
+# ───── proxy preserves multiple Set-Cookie headers on a single response
+
+
+async def test_proxy_preserves_multiple_set_cookie_headers() -> None:
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers=[
+                ("set-cookie", "a=1; Path=/"),
+                ("set-cookie", "b=2; Path=/"),
+                ("content-type", "text/plain"),
+            ],
+            stream=httpx.ByteStream(b"ok"),
+        )
+
+    class _FakeWebUI:
+        INTERNAL_HOST = "127.0.0.1"
+        INTERNAL_PORT = 8788
+
+    async def _route(request):  # type: ignore[no-untyped-def]
+        return await proxy_to_webui(request)
+
+    app = Starlette(routes=[Route("/{path:path}", _route, methods=["GET"])])
+    app.state.webui = _FakeWebUI()
+    app.state.proxy_client = httpx.AsyncClient(transport=httpx.MockTransport(_handler))
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://station.test"
+    ) as client:
+        resp = await client.get("/whatever")
+
+    await app.state.proxy_client.aclose()
+
+    cookies = resp.headers.get_list("set-cookie")
+    assert "a=1; Path=/" in cookies
+    assert "b=2; Path=/" in cookies
+
+
 # ────────────────────────────────────────────────── supervisor state defaults
 
 
