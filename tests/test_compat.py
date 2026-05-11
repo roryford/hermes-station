@@ -171,7 +171,9 @@ async def test_status_endpoint_paths(fake_data_dir: Path, admin_password: str) -
         "workspace_dir": str(fake_data_dir / "workspace"),
     }
     assert body["model"] == {"provider": "", "default": "", "base_url": ""}, "no provider configured yet"
-    assert body["phase"] == "0-skeleton"
+    assert body["phase"] == "1"
+    assert body["webui"]["running"] is False, "webui supervisor not started in unit-test lifespan"
+    assert body["gateway"]["state"] == "unknown"
 
 
 async def test_status_picks_up_existing_config(fake_data_dir: Path, admin_password: str) -> None:
