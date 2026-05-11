@@ -2,8 +2,8 @@
 
 Files live at `$HERMES_HOME/pairing/{telegram-approved,telegram-pending}.json`.
 Upstream is migrating these to `$HERMES_HOME/platforms/pairing/` — we read the
-new path first if it exists (CONTRACT.md §3.2) but keep writing to the legacy
-path until upstream stabilizes.
+new path first if it exists (CONTRACT.md §3.2) and writes follow the same
+resolution so reads and writes never diverge.
 
 All file writes are mode 0600 and atomic (temp + rename).
 """
@@ -32,6 +32,14 @@ def _resolve_pairing_file(pairing_dir: Path, name: str) -> Path:
     if new_path.exists():
         return new_path
     return legacy_path
+
+
+def _resolve_pairing_write(pairing_dir: Path, name: str) -> Path:
+    """Where to write a pairing file: prefer the new platforms path if its dir exists."""
+    new_dir = pairing_dir.parent / "platforms" / "pairing"
+    if new_dir.exists() or (new_dir / name).exists():
+        return new_dir / name
+    return pairing_dir / name
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -77,10 +85,9 @@ def approve(pairing_dir: Path, user_id: str) -> dict[str, Any]:
     if not user_id:
         raise ValueError("user_id is required")
 
-    # Read may come from new path, but we write to the legacy path.
     pending_read = _resolve_pairing_file(pairing_dir, _PENDING_FILE)
-    pending_write = pairing_dir / _PENDING_FILE
-    approved_write = pairing_dir / _APPROVED_FILE
+    pending_write = _resolve_pairing_write(pairing_dir, _PENDING_FILE)
+    approved_write = _resolve_pairing_write(pairing_dir, _APPROVED_FILE)
 
     pending = _load_json(pending_read)
     if user_id not in pending:
@@ -101,7 +108,7 @@ def deny(pairing_dir: Path, user_id: str) -> dict[str, Any]:
     if not user_id:
         raise ValueError("user_id is required")
     pending_read = _resolve_pairing_file(pairing_dir, _PENDING_FILE)
-    pending_write = pairing_dir / _PENDING_FILE
+    pending_write = _resolve_pairing_write(pairing_dir, _PENDING_FILE)
     pending = _load_json(pending_read)
     removed = pending.pop(user_id, None)
     _write_json(pending_write, pending)
@@ -113,7 +120,7 @@ def revoke(pairing_dir: Path, user_id: str) -> dict[str, Any]:
     if not user_id:
         raise ValueError("user_id is required")
     approved_read = _resolve_pairing_file(pairing_dir, _APPROVED_FILE)
-    approved_write = pairing_dir / _APPROVED_FILE
+    approved_write = _resolve_pairing_write(pairing_dir, _APPROVED_FILE)
     approved = _load_json(approved_read)
     removed = approved.pop(user_id, None)
     _write_json(approved_write, approved)
