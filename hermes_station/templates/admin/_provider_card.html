@@ -1,0 +1,62 @@
+{# Provider card. Rendered both inline on /admin/settings (via {% include %}) and
+   returned as a fragment from POST /admin/_partial/provider/setup. The outer
+   id is what the form's hx-target swaps. #}
+<section class="card" id="provider-card">
+    <div class="card-header">
+        <h2>Provider</h2>
+        {% if provider_status.ready %}
+            <span class="badge success">Ready</span>
+        {% else %}
+            <span class="badge muted">Not configured</span>
+        {% endif %}
+    </div>
+
+    {% if alert %}
+        <div class="alert {{ alert.kind }}">{{ alert.message }}</div>
+    {% endif %}
+
+    <h3>Current</h3>
+    <dl class="kv">
+        <dt>Provider</dt><dd>{{ provider_label or provider_status.provider or "—" }}</dd>
+        <dt>Default model</dt><dd>{{ provider_status.default or "—" }}</dd>
+        <dt>Base URL</dt><dd class="mono">{{ provider_status.base_url or "—" }}</dd>
+    </dl>
+
+    <form
+        hx-post="/admin/_partial/provider/setup"
+        hx-target="#provider-card"
+        hx-swap="outerHTML"
+        style="margin-top: 1.25rem;"
+    >
+        <h3>Update</h3>
+        <div class="field">
+            <label for="provider-select">Provider</label>
+            <select id="provider-select" name="provider">
+                {% for entry in provider_catalog %}
+                    <option
+                        value="{{ entry.id }}"
+                        data-requires-base-url="{{ 'true' if entry.requires_base_url else 'false' }}"
+                        {% if entry.id == provider_status.provider %}selected{% endif %}
+                    >{{ entry.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="provider-model">Default model</label>
+            <input type="text" id="provider-model" name="model" value="{{ provider_status.default }}" placeholder="e.g. claude-sonnet-4.6">
+        </div>
+        <div class="field">
+            <label for="provider-api-key">API key</label>
+            <input type="password" id="provider-api-key" name="api_key" placeholder="Paste a fresh key — current value is masked" autocomplete="off">
+            <div class="field-hint">Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.</div>
+        </div>
+        <div class="field" data-field="base_url">
+            <label for="provider-base-url">Base URL</label>
+            <input type="url" id="provider-base-url" name="base_url" value="{{ provider_status.base_url }}" placeholder="https://...">
+            <div class="field-hint">Required for "Custom OpenAI-compatible" providers (e.g. Ollama Cloud).</div>
+        </div>
+        <div class="row">
+            <button type="submit" class="btn">Save provider</button>
+        </div>
+    </form>
+</section>

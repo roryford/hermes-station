@@ -20,6 +20,8 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
+from hermes_station.admin.htmx_settings import routes as settings_routes
 from hermes_station.admin.routes import admin_routes
 from hermes_station.config import AdminSettings, Paths, load_env_file, load_yaml_config
 from hermes_station.gateway import Gateway, should_autostart
@@ -99,6 +101,8 @@ def create_app() -> Starlette:
 
     routes = [
         Route("/health", health),
+        *dashboard_routes(),
+        *settings_routes(),
         *admin_routes(),
         Mount(
             "/admin/static",

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
@@ -48,19 +48,6 @@ async def _json_body(request: Request) -> dict[str, Any]:
     except Exception:
         return {}
     return body if isinstance(body, dict) else {}
-
-
-async def admin_index(request: Request) -> Response:
-    guard = require_admin(request)
-    if guard is not None:
-        return guard
-    return HTMLResponse(
-        "<!doctype html><meta charset=utf-8><title>hermes-station admin</title>"
-        "<h1>hermes-station admin</h1>"
-        "<p>Phase 0 skeleton. Real admin UI lands in Phase 1.</p>"
-        '<p><a href="/admin/api/status">status JSON</a> · <form method=post action="/admin/logout" style="display:inline"><button>Log out</button></form></p>',
-        status_code=200,
-    )
 
 
 async def admin_login_page(request: Request) -> Response:
@@ -289,7 +276,6 @@ async def _unimplemented(request: Request) -> Response:
 
 def admin_routes() -> list[Route]:
     return [
-        Route("/admin", admin_index, methods=["GET"]),
         Route("/admin/login", admin_login_page, methods=["GET"]),
         Route("/admin/login", admin_login, methods=["POST"]),
         Route("/admin/logout", admin_logout, methods=["POST"]),
