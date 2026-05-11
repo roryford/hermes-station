@@ -1,0 +1,21 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<div class="grid logs-grid">
+    {% for source in sources %}
+    <section class="card">
+        <div class="card-header">
+            <h2>{{ source }}</h2>
+            <a class="btn small ghost" href="/admin/api/logs/{{ source }}" target="_blank" rel="noopener">JSON</a>
+        </div>
+        <div id="logs-{{ source }}"
+             hx-get="/admin/_partial/logs/{{ source }}"
+             hx-trigger="load, every 3s"
+             hx-swap="outerHTML">
+            <pre class="log-box muted">Loading {{ source }} logs…</pre>
+        </div>
+    </section>
+    {% endfor %}
+</div>
+{% endblock %}

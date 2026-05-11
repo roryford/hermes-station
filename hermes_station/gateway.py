@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+from hermes_station.logs import attach_gateway_handler, detach_gateway_handler
+
 logger = logging.getLogger("hermes_station.gateway")
 
 GatewayState = Literal["unknown", "starting", "running", "startup_failed", "stopping", "stopped"]
@@ -76,12 +78,17 @@ class Gateway:
         if self.is_running() or (self._supervisor_task and not self._supervisor_task.done()):
             return
         self._stopping.clear()
-        self._supervisor_task = asyncio.create_task(
-            self._supervise(), name="hermes-station.gateway-supervisor"
-        )
-        self._heartbeat_task = asyncio.create_task(
-            self._refresh_updated_at(), name="hermes-station.gateway-heartbeat"
-        )
+        try:
+            attach_gateway_handler()
+            self._supervisor_task = asyncio.create_task(
+                self._supervise(), name="hermes-station.gateway-supervisor"
+            )
+            self._heartbeat_task = asyncio.create_task(
+                self._refresh_updated_at(), name="hermes-station.gateway-heartbeat"
+            )
+        except BaseException:
+            detach_gateway_handler()
+            raise
 
     async def stop(self) -> None:
         self._stopping.set()
@@ -96,6 +103,7 @@ class Gateway:
                 await self._supervisor_task
             self._supervisor_task = None
         await self._cancel_task()
+        detach_gateway_handler()
 
     async def restart(self) -> None:
         await self.stop()

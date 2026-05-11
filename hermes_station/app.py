@@ -21,10 +21,12 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
+from hermes_station.admin.htmx_logs import routes as logs_routes
 from hermes_station.admin.htmx_settings import routes as settings_routes
 from hermes_station.admin.routes import admin_routes
 from hermes_station.config import AdminSettings, Paths, load_env_file, load_yaml_config
 from hermes_station.gateway import Gateway, should_autostart
+from hermes_station.logs import attach_station_handler
 from hermes_station.proxy import proxy_to_webui
 from hermes_station.webui import WebUIProcess
 
@@ -98,6 +100,7 @@ _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 
 
 def create_app() -> Starlette:
+    attach_station_handler()
     paths = Paths()
     base_dir = Path(__file__).resolve().parent
 
@@ -105,6 +108,7 @@ def create_app() -> Starlette:
         Route("/health", health),
         *dashboard_routes(),
         *settings_routes(),
+        *logs_routes(),
         *admin_routes(),
         Mount(
             "/admin/static",

@@ -20,6 +20,8 @@ from pathlib import Path
 
 import httpx
 
+from hermes_station.logs import WEBUI_LOGS
+
 logger = logging.getLogger("hermes_station.webui")
 
 
@@ -188,6 +190,7 @@ class WebUIProcess:
                 if line:
                     # Goes to our stdout → Railway log stream
                     print(f"[webui] {line}", flush=True)
+                    WEBUI_LOGS.append(line)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
