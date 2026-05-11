@@ -36,26 +36,12 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     paths: Paths = app.state.paths
     paths.ensure()
 
-    app.state.proxy_client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
+    app.state.proxy_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=10.0, read=None, write=None, pool=10.0)
+    )
 
     webui: WebUIProcess = app.state.webui
     gateway: Gateway = app.state.gateway
-
-    server_py = paths.webui_src / "server.py"
-    if server_py.exists():
-        try:
-            await webui.start()
-            if not await webui.wait_ready():
-                logger.warning(
-                    "hermes-webui not healthy within %.0fs; supervisor will keep trying",
-                    WebUIProcess.STARTUP_GRACE_SECONDS,
-                )
-        except Exception:  # noqa: BLE001
-            logger.exception("hermes-webui startup raised; supervisor will keep trying")
-    else:
-        logger.warning(
-            "hermes-webui source not found at %s; subprocess will not start", paths.webui_src
-        )
 
     try:
         settings = AdminSettings()
@@ -75,6 +61,22 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
             )
     except Exception:  # noqa: BLE001
         logger.exception("gateway autostart check failed")
+
+    server_py = paths.webui_src / "server.py"
+    if server_py.exists():
+        try:
+            await webui.start()
+            if not await webui.wait_ready():
+                logger.warning(
+                    "hermes-webui not healthy within %.0fs; supervisor will keep trying",
+                    WebUIProcess.STARTUP_GRACE_SECONDS,
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("hermes-webui startup raised; supervisor will keep trying")
+    else:
+        logger.warning(
+            "hermes-webui source not found at %s; subprocess will not start", paths.webui_src
+        )
 
     try:
         yield

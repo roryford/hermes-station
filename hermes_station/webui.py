@@ -119,6 +119,8 @@ class WebUIProcess:
                 "PYTHONUNBUFFERED": "1",
             }
         )
+        if not env.get("HERMES_WEBUI_PASSWORD") and env.get("HERMES_ADMIN_PASSWORD"):
+            env["HERMES_WEBUI_PASSWORD"] = env["HERMES_ADMIN_PASSWORD"]
         return env
 
     async def _spawn(self) -> None:
