@@ -70,7 +70,7 @@ async def admin_login(request: Request) -> Response:
         )
         return response
     response = RedirectResponse(url="/admin", status_code=302)
-    issue_session_cookie(response)
+    issue_session_cookie(response, request)
     return response
 
 
