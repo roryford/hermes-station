@@ -8,7 +8,6 @@ session store needed.
 from __future__ import annotations
 
 import hmac
-import os
 import time
 from dataclasses import dataclass
 
@@ -47,16 +46,18 @@ def verify_password(submitted: str) -> bool:
     return hmac.compare_digest(submitted.encode("utf-8"), expected.encode("utf-8"))
 
 
-def issue_session_cookie(response: Response) -> None:
+def issue_session_cookie(response: Response, request: Request) -> None:
     settings = AdminSettings()
     signed = _signer().sign(str(int(time.time()))).decode("utf-8")
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme).lower()
+    secure = proto == "https"
     response.set_cookie(
         COOKIE_NAME,
         signed,
         max_age=settings.admin_session_ttl,
         httponly=True,
-        samesite="lax",
-        secure=os.getenv("RAILWAY_ENVIRONMENT") is not None,
+        samesite="strict",
+        secure=secure,
     )
 
 

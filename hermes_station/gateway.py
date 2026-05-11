@@ -156,10 +156,14 @@ class Gateway:
                 continue
             try:
                 state = self.read_state()
+                if state.get("gateway_state") != "running" or self._stopping.is_set():
+                    continue
                 state["updated_at"] = datetime.now(timezone.utc).isoformat()
-                self.state_path.write_text(
+                tmp = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
+                tmp.write_text(
                     json.dumps(state, separators=(",", ":")), encoding="utf-8"
                 )
+                tmp.replace(self.state_path)
             except (OSError, json.JSONDecodeError):
                 pass
 
