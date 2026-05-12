@@ -1,8 +1,9 @@
 """Provider catalog + provider setup helper.
 
-Ported from hermes-all-in-one's `control_plane/config.py`. The catalog IDs
-(`openrouter`, `anthropic`, `openai`, `custom`) are part of the data contract
-(CONTRACT.md §6) — they must not be renamed.
+Ported from hermes-all-in-one's `control_plane/config.py` and extended for the
+providers supported by the pinned `hermes-agent`. The catalog IDs
+(`openrouter`, `anthropic`, `openai`, `copilot`, `custom`) are part of the
+data contract (CONTRACT.md §6) — they must not be renamed.
 """
 
 from __future__ import annotations
@@ -38,21 +39,64 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "default_model": "gpt-4o",
         "default_base_url": "https://api.openai.com/v1",
         "requires_base_url": False,
+        "credential_label": "API key",
+        "credential_placeholder": "Paste a fresh key — current value is masked",
+        "credential_hint": "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
+    },
+    "copilot": {
+        "label": "GitHub Copilot",
+        "env_var": "COPILOT_GITHUB_TOKEN",
+        "accepted_env_vars": ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"),
+        "default_model": "gpt-4.1",
+        "requires_base_url": False,
+        "credential_label": "GitHub token",
+        "credential_placeholder": "Paste a Copilot-capable GitHub token",
+        "credential_hint": (
+            "Saves as COPILOT_GITHUB_TOKEN. Supported tokens include gho_ OAuth tokens, "
+            "github_pat_ fine-grained PATs with Copilot Requests permission, and ghu_ app tokens. "
+            "Classic ghp_* PATs are not supported."
+        ),
     },
     "custom": {
         "label": "Custom OpenAI-compatible",
         "env_var": "OPENAI_API_KEY",
         "default_model": "gpt-4o-mini",
         "requires_base_url": True,
+        "credential_label": "API key",
+        "credential_placeholder": "Paste a fresh key — current value is masked",
+        "credential_hint": "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
     },
 }
 
 
 UNSUPPORTED_PROVIDER_NOTE = (
     "OAuth and advanced provider flows such as OpenAI Codex, ChatGPT-style subscription login, "
-    "Nous Portal, and GitHub Copilot are still advanced/manual in hosted Railway deployments. "
+    "and Nous Portal are still advanced/manual in hosted Railway deployments. "
     "Use terminal-first Hermes auth/model flows for those providers instead of relying on in-browser OAuth."
 )
+
+
+def provider_env_var_names(provider: str) -> tuple[str, ...]:
+    """Return the env vars that count as credentials for a provider."""
+    meta = PROVIDER_CATALOG.get((provider or "").strip().lower(), {})
+    accepted = meta.get("accepted_env_vars")
+    if isinstance(accepted, (list, tuple)):
+        names = tuple(str(name).strip() for name in accepted if str(name).strip())
+        if names:
+            return names
+    env_var = str(meta.get("env_var") or "").strip()
+    return (env_var,) if env_var else ()
+
+
+def provider_has_credentials(provider: str, env_values: dict[str, str]) -> bool:
+    """Check .env + process env for any accepted provider credential.
+
+    .env values take precedence over process env (CONTRACT.md §2.1).
+    """
+    return any(
+        env_values.get(env_var, "").strip() or os.environ.get(env_var, "").strip()
+        for env_var in provider_env_var_names(provider)
+    )
 
 
 def apply_provider_setup(
@@ -109,13 +153,7 @@ def provider_status(config: dict[str, Any], env_values: dict[str, str]) -> dict[
     """Provider block for /admin/api/status: provider/default/base_url + readiness."""
     model = extract_model_config(config)
     provider = model.provider.lower()
-    env_var = PROVIDER_CATALOG.get(provider, {}).get("env_var", "")
-    # Env var wins over .env file (CONTRACT.md §2.1) — match that ordering for `ready`.
-    ready = bool(
-        provider
-        and env_var
-        and (env_values.get(env_var, "").strip() or os.environ.get(env_var, "").strip())
-    )
+    ready = bool(provider and provider_has_credentials(provider, env_values))
     return {
         "provider": model.provider,
         "default": model.default,

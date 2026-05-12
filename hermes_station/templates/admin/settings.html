@@ -21,10 +21,23 @@
         const scope = root || document;
         const select = scope.querySelector('select[name="provider"]');
         const baseUrlField = scope.querySelector('[data-field="base_url"]');
+        const credentialLabel = scope.querySelector('[data-provider-credential-label]');
+        const credentialInput = scope.querySelector('[data-provider-credential-input]');
+        const credentialHint = scope.querySelector('[data-provider-credential-hint]');
         if (!select || !baseUrlField) return;
         const option = select.options[select.selectedIndex];
         const requires = option && option.dataset.requiresBaseUrl === "true";
         baseUrlField.style.display = requires ? "" : "none";
+        if (!option) return;
+        if (credentialLabel && option.dataset.credentialLabel) {
+            credentialLabel.textContent = option.dataset.credentialLabel;
+        }
+        if (credentialInput && option.dataset.credentialPlaceholder) {
+            credentialInput.placeholder = option.dataset.credentialPlaceholder;
+        }
+        if (credentialHint && option.dataset.credentialHint) {
+            credentialHint.textContent = option.dataset.credentialHint;
+        }
     }
     document.addEventListener("DOMContentLoaded", () => syncBaseUrlVisibility(document));
     document.addEventListener("change", (event) => {

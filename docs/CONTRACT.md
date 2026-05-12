@@ -241,6 +241,7 @@ Defined in `control_plane/config.py:35-61`. Stable identifiers — `hermes-stati
 | `openrouter` | OpenRouter | `OPENROUTER_API_KEY` | `anthropic/claude-sonnet-4.6` | no |
 | `anthropic` | Anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-4.6` | no |
 | `openai` | OpenAI | `OPENAI_API_KEY` | `gpt-4o` | no (default URL applied) |
+| `copilot` | GitHub Copilot | `COPILOT_GITHUB_TOKEN` | `gpt-4.1` | no |
 | `custom` | Custom OpenAI-compatible | `OPENAI_API_KEY` | `gpt-4o-mini` | **yes** (e.g. Ollama Cloud) |
 
 ---
