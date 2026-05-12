@@ -149,7 +149,30 @@ def apply_provider_setup(
     env_values[meta["env_var"]] = api_key
     write_env_file(env_path, env_values)
 
+    if provider == "copilot":
+        _suppress_copilot_fallback_sources()
+
     return {"provider": provider, "model": model, "env_var": meta["env_var"]}
+
+
+def _suppress_copilot_fallback_sources() -> None:
+    """Tell hermes-agent's credential pool to ignore GITHUB_TOKEN / GH_TOKEN
+    as Copilot credentials.
+
+    Railway injects GITHUB_TOKEN (a classic ghp_* PAT) which gets added to
+    the Copilot credential pool alongside COPILOT_GITHUB_TOKEN and causes
+    "Personal Access Tokens are not supported" errors. Suppressing those
+    sources leaves COPILOT_GITHUB_TOKEN as the sole pool entry.
+
+    The suppress flag is stored in auth.json and survives gateway restarts.
+    GH_TOKEN / GITHUB_TOKEN remain in os.environ for gh CLI use.
+    """
+    try:
+        from hermes_cli.auth import suppress_credential_source
+        suppress_credential_source("copilot", "env:GITHUB_TOKEN")
+        suppress_credential_source("copilot", "env:GH_TOKEN")
+    except Exception:
+        pass  # hermes-agent not installed (test environment)
 
 
 def provider_status(config: dict[str, Any], env_values: dict[str, str]) -> dict[str, Any]:

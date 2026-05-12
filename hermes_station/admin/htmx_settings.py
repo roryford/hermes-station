@@ -159,6 +159,9 @@ async def provider_fragment_save(request: Request) -> Response:
             base_url=str(form.get("base_url") or ""),
         )
         seed_env_file_to_os(paths.env_path)
+        gateway = getattr(request.app.state, "gateway", None)
+        if gateway is not None:
+            await gateway.restart()
         alert = {"kind": "success", "message": "Provider saved."}
     except ValueError as exc:
         alert = {"kind": "error", "message": str(exc)}
@@ -324,6 +327,9 @@ async def copilot_oauth_poll(request: Request) -> Response:
                 api_key=token,
             )
             seed_env_file_to_os(paths.env_path)
+            from hermes_station.gateway import Gateway as _Gateway
+            gateway: _Gateway = request.app.state.gateway
+            await gateway.restart()
             alert: dict[str, str] = {"kind": "success", "message": "GitHub Copilot connected."}
         except Exception as exc:
             alert = {"kind": "error", "message": f"Token received but could not save: {exc}"}
