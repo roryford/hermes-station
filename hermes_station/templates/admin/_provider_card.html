@@ -48,7 +48,7 @@
             <label for="provider-model">Default model</label>
             <input type="text" id="provider-model" name="model" value="{{ provider_status.default }}" placeholder="e.g. claude-sonnet-4.6">
         </div>
-        <div class="field">
+        <div class="field" data-field="credential">
             <label for="provider-api-key" data-provider-credential-label>{{ provider_form_meta.credential_label }}</label>
             <input
                 type="password"
@@ -59,6 +59,16 @@
                 autocomplete="off"
             >
             <div class="field-hint" data-provider-credential-hint>{{ provider_form_meta.credential_hint }}</div>
+        </div>
+        <div class="field" data-field="copilot_oauth" style="display:none;">
+            <button
+                type="button"
+                class="btn"
+                hx-post="/admin/_partial/provider/copilot/start"
+                hx-target="#provider-card"
+                hx-swap="outerHTML"
+            >Connect with GitHub</button>
+            <div class="field-hint">Opens a GitHub device authorization flow — no token to copy.</div>
         </div>
         <div class="field" data-field="base_url">
             <label for="provider-base-url">Base URL</label>

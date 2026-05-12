@@ -51,12 +51,8 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "default_model": "gpt-4.1",
         "requires_base_url": False,
         "credential_label": "GitHub token",
-        "credential_placeholder": "Paste a Copilot-capable GitHub token",
-        "credential_hint": (
-            "Saves as COPILOT_GITHUB_TOKEN. Supported tokens include gho_ OAuth tokens, "
-            "github_pat_ fine-grained PATs with Copilot Requests permission, and ghu_ app tokens. "
-            "Classic ghp_* PATs are not supported."
-        ),
+        "credential_placeholder": "Leave blank to keep existing key",
+        "credential_hint": "Use the Connect with GitHub button to authenticate via OAuth.",
     },
     "custom": {
         "label": "Custom OpenAI-compatible",
@@ -71,7 +67,7 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
 
 
 UNSUPPORTED_PROVIDER_NOTE = (
-    "OAuth and advanced provider flows such as OpenAI Codex, ChatGPT-style subscription login, "
+    "Advanced provider flows such as OpenAI Codex, ChatGPT-style subscription login, "
     "and Nous Portal are still advanced/manual in hosted Railway deployments. "
     "Use terminal-first Hermes auth/model flows for those providers instead of relying on in-browser OAuth."
 )

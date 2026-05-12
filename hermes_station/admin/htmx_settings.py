@@ -36,6 +36,7 @@ from hermes_station.admin.pairing import (
     get_pending,
     revoke,
 )
+from hermes_station.admin.copilot_oauth import poll_device_flow, start_device_flow
 from hermes_station.admin.provider import (
     PROVIDER_CATALOG,
     apply_provider_setup,
@@ -249,6 +250,102 @@ async def channels_fragment_toggle(request: Request) -> Response:
     return _templates.TemplateResponse(request, "admin/_channels_card.html", context)
 
 
+async def copilot_oauth_start(request: Request) -> Response:
+    """Initiate the GitHub Copilot device code flow. Returns the device flow card."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    try:
+        flow = await start_device_flow()
+    except Exception as exc:
+        context: dict[str, Any] = {"alert": {"kind": "error", "message": f"Could not start GitHub OAuth: {exc}"}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+    return _templates.TemplateResponse(
+        request,
+        "admin/_copilot_device_flow.html",
+        {
+            "device_code": flow["device_code"],
+            "user_code": flow["user_code"],
+            "verification_uri": flow.get("verification_uri", "https://github.com/login/device"),
+            "poll_interval": flow["poll_interval"],
+        },
+    )
+
+
+async def copilot_oauth_poll(request: Request) -> Response:
+    """Poll GitHub for the Copilot OAuth token. Returns device flow card or provider card."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    device_code = str(request.query_params.get("device_code") or "").strip()
+    interval = int(request.query_params.get("interval") or 8)
+
+    if not device_code:
+        context: dict[str, Any] = {"alert": {"kind": "error", "message": "Missing device_code."}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    try:
+        result = await poll_device_flow(device_code, interval=interval)
+    except Exception as exc:
+        context = {"alert": {"kind": "error", "message": f"Poll error: {exc}"}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    status = result["status"]
+
+    if status in ("pending", "slow_down"):
+        return _templates.TemplateResponse(
+            request,
+            "admin/_copilot_device_flow.html",
+            {
+                "device_code": device_code,
+                "user_code": request.query_params.get("user_code", ""),
+                "verification_uri": request.query_params.get(
+                    "verification_uri", "https://github.com/login/device"
+                ),
+                "poll_interval": result["poll_interval"],
+            },
+        )
+
+    if status == "success":
+        token = result["token"]
+        meta = PROVIDER_CATALOG["copilot"]
+        try:
+            apply_provider_setup(
+                config_path=paths.config_path,
+                env_path=paths.env_path,
+                provider="copilot",
+                model=meta["default_model"],
+                api_key=token,
+            )
+            alert: dict[str, str] = {"kind": "success", "message": "GitHub Copilot connected."}
+        except Exception as exc:
+            alert = {"kind": "error", "message": f"Token received but could not save: {exc}"}
+        context = {"alert": alert}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    # expired / denied / error
+    context = {"alert": {"kind": "error", "message": result.get("message", "Authorization failed.")}}
+    context.update(_provider_context(paths))
+    return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+
+async def provider_cancel(request: Request) -> Response:
+    """Cancel an in-progress provider flow. Returns the plain provider card."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    context: dict[str, Any] = {}
+    context.update(_provider_context(paths))
+    return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+
 async def pairings_fragment_action(request: Request) -> Response:
     """Form-encoded approve/deny/revoke. Returns the refreshed pairings panel."""
     guard = require_admin(request)
@@ -285,6 +382,9 @@ def routes() -> list[Route]:
         Route("/admin/_partial/channels/save", channels_fragment_save, methods=["POST"]),
         Route("/admin/_partial/channels/clear", channels_fragment_clear, methods=["POST"]),
         Route("/admin/_partial/channels/toggle", channels_fragment_toggle, methods=["POST"]),
+        Route("/admin/_partial/provider/copilot/start", copilot_oauth_start, methods=["POST"]),
+        Route("/admin/_partial/provider/copilot/poll", copilot_oauth_poll, methods=["GET"]),
+        Route("/admin/_partial/provider/cancel", provider_cancel, methods=["POST"]),
         Route(
             "/admin/_partial/pairing/{action}",
             pairings_fragment_action,

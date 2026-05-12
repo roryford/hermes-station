@@ -1,0 +1,44 @@
+{# Device code flow card — replaces #provider-card while waiting for GitHub OAuth.
+   Polls /admin/_partial/provider/copilot/poll every poll_interval seconds via HTMX.
+   On success/error the poll endpoint returns the regular _provider_card.html. #}
+<section class="card" id="provider-card">
+    <div class="card-header">
+        <h2>Provider</h2>
+        <span class="badge muted">Connecting…</span>
+    </div>
+
+    {% if alert %}
+        <div class="alert {{ alert.kind }}">{{ alert.message }}</div>
+    {% endif %}
+
+    <h3>Connect GitHub Copilot</h3>
+
+    <ol style="padding-left:1.25rem; line-height:1.9;">
+        <li>Open <a href="{{ verification_uri }}" target="_blank" rel="noopener">{{ verification_uri }}</a></li>
+        <li>Enter this code:</li>
+    </ol>
+
+    <p class="mono" style="font-size:1.75rem; letter-spacing:0.2em; margin:0.5rem 0 1rem;">{{ user_code }}</p>
+
+    <p class="muted" style="margin:0;">Waiting for authorization&hellip;</p>
+
+    {# Polling div — silently GETs the poll endpoint, replaces the whole card.
+       hx-trigger fires once on load (after poll_interval seconds) then repeats. #}
+    <div
+        hx-get="/admin/_partial/provider/copilot/poll?device_code={{ device_code }}&interval={{ poll_interval }}&user_code={{ user_code | urlencode }}&verification_uri={{ verification_uri | urlencode }}"
+        hx-trigger="load delay:{{ poll_interval }}s, every {{ poll_interval }}s"
+        hx-target="#provider-card"
+        hx-swap="outerHTML"
+        style="display:none;"
+    ></div>
+
+    <div class="row" style="margin-top:1.25rem;">
+        <button
+            type="button"
+            class="btn small muted"
+            hx-post="/admin/_partial/provider/cancel"
+            hx-target="#provider-card"
+            hx-swap="outerHTML"
+        >Cancel</button>
+    </div>
+</section>

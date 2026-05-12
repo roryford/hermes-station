@@ -143,7 +143,7 @@ async def test_provider_fragment_save_supports_copilot(
     assert "Provider saved." in body
     assert "GitHub Copilot" in body
     assert "GitHub token" in body
-    assert "Classic ghp_* PATs are not supported." in body
+    assert "Connect with GitHub" in body
 
     config = yaml.safe_load((fake_data_dir / ".hermes" / "config.yaml").read_text())
     assert config["model"]["provider"] == "copilot"
