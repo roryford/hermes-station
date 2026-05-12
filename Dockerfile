@@ -26,7 +26,7 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 # mount keeps the uv wheel cache around between builds without bloating the
 # image; the layer itself caches as long as pyproject.toml, __init__.py, and
 # HERMES_WEBUI_VERSION are unchanged.
-RUN --mount=type=cache,target=/root/.cache/uv,id=hs-uv-cache \
+RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
