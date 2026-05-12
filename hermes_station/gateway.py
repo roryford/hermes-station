@@ -215,7 +215,7 @@ def should_autostart(*, mode: str, config: dict[str, Any], env_values: dict[str,
         return False
 
     from hermes_station.admin.channels import CHANNEL_ENV_KEYS
-    from hermes_station.admin.provider import PROVIDER_CATALOG
+    from hermes_station.admin.provider import PROVIDER_CATALOG, provider_has_credentials
 
     provider = ((config.get("model") or {}).get("provider") or "").strip().lower()
     if not provider:
@@ -223,7 +223,6 @@ def should_autostart(*, mode: str, config: dict[str, Any], env_values: dict[str,
     provider_meta = PROVIDER_CATALOG.get(provider)
     if not provider_meta:
         return False
-    env_var = provider_meta["env_var"]
-    if not (env_values.get(env_var) or os.environ.get(env_var)):
+    if not provider_has_credentials(provider, env_values):
         return False
     return any(env_values.get(k) or os.environ.get(k) for k in CHANNEL_ENV_KEYS)

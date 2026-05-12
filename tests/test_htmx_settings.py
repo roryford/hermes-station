@@ -67,6 +67,7 @@ async def test_settings_renders_after_login(
     # Provider + channels forms are present.
     assert "hx-post=\"/admin/_partial/provider/setup\"" in body
     assert "hx-post=\"/admin/_partial/channels/save\"" in body
+    assert "GitHub Copilot" in body
     # All channel labels should appear so we can be sure the catalog renders.
     for label in ("Telegram", "Discord", "Slack", "WhatsApp", "Email"):
         assert label in body
@@ -119,6 +120,36 @@ async def test_provider_fragment_save_persists_and_returns_card(
 
     config = yaml.safe_load((fake_data_dir / ".hermes" / "config.yaml").read_text())
     assert config["model"]["provider"] == "anthropic"
+
+
+async def test_provider_fragment_save_supports_copilot(
+    fake_data_dir: Path, admin_password: str
+) -> None:
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        response = await client.post(
+            "/admin/_partial/provider/setup",
+            data={
+                "provider": "copilot",
+                "model": "gpt-4.1",
+                "api_key": "gho_test_token",
+                "base_url": "",
+            },
+        )
+    assert response.status_code == 200, response.text
+    body = response.text
+    assert "Provider saved." in body
+    assert "GitHub Copilot" in body
+    assert "GitHub token" in body
+    assert "Classic ghp_* PATs are not supported." in body
+
+    config = yaml.safe_load((fake_data_dir / ".hermes" / "config.yaml").read_text())
+    assert config["model"]["provider"] == "copilot"
+
+    env_path = fake_data_dir / ".hermes" / ".env"
+    assert "COPILOT_GITHUB_TOKEN=gho_test_token" in env_path.read_text(encoding="utf-8")
 
 
 # ──────────────────────────────────────────────────────────── pairings page

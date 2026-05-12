@@ -71,6 +71,12 @@ def test_should_autostart_unknown_provider_returns_false() -> None:
     assert should_autostart(mode="auto", config=config, env_values={"ANYTHING": "x"}) is False
 
 
+def test_should_autostart_copilot_accepts_github_token_aliases() -> None:
+    config = {"model": {"provider": "copilot", "default": "gpt-4.1"}}
+    env = {"GITHUB_TOKEN": "gho-test-token", "TELEGRAM_BOT_TOKEN": "12345:abc"}
+    assert should_autostart(mode="auto", config=config, env_values=env) is True
+
+
 # ─────────────────────────────────────────────────────── proxy filters
 
 

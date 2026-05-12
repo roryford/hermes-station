@@ -51,8 +51,22 @@ def _provider_context(paths: Paths) -> dict[str, Any]:
     config = load_yaml_config(paths.config_path)
     env_values = load_env_file(paths.env_path)
     status = provider_status(config, env_values)
+    selected_provider = status["provider"].lower()
+    if selected_provider not in PROVIDER_CATALOG:
+        selected_provider = next(iter(PROVIDER_CATALOG))
+    selected_meta = PROVIDER_CATALOG[selected_provider]
     catalog = [
-        {"id": pid, "label": meta["label"], "requires_base_url": meta.get("requires_base_url", False)}
+        {
+            "id": pid,
+            "label": meta["label"],
+            "requires_base_url": meta.get("requires_base_url", False),
+            "credential_label": meta.get("credential_label", "API key"),
+            "credential_placeholder": meta.get("credential_placeholder", "Paste a fresh key — current value is masked"),
+            "credential_hint": meta.get(
+                "credential_hint",
+                "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
+            ),
+        }
         for pid, meta in PROVIDER_CATALOG.items()
     ]
     label = PROVIDER_CATALOG.get(status["provider"].lower(), {}).get("label", "")
@@ -60,6 +74,16 @@ def _provider_context(paths: Paths) -> dict[str, Any]:
         "provider_catalog": catalog,
         "provider_status": status,
         "provider_label": label,
+        "provider_form_meta": {
+            "credential_label": selected_meta.get("credential_label", "API key"),
+            "credential_placeholder": selected_meta.get(
+                "credential_placeholder", "Paste a fresh key — current value is masked"
+            ),
+            "credential_hint": selected_meta.get(
+                "credential_hint",
+                "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
+            ),
+        },
     }
 
 

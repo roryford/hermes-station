@@ -36,6 +36,9 @@
                     <option
                         value="{{ entry.id }}"
                         data-requires-base-url="{{ 'true' if entry.requires_base_url else 'false' }}"
+                        data-credential-label="{{ entry.credential_label }}"
+                        data-credential-placeholder="{{ entry.credential_placeholder }}"
+                        data-credential-hint="{{ entry.credential_hint }}"
                         {% if entry.id == provider_status.provider %}selected{% endif %}
                     >{{ entry.label }}</option>
                 {% endfor %}
@@ -46,14 +49,21 @@
             <input type="text" id="provider-model" name="model" value="{{ provider_status.default }}" placeholder="e.g. claude-sonnet-4.6">
         </div>
         <div class="field">
-            <label for="provider-api-key">API key</label>
-            <input type="password" id="provider-api-key" name="api_key" placeholder="Paste a fresh key — current value is masked" autocomplete="off">
-            <div class="field-hint">Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.</div>
+            <label for="provider-api-key" data-provider-credential-label>{{ provider_form_meta.credential_label }}</label>
+            <input
+                type="password"
+                id="provider-api-key"
+                name="api_key"
+                placeholder="{{ provider_form_meta.credential_placeholder }}"
+                data-provider-credential-input
+                autocomplete="off"
+            >
+            <div class="field-hint" data-provider-credential-hint>{{ provider_form_meta.credential_hint }}</div>
         </div>
         <div class="field" data-field="base_url">
             <label for="provider-base-url">Base URL</label>
             <input type="url" id="provider-base-url" name="base_url" value="{{ provider_status.base_url }}" placeholder="https://...">
-            <div class="field-hint">Required for "Custom OpenAI-compatible" providers (e.g. Ollama Cloud).</div>
+            <div class="field-hint">Required for "Custom OpenAI-compatible" providers and GitHub Models (e.g. `https://models.github.ai/inference`).</div>
         </div>
         <div class="row">
             <button type="submit" class="btn">Save provider</button>
