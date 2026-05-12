@@ -89,7 +89,10 @@ def provider_env_var_names(provider: str) -> tuple[str, ...]:
 
 
 def provider_has_credentials(provider: str, env_values: dict[str, str]) -> bool:
-    """Check .env + process env for any accepted provider credential."""
+    """Check .env + process env for any accepted provider credential.
+
+    .env values take precedence over process env (CONTRACT.md §2.1).
+    """
     return any(
         env_values.get(env_var, "").strip() or os.environ.get(env_var, "").strip()
         for env_var in provider_env_var_names(provider)
