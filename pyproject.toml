@@ -31,12 +31,6 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.7",
 ]
-# Browser-driven end-to-end tests. Kept separate from `dev` so the unit-test
-# job doesn't have to install ~200MB of browser binaries.
-e2e = [
-    "playwright>=1.48",
-    "pytest-playwright>=0.5",
-]
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -54,8 +48,7 @@ line-length = 110
 target-version = "py312"
 
 [tool.pytest.ini_options]
-# `tests/e2e` requires a running container (see .github/workflows/ci.yml) and
-# is opt-in via `pytest tests/e2e` so the default suite stays hermetic.
+# tests/test_login_smoke.py needs a running container and auto-skips when
+# HERMES_STATION_E2E_URL isn't set, so the default suite stays hermetic.
 testpaths = ["tests"]
-norecursedirs = ["tests/e2e"]
 asyncio_mode = "auto"
