@@ -1,20 +1,14 @@
-"""Admin routes.
-
-Phase 0: login flow + /admin/api/status.
-Phase 1: provider setup, channel save, pairing approve/deny/revoke, gateway
-and WebUI start/stop/restart wired to the in-process supervisors.
-"""
+"""Admin routes."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
-from starlette.templating import Jinja2Templates
 
+from hermes_station.admin._templates import templates as _templates
 from hermes_station.admin.auth import (
     admin_auth_enabled,
     auth_state,
@@ -33,9 +27,7 @@ from hermes_station.config import (
     load_env_file,
     load_yaml_config,
 )
-
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
-_templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
+from hermes_station.gateway import Gateway
 
 
 def _paths(request: Request) -> Paths:
@@ -148,7 +140,8 @@ async def api_provider_setup(request: Request) -> Response:
         )
     except ValueError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-    # TODO(phase-1): trigger gateway restart
+    gateway: Gateway = request.app.state.gateway
+    await gateway.restart()
     return JSONResponse({"ok": True, "result": result})
 
 
@@ -178,7 +171,8 @@ async def api_channels_save(request: Request) -> Response:
         env_values = save_channel_values(paths.env_path, updates)
     except ValueError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-    # TODO(phase-1): trigger gateway restart
+    gateway: Gateway = request.app.state.gateway
+    await gateway.restart()
     return JSONResponse({"ok": True, "channels": channel_status(env_values)})
 
 

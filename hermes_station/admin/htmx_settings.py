@@ -15,14 +15,13 @@ loading the `htmx-ext-json-enc` script in the base template.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
-from starlette.templating import Jinja2Templates
 
+from hermes_station.admin._templates import templates as _templates
 from hermes_station.admin.auth import require_admin
 from hermes_station.admin.channels import (
     CHANNEL_ENV_KEYS,
@@ -42,9 +41,6 @@ from hermes_station.admin.provider import (
     provider_status,
 )
 from hermes_station.config import Paths, load_env_file, load_yaml_config
-
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
-_templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 
 def _paths(request: Request) -> Paths:

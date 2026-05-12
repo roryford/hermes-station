@@ -7,18 +7,13 @@ every 3 seconds via HTMX.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
-from starlette.templating import Jinja2Templates
 
+from hermes_station.admin._templates import templates as _templates
 from hermes_station.admin.auth import is_authenticated, require_admin
 from hermes_station.logs import BUFFERS
-
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
-_templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 _SOURCES = tuple(BUFFERS.keys())
 _DEFAULT_LIMIT = 200

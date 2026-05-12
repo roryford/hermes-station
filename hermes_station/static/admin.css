@@ -232,6 +232,6 @@ th { color: var(--text-dim); font-weight: 600; font-size: 0.82rem; text-transfor
     margin: 0;
 }
 
-.logs-grid {
-    grid-template-columns: 1fr;
+.grid.logs-grid {
+    grid-template-columns: 1fr !important;
 }
