@@ -14,6 +14,13 @@ def main() -> None:
         port=int(os.getenv("PORT", "8787")),
         log_config=None,
         access_log=True,
+        # Trust X-Forwarded-* from any peer. The station only ever runs behind
+        # a managed edge (Railway / Cloudflare); without this, request.url.scheme
+        # stays "http" on HTTPS deployments, which propagates through the proxy
+        # as X-Forwarded-Proto: http and tells hermes-webui to skip the Secure
+        # flag on its session cookie.
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
 
 

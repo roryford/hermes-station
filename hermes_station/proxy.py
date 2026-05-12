@@ -13,9 +13,10 @@ Notable behaviors:
 - Injects X-Forwarded-Host / X-Real-Host / X-Forwarded-Proto so hermes-webui's
   CSRF check (which compares browser Origin against the request's Host family)
   sees the public hostname instead of the loopback we connect to.
-- Drops the upstream `content-encoding` header because httpx returns the
-  decompressed body — passing the original encoding back would confuse the
-  client.
+- Preserves `Content-Encoding`: `aiter_raw()` yields the original transport
+  bytes (still gzipped when upstream gzipped), so the encoding header has to
+  ride along or the browser receives binary labelled as JSON.
+- Strips `Content-Length` so Starlette can use chunked transfer for streaming.
 """
 
 from __future__ import annotations
@@ -69,16 +70,24 @@ def _strip_our_cookies(cookie_header: str | None) -> str:
     return "; ".join(keep)
 
 
-def _response_headers(upstream: httpx.Response) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for key, value in upstream.headers.items():
+def _response_headers(upstream: httpx.Response) -> tuple[dict[str, str], list[str]]:
+    # Returns (non-cookie headers as dict, set-cookie values as list).
+    # Splitting keeps Set-Cookie out of the dict so duplicates aren't collapsed
+    # — multiple Set-Cookie headers on one response are valid and the only
+    # realistic multi-valued case here.
+    headers: dict[str, str] = {}
+    set_cookies: list[str] = []
+    for key, value in upstream.headers.multi_items():
         lower = key.lower()
         if lower in _HOP_BY_HOP:
             continue
-        if lower in {"content-encoding", "content-length"}:
+        if lower == "content-length":
             continue
-        out[key] = value
-    return out
+        if lower == "set-cookie":
+            set_cookies.append(value)
+            continue
+        headers[key] = value
+    return headers, set_cookies
 
 
 async def proxy_to_webui(request: Request) -> Response:
@@ -131,8 +140,13 @@ async def proxy_to_webui(request: Request) -> Response:
         finally:
             await upstream.aclose()
 
-    return StreamingResponse(
-        _stream(),
-        status_code=upstream.status_code,
-        headers=_response_headers(upstream),
+    out_headers, set_cookies = _response_headers(upstream)
+    response = StreamingResponse(
+        _stream(), status_code=upstream.status_code, headers=out_headers
     )
+    # MutableHeaders.append() preserves duplicates — multiple Set-Cookie
+    # headers on one response are valid and dict assignment would collapse
+    # them to the last value.
+    for cookie in set_cookies:
+        response.headers.append("set-cookie", cookie)
+    return response
