@@ -36,7 +36,11 @@ def test_should_autostart_forced_off() -> None:
     assert should_autostart(mode="off", config={}, env_values={}) is False
 
 
-def test_should_autostart_auto_requires_provider_and_channel() -> None:
+def test_should_autostart_auto_requires_provider_and_channel(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Ensure no provider credentials leak in from other tests via os.environ
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     # No provider configured
     assert (
         should_autostart(mode="auto", config={}, env_values={"TELEGRAM_BOT_TOKEN": "abc"})

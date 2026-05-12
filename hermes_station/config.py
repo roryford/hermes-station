@@ -92,6 +92,16 @@ def load_env_file(path: Path) -> dict[str, str]:
     return out
 
 
+def seed_env_file_to_os(path: Path) -> None:
+    """Merge .env values into os.environ (CONTRACT.md §2.1 — .env takes precedence).
+
+    Called before the in-process gateway task starts so credentials stored via
+    the admin UI override any conflicting Railway / host environment variables.
+    """
+    for key, value in load_env_file(path).items():
+        os.environ[key] = value
+
+
 def write_env_file(path: Path, values: dict[str, str]) -> None:
     """Write `$HERMES_HOME/.env` per CONTRACT.md §4.1.
 

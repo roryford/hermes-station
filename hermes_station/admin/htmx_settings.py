@@ -42,7 +42,7 @@ from hermes_station.admin.provider import (
     apply_provider_setup,
     provider_status,
 )
-from hermes_station.config import Paths, load_env_file, load_yaml_config
+from hermes_station.config import Paths, load_env_file, load_yaml_config, seed_env_file_to_os
 
 
 def _paths(request: Request) -> Paths:
@@ -158,6 +158,7 @@ async def provider_fragment_save(request: Request) -> Response:
             api_key=str(form.get("api_key") or ""),
             base_url=str(form.get("base_url") or ""),
         )
+        seed_env_file_to_os(paths.env_path)
         alert = {"kind": "success", "message": "Provider saved."}
     except ValueError as exc:
         alert = {"kind": "error", "message": str(exc)}
@@ -322,6 +323,7 @@ async def copilot_oauth_poll(request: Request) -> Response:
                 model=meta["default_model"],
                 api_key=token,
             )
+            seed_env_file_to_os(paths.env_path)
             alert: dict[str, str] = {"kind": "success", "message": "GitHub Copilot connected."}
         except Exception as exc:
             alert = {"kind": "error", "message": f"Token received but could not save: {exc}"}

@@ -24,7 +24,7 @@ from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
 from hermes_station.admin.htmx_logs import routes as logs_routes
 from hermes_station.admin.htmx_settings import routes as settings_routes
 from hermes_station.admin.routes import admin_routes
-from hermes_station.config import AdminSettings, Paths, load_env_file, load_yaml_config, write_yaml_config
+from hermes_station.config import AdminSettings, Paths, load_env_file, load_yaml_config, seed_env_file_to_os, write_yaml_config
 from hermes_station.gateway import Gateway, should_autostart
 from hermes_station.logs import attach_station_handler
 from hermes_station.proxy import proxy_to_webui
@@ -60,6 +60,10 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         config = load_yaml_config(paths.config_path)
         _ensure_env_passthrough(paths, config, ["GITHUB_TOKEN"])
         env_values = load_env_file(paths.env_path)
+        # CONTRACT.md §2.1: .env values take precedence over process env.
+        # The gateway runs in-process and reads os.environ directly — seed here
+        # so provider credentials stored via the admin UI override Railway env vars.
+        seed_env_file_to_os(paths.env_path)
         if should_autostart(
             mode=settings.gateway_autostart, config=config, env_values=env_values
         ):

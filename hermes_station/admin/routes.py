@@ -26,6 +26,7 @@ from hermes_station.config import (
     extract_model_config,
     load_env_file,
     load_yaml_config,
+    seed_env_file_to_os,
 )
 from hermes_station.gateway import Gateway
 
@@ -140,6 +141,7 @@ async def api_provider_setup(request: Request) -> Response:
         )
     except ValueError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    seed_env_file_to_os(paths.env_path)
     gateway: Gateway = request.app.state.gateway
     await gateway.restart()
     return JSONResponse({"ok": True, "result": result})
