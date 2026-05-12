@@ -1,18 +1,14 @@
 # hermes-station
 
-> Single-container deployment scaffolding for [Hermes Agent](https://github.com/NousResearch/hermes-agent) + [Hermes WebUI](https://github.com/nesquena/hermes-webui).
+> Single-container deployment for [Hermes Agent](https://github.com/NousResearch/hermes-agent) + [Hermes WebUI](https://github.com/nesquena/hermes-webui).
 > Drop-in replacement for `hermes-all-in-one` on Railway, with the upstreams pinned and an in-process control plane.
-
-## Status
-
-**Phase 0 scaffolding** — repo skeleton, data contract, build pipeline. Not yet deployable. See `docs/CONTRACT.md` for the compatibility contract this project honors, and the in-flight conversation notes for the phased plan.
 
 ## What this is
 
 A single Railway-deployable container that runs:
 
-- `/` — the Hermes WebUI (Phase 1: mounted in-process)
-- `/admin` — control plane: browser-based provider/channel setup, gateway controls, logs (Phase 1)
+- `/` — the Hermes WebUI
+- `/admin` — control plane: browser-based provider/channel setup, gateway controls, logs
 - `/health` — healthcheck
 
 Everything writes to `/data` (single Railway volume) and shares one Hermes identity across WebUI, Telegram, Discord, Slack, and other channels. See `docs/CONTRACT.md` §3 for the full filesystem layout.

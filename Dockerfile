@@ -16,15 +16,23 @@ RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && rm -rf /opt/hermes-webui/.git
 
+# Copy only the metadata + a stub package up front so the dependency-install
+# layer below caches across code-only changes. The real source is copied last.
 COPY pyproject.toml README.md LICENSE ./
-COPY hermes_station/ /app/hermes_station/
+COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 
-# Install hermes-station + its dependencies (including pinned hermes-agent via git).
-# Also install hermes-webui's runtime requirements into the system Python so the in-process
-# mount works in Phase 1.
-RUN uv pip install --system --no-cache ".[hermes]" \
-    && uv pip install --system --no-cache -r /opt/hermes-webui/requirements.txt \
+# Single resolve covering hermes-station's deps, the `hermes` extra (pulls
+# hermes-agent), and hermes-webui's runtime requirements. The BuildKit cache
+# mount keeps the uv wheel cache around between builds without bloating the
+# image; the layer itself caches as long as pyproject.toml, __init__.py, and
+# HERMES_WEBUI_VERSION are unchanged.
+RUN --mount=type=cache,target=/root/.cache/uv,id=hs-uv-cache \
+    uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
+
+# Copy the real source last. At runtime `python -m hermes_station` runs from
+# WORKDIR=/app, so /app/hermes_station/ shadows the stub installed above.
+COPY hermes_station/ /app/hermes_station/
 
 # HERMES_WEBUI_AGENT_DIR is intentionally not set here — hermes_station/webui.py
 # defaults it to the Python site-packages dir at process start, where pip installs

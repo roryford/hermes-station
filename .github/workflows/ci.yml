@@ -32,8 +32,8 @@ jobs:
       - name: pytest
         run: .venv/bin/pytest -q
 
-  image:
-    name: build image
+  build:
+    name: build image + smoke
     runs-on: ubuntu-latest
     needs: unit
     steps:
@@ -64,16 +64,67 @@ jobs:
           done
           test "$code" = "200"
 
+      - name: smoke logs on failure
+        if: failure()
+        run: docker logs hs-smoke || true
+
+      - name: export image for e2e job
+        run: docker save hermes-station:ci -o /tmp/hermes-station-ci.tar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hermes-station-ci-image
+          path: /tmp/hermes-station-ci.tar
+          retention-days: 1
+
+  e2e:
+    name: e2e (browser)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hermes-station-ci-image
+          path: /tmp
+
+      - name: load image
+        run: docker load -i /tmp/hermes-station-ci.tar
+
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
 
-      - name: install e2e deps + chromium
+      - name: install e2e deps
         run: |
           uv venv --python 3.12
           uv pip install -e ".[dev,e2e]"
-          .venv/bin/playwright install --with-deps chromium
+
+      - name: cache playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: install chromium
+        run: .venv/bin/playwright install --with-deps chromium
+
+      - name: boot container
+        run: |
+          docker run -d --name hs-e2e \
+            -p 8787:8787 \
+            -e HERMES_WEBUI_PASSWORD=ci -e HERMES_ADMIN_PASSWORD=ci \
+            -v /tmp/hs-data:/data \
+            hermes-station:ci
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/health 2>/dev/null || echo 000)
+            [ "$code" = "200" ] && echo "healthy after ${i}s" && break
+            sleep 1
+          done
+          test "$code" = "200"
 
       - name: e2e (real browser through proxy)
         env:
@@ -83,4 +134,4 @@ jobs:
 
       - name: container logs on failure
         if: failure()
-        run: docker logs hs-smoke || true
+        run: docker logs hs-e2e || true
