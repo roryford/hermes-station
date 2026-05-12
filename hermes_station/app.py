@@ -24,13 +24,23 @@ from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
 from hermes_station.admin.htmx_logs import routes as logs_routes
 from hermes_station.admin.htmx_settings import routes as settings_routes
 from hermes_station.admin.routes import admin_routes
-from hermes_station.config import AdminSettings, Paths, load_env_file, load_yaml_config
+from hermes_station.config import AdminSettings, Paths, load_env_file, load_yaml_config, write_yaml_config
 from hermes_station.gateway import Gateway, should_autostart
 from hermes_station.logs import attach_station_handler
 from hermes_station.proxy import proxy_to_webui
 from hermes_station.webui import WebUIProcess
 
 logger = logging.getLogger("hermes_station.app")
+
+
+def _ensure_env_passthrough(paths: Paths, config: dict, keys: list[str]) -> None:
+    """Add missing keys to terminal.env_passthrough and persist if changed."""
+    terminal = config.setdefault("terminal", {})
+    passthrough: list = terminal.setdefault("env_passthrough", [])
+    additions = [k for k in keys if k not in passthrough]
+    if additions:
+        passthrough.extend(additions)
+        write_yaml_config(paths.config_path, config)
 
 
 @asynccontextmanager
@@ -48,6 +58,7 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     try:
         settings = AdminSettings()
         config = load_yaml_config(paths.config_path)
+        _ensure_env_passthrough(paths, config, ["GITHUB_TOKEN"])
         env_values = load_env_file(paths.env_path)
         if should_autostart(
             mode=settings.gateway_autostart, config=config, env_values=env_values
