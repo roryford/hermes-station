@@ -26,6 +26,25 @@
                         {% else %}
                             <span class="badge muted">Disabled</span>
                         {% endif %}
+                        {% if channel.disable_key %}
+                            <button
+                                type="button"
+                                class="btn small {% if channel.enabled %}muted{% else %}success{% endif %}"
+                                hx-post="/admin/_partial/channels/toggle"
+                                hx-vals='{"slug": "{{ channel.slug }}"}'
+                                hx-target="#channels-card"
+                                hx-swap="outerHTML"
+                            >{% if channel.enabled %}Disable{% else %}Enable{% endif %}</button>
+                        {% endif %}
+                        <button
+                            type="button"
+                            class="btn small danger"
+                            hx-post="/admin/_partial/channels/clear"
+                            hx-vals='{"slug": "{{ channel.slug }}"}'
+                            hx-target="#channels-card"
+                            hx-swap="outerHTML"
+                            hx-confirm="Clear all {{ channel.label }} keys?"
+                        >Clear</button>
                     </div>
                     <div class="field">
                         <label for="ch-{{ channel.slug }}-primary">{{ channel.primary_key }}</label>

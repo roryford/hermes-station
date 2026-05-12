@@ -19,6 +19,7 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "label": "Telegram",
         "primary_key": "TELEGRAM_BOT_TOKEN",
         "secondary_key": "TELEGRAM_ALLOWED_USERS",
+        "disable_key": "TELEGRAM_DISABLED",
         "hint": "Bot token, plus optional allowlist or home channel settings in .env.",
     },
     {
@@ -26,6 +27,7 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "label": "Discord",
         "primary_key": "DISCORD_BOT_TOKEN",
         "secondary_key": "DISCORD_ALLOWED_USERS",
+        "disable_key": "DISCORD_DISABLED",
         "hint": "Bot token, plus optional allowlist.",
     },
     {
@@ -33,6 +35,7 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "label": "Slack",
         "primary_key": "SLACK_BOT_TOKEN",
         "secondary_key": "SLACK_APP_TOKEN",
+        "disable_key": "SLACK_DISABLED",
         "hint": "Bot token and optional app token.",
     },
     {
@@ -40,6 +43,7 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "label": "WhatsApp",
         "primary_key": "WHATSAPP_ENABLED",
         "secondary_key": "",
+        "disable_key": "",
         "hint": "Set to 1/true when WhatsApp is configured externally.",
     },
     {
@@ -47,6 +51,7 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "label": "Email",
         "primary_key": "EMAIL_ADDRESS",
         "secondary_key": "EMAIL_PASSWORD",
+        "disable_key": "EMAIL_DISABLED",
         "hint": "Mailbox address and password/app password.",
     },
 ]
@@ -55,7 +60,7 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
 CHANNEL_ENV_KEYS: tuple[str, ...] = tuple(
     key
     for entry in CHANNEL_CATALOG
-    for key in (entry["primary_key"], entry["secondary_key"])
+    for key in (entry["primary_key"], entry["secondary_key"], entry.get("disable_key", ""))
     if key
 )
 
@@ -70,11 +75,17 @@ def channel_status(env_values: dict[str, str]) -> list[dict[str, Any]]:
         primary = env_values.get(entry["primary_key"], "").strip()
         secondary_key = entry["secondary_key"]
         secondary = env_values.get(secondary_key, "").strip() if secondary_key else ""
+        disable_key = entry.get("disable_key", "")
         # WhatsApp is a flag, not a token — enabled means the flag is truthy.
         if entry["slug"] == "whatsapp":
             enabled = primary.lower() in _WHATSAPP_ON
         else:
-            enabled = bool(primary)
+            disabled_flag = (
+                env_values.get(disable_key, "").strip().lower() in _WHATSAPP_ON
+                if disable_key
+                else False
+            )
+            enabled = bool(primary) and not disabled_flag
         out.append(
             {
                 "slug": entry["slug"],
@@ -82,6 +93,7 @@ def channel_status(env_values: dict[str, str]) -> list[dict[str, Any]]:
                 "enabled": enabled,
                 "primary_key": entry["primary_key"],
                 "secondary_key": secondary_key,
+                "disable_key": disable_key,
                 "primary_value": mask(primary),
                 "secondary_value": mask(secondary),
                 "hint": entry["hint"],

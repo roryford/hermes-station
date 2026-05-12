@@ -124,6 +124,62 @@ def test_channel_status_masks_values() -> None:
     assert status["discord"]["enabled"] is False
 
 
+def test_channel_status_disable_key_hides_channel() -> None:
+    env_values = {
+        "TELEGRAM_BOT_TOKEN": "12345:tok",
+        "TELEGRAM_DISABLED": "1",
+    }
+    status = {entry["slug"]: entry for entry in channels.channel_status(env_values)}
+    assert status["telegram"]["enabled"] is False
+
+
+def test_channel_status_disable_key_absent_keeps_enabled() -> None:
+    env_values = {"TELEGRAM_BOT_TOKEN": "12345:tok"}
+    status = {entry["slug"]: entry for entry in channels.channel_status(env_values)}
+    assert status["telegram"]["enabled"] is True
+
+
+def test_apply_provider_setup_blank_key_reuses_existing(fake_data_dir: Path) -> None:
+    config_path = fake_data_dir / ".hermes" / "config.yaml"
+    env_path = fake_data_dir / ".hermes" / ".env"
+
+    provider.apply_provider_setup(
+        config_path=config_path,
+        env_path=env_path,
+        provider="anthropic",
+        model="claude-sonnet-4.6",
+        api_key="sk-ant-original",
+    )
+
+    # Switching model only — blank api_key should reuse existing
+    provider.apply_provider_setup(
+        config_path=config_path,
+        env_path=env_path,
+        provider="anthropic",
+        model="claude-opus-4.6",
+        api_key="",
+    )
+
+    import yaml
+    config = yaml.safe_load(config_path.read_text())
+    assert config["model"]["default"] == "claude-opus-4.6"
+    assert load_env_file(env_path)["ANTHROPIC_API_KEY"] == "sk-ant-original"
+
+
+def test_apply_provider_setup_blank_key_no_existing_raises(fake_data_dir: Path) -> None:
+    config_path = fake_data_dir / ".hermes" / "config.yaml"
+    env_path = fake_data_dir / ".hermes" / ".env"
+
+    with pytest.raises(ValueError, match="No existing ANTHROPIC_API_KEY"):
+        provider.apply_provider_setup(
+            config_path=config_path,
+            env_path=env_path,
+            provider="anthropic",
+            model="claude-sonnet-4.6",
+            api_key="",
+        )
+
+
 # ────────────────────────────────────────────────────────────── pairing helper
 
 

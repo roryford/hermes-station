@@ -14,6 +14,7 @@ from typing import Any
 
 from hermes_station.config import (
     extract_model_config,
+    load_env_file,
     load_yaml_config,
     write_env_file,
     write_yaml_config,
@@ -40,8 +41,8 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "default_base_url": "https://api.openai.com/v1",
         "requires_base_url": False,
         "credential_label": "API key",
-        "credential_placeholder": "Paste a fresh key — current value is masked",
-        "credential_hint": "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
+        "credential_placeholder": "Leave blank to keep existing key",
+        "credential_hint": "Leave blank to keep the stored key. Required only for first setup or key rotation.",
     },
     "copilot": {
         "label": "GitHub Copilot",
@@ -63,8 +64,8 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "default_model": "gpt-4o-mini",
         "requires_base_url": True,
         "credential_label": "API key",
-        "credential_placeholder": "Paste a fresh key — current value is masked",
-        "credential_hint": "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
+        "credential_placeholder": "Leave blank to keep existing key",
+        "credential_hint": "Leave blank to keep the stored key. Required only for first setup or key rotation.",
     },
 }
 
@@ -124,7 +125,15 @@ def apply_provider_setup(
     if not model:
         raise ValueError("model is required")
     if not api_key:
-        raise ValueError("api_key is required")
+        env_values = load_env_file(env_path)
+        api_key = (
+            env_values.get(meta["env_var"], "").strip()
+            or os.environ.get(meta["env_var"], "").strip()
+        )
+        if not api_key:
+            raise ValueError(
+                f"No existing {meta['env_var']} found — please paste your API key."
+            )
 
     config = load_yaml_config(config_path)
     raw_model = config.get("model")
@@ -140,8 +149,6 @@ def apply_provider_setup(
     write_yaml_config(config_path, config)
 
     # write_env_file expects the full env dict, not a delta — load + merge.
-    from hermes_station.config import load_env_file
-
     env_values = load_env_file(env_path)
     env_values[meta["env_var"]] = api_key
     write_env_file(env_path, env_values)

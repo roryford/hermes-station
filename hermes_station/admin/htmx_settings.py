@@ -24,6 +24,7 @@ from starlette.routing import Route
 from hermes_station.admin._templates import templates as _templates
 from hermes_station.admin.auth import require_admin
 from hermes_station.admin.channels import (
+    CHANNEL_CATALOG,
     CHANNEL_ENV_KEYS,
     channel_status,
     save_channel_values,
@@ -61,10 +62,10 @@ def _provider_context(paths: Paths) -> dict[str, Any]:
             "label": meta["label"],
             "requires_base_url": meta.get("requires_base_url", False),
             "credential_label": meta.get("credential_label", "API key"),
-            "credential_placeholder": meta.get("credential_placeholder", "Paste a fresh key — current value is masked"),
+            "credential_placeholder": meta.get("credential_placeholder", "Leave blank to keep existing key"),
             "credential_hint": meta.get(
                 "credential_hint",
-                "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
+                "Leave blank to keep the stored key. Required only for first setup or key rotation.",
             ),
         }
         for pid, meta in PROVIDER_CATALOG.items()
@@ -77,11 +78,11 @@ def _provider_context(paths: Paths) -> dict[str, Any]:
         "provider_form_meta": {
             "credential_label": selected_meta.get("credential_label", "API key"),
             "credential_placeholder": selected_meta.get(
-                "credential_placeholder", "Paste a fresh key — current value is masked"
+                "credential_placeholder", "Leave blank to keep existing key"
             ),
             "credential_hint": selected_meta.get(
                 "credential_hint",
-                "Existing key is preserved unless you enter a new one. Saving with an empty key returns an error.",
+                "Leave blank to keep the stored key. Required only for first setup or key rotation.",
             ),
         },
     }
@@ -173,18 +174,76 @@ async def channels_fragment_save(request: Request) -> Response:
     form = await request.form()
     updates: dict[str, str | None] = {}
     for key in CHANNEL_ENV_KEYS:
-        # An unchecked/empty field is preserved as-is on the server (do not delete on
-        # blank submission, since the form values arrive masked). Only treat an
-        # explicit "" with the `__clear__` sentinel as a delete — not used yet.
+        # Blank field = keep existing value. Only update if the user typed something.
         if key in form:
             raw = str(form.get(key) or "").strip()
-            updates[key] = raw or None
+            if raw:
+                updates[key] = raw
     alert: dict[str, str]
     try:
         save_channel_values(paths.env_path, updates)
         alert = {"kind": "success", "message": "Channels saved."}
     except ValueError as exc:
         alert = {"kind": "error", "message": str(exc)}
+    context: dict[str, Any] = {"alert": alert}
+    context.update(_channels_context(paths))
+    return _templates.TemplateResponse(request, "admin/_channels_card.html", context)
+
+
+async def channels_fragment_clear(request: Request) -> Response:
+    """Clear all env keys for a single channel by slug."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    slug = str(form.get("slug") or "").strip()
+    entry = next((c for c in CHANNEL_CATALOG if c["slug"] == slug), None)
+    alert: dict[str, str]
+    if entry:
+        updates: dict[str, str | None] = {entry["primary_key"]: None}
+        if entry["secondary_key"]:
+            updates[entry["secondary_key"]] = None
+        try:
+            save_channel_values(paths.env_path, updates)
+            alert = {"kind": "success", "message": f"{entry['label']} cleared."}
+        except ValueError as exc:
+            alert = {"kind": "error", "message": str(exc)}
+    else:
+        alert = {"kind": "error", "message": "Unknown channel slug."}
+    context: dict[str, Any] = {"alert": alert}
+    context.update(_channels_context(paths))
+    return _templates.TemplateResponse(request, "admin/_channels_card.html", context)
+
+
+async def channels_fragment_toggle(request: Request) -> Response:
+    """Toggle the disabled flag for a single channel by slug."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    slug = str(form.get("slug") or "").strip()
+    entry = next((c for c in CHANNEL_CATALOG if c["slug"] == slug), None)
+    alert: dict[str, str]
+    if entry and entry.get("disable_key"):
+        disable_key = entry["disable_key"]
+        env_values = load_env_file(paths.env_path)
+        currently_disabled = env_values.get(disable_key, "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        updates: dict[str, str | None] = {
+            disable_key: None if currently_disabled else "1"
+        }
+        try:
+            save_channel_values(paths.env_path, updates)
+            label = entry["label"]
+            verb = "enabled" if currently_disabled else "disabled"
+            alert = {"kind": "success", "message": f"{label} {verb}."}
+        except ValueError as exc:
+            alert = {"kind": "error", "message": str(exc)}
+    else:
+        alert = {"kind": "error", "message": "Unknown channel or toggle not supported."}
     context: dict[str, Any] = {"alert": alert}
     context.update(_channels_context(paths))
     return _templates.TemplateResponse(request, "admin/_channels_card.html", context)
@@ -224,6 +283,8 @@ def routes() -> list[Route]:
         Route("/admin/_partial/pairings", pairings_fragment, methods=["GET"]),
         Route("/admin/_partial/provider/setup", provider_fragment_save, methods=["POST"]),
         Route("/admin/_partial/channels/save", channels_fragment_save, methods=["POST"]),
+        Route("/admin/_partial/channels/clear", channels_fragment_clear, methods=["POST"]),
+        Route("/admin/_partial/channels/toggle", channels_fragment_toggle, methods=["POST"]),
         Route(
             "/admin/_partial/pairing/{action}",
             pairings_fragment_action,
