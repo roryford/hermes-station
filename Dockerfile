@@ -75,6 +75,39 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=s/fc796d07-dc86-467e-8269-1b6a6
     uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
+# Pre-cache the curated stdio MCP servers so first-toggle isn't a 30s npm/uv
+# fetch. Versions are pinned and surfaced in hermes_station/config.py
+# (MCP_SERVER_CATALOG) — bumping is one ARG change here + one literal change
+# in config.py, kept in lockstep.
+#
+# Caches go to /opt/mcp-cache/{npm,uv} (HOME-independent) so the runtime
+# (HOME=/data) finds them via NPM_CONFIG_CACHE + UV_CACHE_DIR (set below).
+# Budget: ~100MB npm + ~80MB uv = ~180MB image growth.
+ARG MCP_SERVER_FILESYSTEM_VERSION=2025.8.21
+ARG MCP_SERVER_GITHUB_VERSION=2025.4.8
+ARG MCP_SERVER_FETCH_VERSION=2025.4.7
+ENV NPM_CONFIG_CACHE=/opt/mcp-cache/npm \
+    UV_CACHE_DIR=/opt/mcp-cache/uv \
+    UV_TOOL_DIR=/opt/mcp-cache/uv-tools
+RUN set -eux; \
+    mkdir -p "$NPM_CONFIG_CACHE" "$UV_CACHE_DIR" "$UV_TOOL_DIR"; \
+    # `npm install -g` puts each server under /usr/lib/node_modules, but the
+    # MCP config in this repo invokes them via `npx -y --package=…` which
+    # checks the npm cache first. So we just prime the npm cache by running
+    # npx once for each — server doesn't have to actually start, the package
+    # is downloaded before the binary is invoked. Failure modes (`--help`
+    # missing, args missing) are fine since the package fetch is the goal.
+    npx -y --package=@modelcontextprotocol/server-filesystem@${MCP_SERVER_FILESYSTEM_VERSION} \
+        -- mcp-server-filesystem /tmp >/dev/null 2>&1 & sleep 8; kill %1 2>/dev/null || true; wait || true; \
+    npx -y --package=@modelcontextprotocol/server-github@${MCP_SERVER_GITHUB_VERSION} \
+        -- mcp-server-github >/dev/null 2>&1 & sleep 8; kill %1 2>/dev/null || true; wait || true; \
+    # `uv tool install` puts the env into UV_TOOL_DIR persistently — much
+    # cleaner than `uvx` which builds a fresh env per run. The runtime can
+    # then `uvx --from mcp-server-fetch==X` and uv reuses the installed env.
+    uv tool install "mcp-server-fetch==${MCP_SERVER_FETCH_VERSION}"; \
+    chmod -R a+rX /opt/mcp-cache; \
+    echo "MCP cache warmed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
+
 # Copy the real source last. At runtime `python -m hermes_station` runs from
 # WORKDIR=/app, so /app/hermes_station/ shadows the stub installed above.
 COPY hermes_station/ /app/hermes_station/

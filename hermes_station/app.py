@@ -29,6 +29,7 @@ from hermes_station.config import (
     Paths,
     load_env_file,
     load_yaml_config,
+    seed_default_mcp_servers,
     seed_default_memory_provider,
     seed_env_file_to_os,
     write_yaml_config,
@@ -71,6 +72,12 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         # including the user explicitly choosing built-in only with "").
         if seed_default_memory_provider(paths.config_path):
             logger.info("seeded default memory provider: holographic")
+        # First-boot only: seed the curated stdio MCP servers (default-off).
+        # No-clobber per server name — existing entries keep their config and
+        # `enabled` flag. See `MCP_SERVER_CATALOG` for the catalog.
+        added_mcp = seed_default_mcp_servers(paths.config_path)
+        if added_mcp:
+            logger.info("seeded default MCP servers (disabled): %s", ", ".join(added_mcp))
         config = load_yaml_config(paths.config_path)
         _ensure_env_passthrough(paths, config, ["GITHUB_TOKEN"])
         env_values = load_env_file(paths.env_path)

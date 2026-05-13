@@ -1,0 +1,57 @@
+{# MCP servers card. Mirrors the channels card pattern: per-row enable/disable
+   button POSTs to /admin/_partial/mcp/toggle which writes config.yaml,
+   restarts the gateway, and re-renders this card. #}
+<section class="card" id="mcp-card">
+    <div class="card-header">
+        <h2>MCP servers</h2>
+        <span class="muted">stdio · default-off</span>
+    </div>
+
+    {% if alert %}
+        <div class="alert {{ alert.kind }}">{{ alert.message }}</div>
+    {% endif %}
+
+    <p class="muted" style="margin-top:0;">
+        Stdio MCP servers are spawned on-demand and exit when the conversation
+        ends — near-zero idle RAM. Toggling triggers a gateway restart.
+    </p>
+
+    <div class="grid">
+        {% for server in mcp_servers %}
+            <div class="card" style="margin:0;background:var(--surface-2);">
+                <div class="card-header">
+                    <h3 style="margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:0.95rem;">{{ server.label }}</h3>
+                    {% if server.enabled %}
+                        <span class="badge success">Enabled</span>
+                    {% else %}
+                        <span class="badge muted">Disabled</span>
+                    {% endif %}
+                    <button
+                        type="button"
+                        class="btn small {% if server.enabled %}muted{% else %}success{% endif %}"
+                        hx-post="/admin/_partial/mcp/toggle"
+                        hx-vals='{"name": "{{ server.name }}"}'
+                        hx-target="#mcp-card"
+                        hx-swap="outerHTML"
+                    >{% if server.enabled %}Disable{% else %}Enable{% endif %}</button>
+                </div>
+                <p style="margin:0.25rem 0 0.5rem 0;">{{ server.description }}</p>
+                <dl class="kv mono" style="font-size:0.8rem;">
+                    <dt>command</dt><dd>{{ server.command }} {{ server.args | join(' ') }}</dd>
+                </dl>
+                {% if server.needs %}
+                    {% if server.needs_satisfied %}
+                        <div class="field-hint">
+                            Uses <code>{{ server.needs | join(', ') }}</code> from the existing environment.
+                        </div>
+                    {% else %}
+                        <div class="alert error" style="margin-top:0.5rem;">
+                            Requires <code>{{ server.needs | join(', ') }}</code> — set it in Railway env or via
+                            <a href="/admin/settings">/admin/settings</a> (Copilot OAuth populates GITHUB_TOKEN).
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+</section>

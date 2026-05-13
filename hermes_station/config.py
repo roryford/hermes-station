@@ -173,6 +173,98 @@ def seed_default_memory_provider(
     return True
 
 
+MCP_SERVER_CATALOG: list[dict[str, Any]] = [
+    {
+        "name": "filesystem",
+        "label": "Filesystem",
+        "description": (
+            "Read/write files inside the workspace dir. Scoped to "
+            "$HERMES_WORKSPACE_DIR (`/data/workspace`) — the model cannot "
+            "escape it."
+        ),
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-filesystem@2025.8.21",
+            "/data/workspace",
+        ],
+        "env": {},
+        "needs": [],
+    },
+    {
+        "name": "fetch",
+        "label": "Web fetch",
+        "description": (
+            "Generic HTTP(S) fetcher with HTML→Markdown conversion. Useful "
+            "for ad-hoc page reads when no purpose-built tool fits."
+        ),
+        "command": "uvx",
+        "args": ["--from", "mcp-server-fetch==2025.4.7", "mcp-server-fetch"],
+        "env": {},
+        "needs": [],
+    },
+    {
+        "name": "github",
+        "label": "GitHub",
+        "description": (
+            "Issues, PRs, search, file reads via the GitHub REST API. Reuses "
+            "GITHUB_TOKEN from your `gh auth login` / Railway env — no extra "
+            "credential entry."
+        ),
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
+        "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"},
+        "needs": ["GITHUB_TOKEN"],
+    },
+]
+
+
+def _server_seed_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Build the on-disk config dict for one catalog entry.
+
+    Default-off (`enabled: false`) per the lite-tier policy — users opt in
+    explicitly from /admin. Stdio transport is implied by `command`/`args`.
+    """
+    seed: dict[str, Any] = {
+        "command": entry["command"],
+        "args": list(entry["args"]),
+        "enabled": False,
+    }
+    if entry.get("env"):
+        seed["env"] = dict(entry["env"])
+    return seed
+
+
+def seed_default_mcp_servers(
+    path: Path, *, catalog: list[dict[str, Any]] | None = None
+) -> list[str]:
+    """First-boot seed: add curated stdio MCP servers to config.yaml, default-off.
+
+    Each server in `MCP_SERVER_CATALOG` is added under the top-level
+    `mcp_servers` key (the schema hermes-agent's `tools/mcp_tool.py` reads).
+    Per-server no-clobber per CONTRACT.md §3.3: any server name already
+    present is left untouched (preserving user `enabled: true` or any custom
+    args/env). Returns the list of server names that were newly written.
+    """
+    catalog = catalog if catalog is not None else MCP_SERVER_CATALOG
+    config = load_yaml_config(path)
+    servers = config.get("mcp_servers")
+    if not isinstance(servers, dict):
+        servers = {}
+    added: list[str] = []
+    for entry in catalog:
+        name = entry["name"]
+        if name in servers:
+            continue
+        servers[name] = _server_seed_entry(entry)
+        added.append(name)
+    if not added:
+        return []
+    config["mcp_servers"] = servers
+    write_yaml_config(path, config)
+    return added
+
+
 class ModelConfig(BaseModel):
     """Shape of the `model:` block in config.yaml. See CONTRACT.md §4.2."""
 
