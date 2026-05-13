@@ -96,6 +96,19 @@ def provider_has_credentials(provider: str, env_values: dict[str, str]) -> bool:
     )
 
 
+def _validate_base_url(url: str) -> str:
+    """Reject base_url values that aren't safe HTTPS endpoints."""
+    if not url:
+        return url
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme not in ("https", "http"):
+        raise ValueError(f"base_url must be an http or https URL, got: {url!r}")
+    if not parsed.netloc:
+        raise ValueError("base_url must include a hostname")
+    return url
+
+
 def apply_provider_setup(
     *,
     config_path: Path,
@@ -116,6 +129,8 @@ def apply_provider_setup(
     meta = PROVIDER_CATALOG[provider]
     model = (model or meta["default_model"]).strip()
     base_url = (base_url or meta.get("default_base_url") or "").strip().rstrip("/")
+    if base_url:
+        _validate_base_url(base_url)
     if meta.get("requires_base_url") and not base_url:
         raise ValueError("base_url is required for custom providers")
     if not model:

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import time
+from collections import defaultdict
 from typing import Any
 
 from starlette.requests import Request
@@ -30,6 +33,12 @@ from hermes_station.config import (
 )
 from hermes_station.gateway import Gateway
 
+logger = logging.getLogger(__name__)
+
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_LOGIN_MAX_ATTEMPTS = 10
+_LOGIN_WINDOW_SECONDS = 60.0
+
 
 def _paths(request: Request) -> Paths:
     return request.app.state.paths
@@ -52,9 +61,18 @@ async def admin_login_page(request: Request) -> Response:
 
 
 async def admin_login(request: Request) -> Response:
+    # Rate-limit by client IP to slow brute-force attacks.
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    recent = [t for t in _login_attempts[client_ip] if now - t < _LOGIN_WINDOW_SECONDS]
+    if len(recent) >= _LOGIN_MAX_ATTEMPTS:
+        return Response("Too many login attempts. Try again later.", status_code=429)
+    _login_attempts[client_ip] = recent
+
     form = await request.form()
     password = str(form.get("password") or "")
     if not verify_password(password):
+        _login_attempts[client_ip].append(now)
         response = _templates.TemplateResponse(
             request,
             "login.html",
@@ -140,7 +158,8 @@ async def api_provider_setup(request: Request) -> Response:
             base_url=str(body.get("base_url") or ""),
         )
     except ValueError as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        logger.warning("provider setup error: %s", exc)
+        return JSONResponse({"ok": False, "error": "Invalid configuration — check logs for details."}, status_code=400)
     seed_env_file_to_os(paths.env_path)
     gateway: Gateway = request.app.state.gateway
     await gateway.restart()
@@ -172,7 +191,8 @@ async def api_channels_save(request: Request) -> Response:
     try:
         env_values = save_channel_values(paths.env_path, updates)
     except ValueError as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        logger.warning("channel save error: %s", exc)
+        return JSONResponse({"ok": False, "error": "Invalid configuration — check logs for details."}, status_code=400)
     gateway: Gateway = request.app.state.gateway
     await gateway.restart()
     return JSONResponse({"ok": True, "channels": channel_status(env_values)})
@@ -248,7 +268,8 @@ async def _supervisor_action(request: Request, supervisor_attr: str) -> Response
         else:
             await supervisor.restart()
     except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+        logger.warning("supervisor action error (%s %s): %s", supervisor_attr, action, exc)
+        return JSONResponse({"ok": False, "error": "Action failed — check logs for details."}, status_code=500)
     return JSONResponse({"ok": True, "action": action})
 
 
