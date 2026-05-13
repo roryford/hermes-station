@@ -24,6 +24,17 @@ from hermes_station.logs import WEBUI_LOGS
 
 logger = logging.getLogger("hermes_station.webui")
 
+# Keys from os.environ that hermes-webui legitimately needs.
+_WEBUI_ENV_PASSTHROUGH = frozenset(
+    {
+        # System / runtime
+        "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM",
+        "PYTHONPATH",
+        # MCP cache dirs set by the Dockerfile
+        "NPM_CONFIG_CACHE", "UV_CACHE_DIR", "UV_TOOL_DIR",
+    }
+)
+
 
 class WebUIProcess:
     INTERNAL_HOST = "127.0.0.1"
@@ -101,11 +112,11 @@ class WebUIProcess:
         return False
 
     def _build_env(self) -> dict[str, str]:
-        env = os.environ.copy()
-        # hermes-webui looks for `run_agent.py` inside HERMES_WEBUI_AGENT_DIR to
-        # locate the hermes-agent source tree. We pip-install hermes-agent into
-        # site-packages, so default to that location when the env var isn't
-        # explicitly set. Computed dynamically — robust to Python version bumps.
+        # Pass only the minimum env vars hermes-webui needs.
+        # Do NOT forward arbitrary secrets (API keys, admin password, bot tokens).
+        env: dict[str, str] = {
+            k: v for k, v in os.environ.items() if k in _WEBUI_ENV_PASSTHROUGH
+        }
         if not env.get("HERMES_WEBUI_AGENT_DIR"):
             import sysconfig
 
@@ -121,8 +132,13 @@ class WebUIProcess:
                 "PYTHONUNBUFFERED": "1",
             }
         )
-        if not env.get("HERMES_WEBUI_PASSWORD") and env.get("HERMES_ADMIN_PASSWORD"):
-            env["HERMES_WEBUI_PASSWORD"] = env["HERMES_ADMIN_PASSWORD"]
+        # Propagate the admin password as webui password so hermes-webui's own
+        # auth stays in sync — but only HERMES_WEBUI_PASSWORD reaches the child,
+        # not HERMES_ADMIN_PASSWORD directly.
+        if not env.get("HERMES_WEBUI_PASSWORD"):
+            admin_pw = os.environ.get("HERMES_ADMIN_PASSWORD", "")
+            if admin_pw:
+                env["HERMES_WEBUI_PASSWORD"] = admin_pw
         return env
 
     async def _spawn(self) -> None:
