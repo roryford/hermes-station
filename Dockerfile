@@ -3,15 +3,47 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file \
+    && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file gnupg \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
          -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
          > /etc/apt/sources.list.d/github-cli.list \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+         | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
+    && chmod go+r /usr/share/keyrings/nodesource.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+         > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends gh \
+    && apt-get install -y --no-install-recommends \
+         gh \
+         nodejs \
+         ffmpeg \
+         tesseract-ocr tesseract-ocr-eng \
+         ripgrep \
+         fd-find \
+         sqlite3 \
+         poppler-utils \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# yq (Mike Farah's Go binary) — not in Debian repos at a recent enough version.
+# Pinned upstream — bump version + both sha256s together.
+ARG YQ_VERSION=v4.53.2
+ARG YQ_SHA256_AMD64=d56bf5c6819e8e696340c312bd70f849dc1678a7cda9c2ad63eebd906371d56b
+ARG YQ_SHA256_ARM64=03061b2a50c7a498de2bbb92d7cb078ce433011f085a4994117c2726be4106ea
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) yq_arch=amd64; yq_sha="$YQ_SHA256_AMD64" ;; \
+      arm64) yq_arch=arm64; yq_sha="$YQ_SHA256_ARM64" ;; \
+      *) echo "unsupported arch for yq: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${yq_arch}"; \
+    echo "${yq_sha}  /tmp/yq" | sha256sum -c -; \
+    install -m 0755 /tmp/yq /usr/local/bin/yq; \
+    rm /tmp/yq
 
 WORKDIR /app
 
