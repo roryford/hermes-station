@@ -45,13 +45,26 @@ _HOP_BY_HOP = frozenset(
 
 _OUR_COOKIES = frozenset({"hermes_station_admin"})
 
+# Headers clients must not be allowed to inject into the upstream webui request.
+# The proxy re-injects these from trusted sources (request.url.* and the real Host
+# header) below. Stripping here closes the header-injection / CSRF-bypass path.
+_STRIP_FROM_CLIENT = frozenset(
+    {
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-proto",
+        "x-real-ip",
+        "x-real-host",
+    }
+)
+
 
 def _filter_request_headers(headers: "dict[str, str] | httpx.Headers") -> dict[str, str]:
     out: dict[str, str] = {}
     items = headers.items() if hasattr(headers, "items") else headers
     for key, value in items:
         lower = key.lower()
-        if lower in _HOP_BY_HOP or lower == "host":
+        if lower in _HOP_BY_HOP or lower == "host" or lower in _STRIP_FROM_CLIENT:
             continue
         out[key] = value
     return out

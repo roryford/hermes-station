@@ -8,19 +8,17 @@ import uvicorn
 
 
 def main() -> None:
+    # TRUSTED_PROXY_IPS should be set to the actual proxy IP(s) for Railway/Cloudflare
+    # deployments. Defaults to loopback-only to prevent header spoofing from arbitrary clients.
+    trusted_ips = os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1")
     uvicorn.run(
         "hermes_station.app:app",
         host=os.getenv("CONTROL_PLANE_HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8787")),
         log_config=None,
         access_log=True,
-        # Trust X-Forwarded-* from any peer. The station only ever runs behind
-        # a managed edge (Railway / Cloudflare); without this, request.url.scheme
-        # stays "http" on HTTPS deployments, which propagates through the proxy
-        # as X-Forwarded-Proto: http and tells hermes-webui to skip the Secure
-        # flag on its session cookie.
         proxy_headers=True,
-        forwarded_allow_ips="*",
+        forwarded_allow_ips=trusted_ips,
     )
 
 
