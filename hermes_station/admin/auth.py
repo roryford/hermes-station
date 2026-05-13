@@ -27,12 +27,16 @@ class AuthState:
 
 
 def _signer() -> TimestampSigner:
-    # Derive a signing key from the admin password so it rotates with it.
-    # If we ever want signing-key stability across password changes, we move this
-    # to a separately-stored secret in /data/webui/.signing_key (CONTRACT §3.5).
-    settings = AdminSettings()
-    secret = settings.effective_admin_password or "hermes-station-unconfigured"
-    return TimestampSigner(secret.encode("utf-8"), salt="hermes-station-admin")
+    from hermes_station.config import Paths, load_or_create_signing_key
+    try:
+        paths = Paths()
+        key = load_or_create_signing_key(paths)
+        return TimestampSigner(key, salt=b"hermes-station-admin")
+    except Exception:
+        # Fallback for test environments where /data doesn't exist.
+        settings = AdminSettings()
+        secret = settings.effective_admin_password or "hermes-station-unconfigured"
+        return TimestampSigner(secret.encode("utf-8"), salt="hermes-station-admin")
 
 
 def admin_auth_enabled() -> bool:

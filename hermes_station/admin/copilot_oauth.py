@@ -6,9 +6,11 @@ resulting gho_ token is accepted by the Copilot API.
 
 from __future__ import annotations
 
+import os
+
 import httpx
 
-COPILOT_OAUTH_CLIENT_ID = "Ov23li8tweQw6odWQebz"
+COPILOT_OAUTH_CLIENT_ID = os.getenv("COPILOT_OAUTH_CLIENT_ID", "Ov23li8tweQw6odWQebz")
 _SCOPE = "read:user"
 _POLL_SAFETY_MARGIN = 3  # seconds added to GitHub's requested interval
 

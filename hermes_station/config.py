@@ -291,3 +291,28 @@ def extract_model_config(config: dict[str, Any]) -> ModelConfig:
         default=str(raw.get("default") or ""),
         base_url=str(raw.get("base_url") or ""),
     )
+
+
+def load_or_create_signing_key(paths: "Paths") -> bytes:
+    """Load the session signing key from disk, or generate + persist a new one.
+
+    The key is stored at $HERMES_HOME/.signing_key (mode 0600). Generating a
+    random key decouples session security from the admin password strength and
+    keeps sessions valid across password changes while still invalidating all
+    sessions on container replacement (which is the desired behavior).
+    """
+    import secrets as _secrets
+    key_path = paths.hermes_home / ".signing_key"
+    if key_path.exists():
+        key = key_path.read_bytes().strip()
+        if len(key) >= 32:
+            return key
+    # Generate a 64-byte (512-bit) URL-safe random key.
+    key = _secrets.token_bytes(64)
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, key)
+    finally:
+        os.close(fd)
+    return key
