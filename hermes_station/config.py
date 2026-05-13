@@ -296,23 +296,21 @@ def extract_model_config(config: dict[str, Any]) -> ModelConfig:
 def load_or_create_signing_key(paths: "Paths") -> bytes:
     """Load the session signing key from disk, or generate + persist a new one.
 
-    The key is stored at $HERMES_HOME/.signing_key (mode 0600). Generating a
-    random key decouples session security from the admin password strength and
-    keeps sessions valid across password changes while still invalidating all
-    sessions on container replacement (which is the desired behavior).
+    The key is stored at $HERMES_HOME/.signing_key as a hex string (mode 0600).
+    Hex encoding avoids the TOCTOU-adjacent bug where raw binary bytes that
+    happen to be whitespace get stripped on read, producing a different key than
+    was signed with. Generating a random key decouples session security from
+    admin password strength and keeps sessions valid across password changes.
     """
     import secrets as _secrets
     key_path = paths.hermes_home / ".signing_key"
     if key_path.exists():
-        key = key_path.read_bytes().strip()
-        if len(key) >= 32:
-            return key
-    # Generate a 64-byte (512-bit) URL-safe random key.
+        hex_key = key_path.read_text(encoding="ascii").strip()
+        if len(hex_key) >= 64:
+            return bytes.fromhex(hex_key)
+    # Generate a 64-byte (512-bit) random key stored as lowercase hex.
     key = _secrets.token_bytes(64)
+    hex_key = key.hex()
     key_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, key)
-    finally:
-        os.close(fd)
+    _write_secret_file(key_path, hex_key)
     return key
