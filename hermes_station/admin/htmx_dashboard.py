@@ -23,6 +23,7 @@ from starlette.routing import Route
 from hermes_station.admin._templates import templates as _templates
 from hermes_station.admin.auth import is_authenticated, require_admin
 from hermes_station.admin.channels import CHANNEL_CATALOG, channel_status
+from hermes_station.admin.mcp import load_mcp_status, toggle_mcp_server
 from hermes_station.admin.pairing import get_pending
 from hermes_station.admin.provider import PROVIDER_CATALOG
 from hermes_station.config import (
@@ -131,18 +132,47 @@ def _gateway_badge(*, running: bool, state: str) -> dict[str, str]:
     return {"tone": "muted", "label": "Stopped"}
 
 
+def _mcp_context(request: Request) -> dict[str, Any]:
+    paths = _paths(request)
+    return {"mcp_servers": load_mcp_status(paths.config_path, paths.env_path)}
+
+
 async def dashboard_page(request: Request) -> Response:
     guard = require_admin(request)
     if guard is not None:
         return guard
-    return _templates.TemplateResponse(
-        request,
-        "admin/dashboard.html",
-        {
-            "active": "dashboard",
-            "title": "Dashboard",
-        },
-    )
+    context: dict[str, Any] = {
+        "active": "dashboard",
+        "title": "Dashboard",
+    }
+    context.update(_mcp_context(request))
+    return _templates.TemplateResponse(request, "admin/dashboard.html", context)
+
+
+async def mcp_fragment_toggle(request: Request) -> Response:
+    """Toggle one MCP server's enabled flag. Restarts the gateway so
+    hermes-agent re-reads `mcp_servers` from config.yaml on next start."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    name = str(form.get("name") or "").strip()
+    alert: dict[str, str]
+    try:
+        new_value = toggle_mcp_server(paths.config_path, name)
+        verb = "enabled" if new_value else "disabled"
+        gateway = getattr(request.app.state, "gateway", None)
+        if gateway is not None:
+            await gateway.restart()
+        alert = {"kind": "success", "message": f"MCP server '{name}' {verb}."}
+    except ValueError as exc:
+        alert = {"kind": "error", "message": str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        alert = {"kind": "error", "message": f"Toggle failed: {exc}"}
+    context: dict[str, Any] = {"alert": alert}
+    context.update(_mcp_context(request))
+    return _templates.TemplateResponse(request, "admin/_mcp_card.html", context)
 
 
 async def status_fragment(request: Request) -> Response:
@@ -163,4 +193,5 @@ def routes() -> list[Route]:
     return [
         Route("/admin", dashboard_page, methods=["GET"]),
         Route("/admin/_partial/status", status_fragment, methods=["GET"]),
+        Route("/admin/_partial/mcp/toggle", mcp_fragment_toggle, methods=["POST"]),
     ]
