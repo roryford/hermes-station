@@ -24,7 +24,15 @@ from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
 from hermes_station.admin.htmx_logs import routes as logs_routes
 from hermes_station.admin.htmx_settings import routes as settings_routes
 from hermes_station.admin.routes import admin_routes
-from hermes_station.config import AdminSettings, Paths, load_env_file, load_yaml_config, seed_env_file_to_os, write_yaml_config
+from hermes_station.config import (
+    AdminSettings,
+    Paths,
+    load_env_file,
+    load_yaml_config,
+    seed_default_memory_provider,
+    seed_env_file_to_os,
+    write_yaml_config,
+)
 from hermes_station.gateway import Gateway, should_autostart
 from hermes_station.logs import attach_station_handler
 from hermes_station.proxy import proxy_to_webui
@@ -57,6 +65,12 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
 
     try:
         settings = AdminSettings()
+        # First-boot only: default-enable the holographic memory provider so
+        # fresh deployments have semantic memory active out of the box. No-op
+        # on subsequent boots (respects any existing `memory.provider` value,
+        # including the user explicitly choosing built-in only with "").
+        if seed_default_memory_provider(paths.config_path):
+            logger.info("seeded default memory provider: holographic")
         config = load_yaml_config(paths.config_path)
         _ensure_env_passthrough(paths, config, ["GITHUB_TOKEN"])
         env_values = load_env_file(paths.env_path)

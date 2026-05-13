@@ -84,6 +84,13 @@ async def _gather_status(request: Request) -> dict[str, Any]:
     channels = channel_status(env_values)
     pending_count = len(get_pending(paths.pairing_dir))
 
+    memory_raw = config.get("memory") if isinstance(config.get("memory"), dict) else {}
+    memory_provider = (memory_raw.get("provider") or "").strip()
+    memory_block = {
+        "provider": memory_provider or "built-in only",
+        "configured": bool(memory_provider),
+    }
+
     return {
         "paths": {
             "hermes_home": str(paths.hermes_home),
@@ -96,6 +103,7 @@ async def _gather_status(request: Request) -> dict[str, Any]:
         "webui": webui_block,
         "gateway": gateway_block,
         "provider": provider_block,
+        "memory": memory_block,
         "channels": channels,
         "channel_catalog": CHANNEL_CATALOG,
         "pending_pairings": pending_count,

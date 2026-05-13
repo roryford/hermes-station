@@ -141,6 +141,38 @@ def write_yaml_config(path: Path, data: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+DEFAULT_MEMORY_PROVIDER = "holographic"
+
+
+def seed_default_memory_provider(
+    path: Path, *, provider: str = DEFAULT_MEMORY_PROVIDER
+) -> bool:
+    """First-boot seed: set `memory.provider` in config.yaml if unset.
+
+    hermes-agent ships with 8 memory providers but none active by default —
+    out of the box `hermes memory setup` is the only way to pick one. We
+    default-enable the in-process holographic provider so fresh deployments
+    have semantic memory immediately, with zero external dependencies.
+
+    No-clobber per CONTRACT.md §3.3: if `memory.provider` is already set
+    (even to ""), the existing value wins. Returns True iff a write happened.
+    The seeded value is just the activation key — hermes-agent's plugin
+    loader supplies sensible defaults for everything under
+    `plugins.hermes-memory-store.*` if the section is absent.
+    """
+    config = load_yaml_config(path)
+    memory = config.get("memory")
+    # Already configured (any value, including "") — respect user choice.
+    if isinstance(memory, dict) and "provider" in memory:
+        return False
+    if not isinstance(memory, dict):
+        memory = {}
+    memory["provider"] = provider
+    config["memory"] = memory
+    write_yaml_config(path, config)
+    return True
+
+
 class ModelConfig(BaseModel):
     """Shape of the `model:` block in config.yaml. See CONTRACT.md §4.2."""
 
