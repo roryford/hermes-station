@@ -27,8 +27,6 @@ from hermes_station.admin.channels import CHANNEL_CATALOG, channel_status
 from hermes_station.admin.mcp import load_mcp_status, toggle_mcp_server
 from hermes_station.admin.pairing import get_pending
 from hermes_station.admin.provider import PROVIDER_CATALOG
-logger = logging.getLogger(__name__)
-
 from hermes_station.config import (
     AdminSettings,
     Paths,
@@ -36,6 +34,8 @@ from hermes_station.config import (
     load_env_file,
     load_yaml_config,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _paths(request: Request) -> Paths:
