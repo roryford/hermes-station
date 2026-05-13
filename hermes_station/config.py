@@ -106,6 +106,21 @@ def seed_env_file_to_os(path: Path) -> None:
     os.environ.update(env_file)
 
 
+def _write_secret_file(path: Path, body: str) -> None:
+    """Write *body* to *path* atomically with mode 0o600 from creation time.
+
+    Uses os.open() so the file is never world-readable even for a moment —
+    avoids the TOCTOU window of write_text() + os.chmod().
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, body.encode("utf-8"))
+    finally:
+        os.close(fd)
+    tmp.replace(path)
+
+
 def write_env_file(path: Path, values: dict[str, str]) -> None:
     """Write `$HERMES_HOME/.env` per CONTRACT.md §4.1.
 
@@ -114,10 +129,7 @@ def write_env_file(path: Path, values: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{key}={values[key]}" for key in sorted(values)]
     body = "\n".join(lines) + ("\n" if lines else "")
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(body, encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    tmp.replace(path)
+    _write_secret_file(path, body)
 
 
 def load_yaml_config(path: Path) -> dict[str, Any]:
@@ -135,10 +147,7 @@ def write_yaml_config(path: Path, data: dict[str, Any]) -> None:
     """Write `$HERMES_HOME/config.yaml` per CONTRACT.md §4.2. Mode 0600."""
     path.parent.mkdir(parents=True, exist_ok=True)
     body = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(body, encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    tmp.replace(path)
+    _write_secret_file(path, body)
 
 
 DEFAULT_MEMORY_PROVIDER = "holographic"
@@ -282,3 +291,26 @@ def extract_model_config(config: dict[str, Any]) -> ModelConfig:
         default=str(raw.get("default") or ""),
         base_url=str(raw.get("base_url") or ""),
     )
+
+
+def load_or_create_signing_key(paths: "Paths") -> bytes:
+    """Load the session signing key from disk, or generate + persist a new one.
+
+    The key is stored at $HERMES_HOME/.signing_key as a hex string (mode 0600).
+    Hex encoding avoids the TOCTOU-adjacent bug where raw binary bytes that
+    happen to be whitespace get stripped on read, producing a different key than
+    was signed with. Generating a random key decouples session security from
+    admin password strength and keeps sessions valid across password changes.
+    """
+    import secrets as _secrets
+    key_path = paths.hermes_home / ".signing_key"
+    if key_path.exists():
+        hex_key = key_path.read_text(encoding="ascii").strip()
+        if len(hex_key) >= 64:
+            return bytes.fromhex(hex_key)
+    # Generate a 64-byte (512-bit) random key stored as lowercase hex.
+    key = _secrets.token_bytes(64)
+    hex_key = key.hex()
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_secret_file(key_path, hex_key)
+    return key

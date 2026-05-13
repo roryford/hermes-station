@@ -14,6 +14,7 @@ Pairings page. The summary card here links to both.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from starlette.requests import Request
@@ -33,6 +34,8 @@ from hermes_station.config import (
     load_env_file,
     load_yaml_config,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _paths(request: Request) -> Paths:
@@ -167,9 +170,11 @@ async def mcp_fragment_toggle(request: Request) -> Response:
             await gateway.restart()
         alert = {"kind": "success", "message": f"MCP server '{name}' {verb}."}
     except ValueError as exc:
-        alert = {"kind": "error", "message": str(exc)}
+        logger.warning("MCP toggle error: %s", exc)
+        alert = {"kind": "error", "message": "Operation failed — check logs for details."}
     except Exception as exc:  # noqa: BLE001
-        alert = {"kind": "error", "message": f"Toggle failed: {exc}"}
+        logger.warning("MCP toggle unexpected error: %s", exc)
+        alert = {"kind": "error", "message": "Operation failed — check logs for details."}
     context: dict[str, Any] = {"alert": alert}
     context.update(_mcp_context(request))
     return _templates.TemplateResponse(request, "admin/_mcp_card.html", context)

@@ -56,8 +56,11 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     body = json.dumps(data, indent=2, ensure_ascii=False)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(body, encoding="utf-8")
-    os.chmod(tmp, 0o600)
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, body.encode("utf-8"))
+    finally:
+        os.close(fd)
     tmp.replace(path)
 
 

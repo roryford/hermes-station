@@ -298,4 +298,6 @@ async def test_toggle_endpoint_rejects_unknown_server(
             "/admin/_partial/mcp/toggle", data={"name": "bogus"}
         )
         assert response.status_code == 200
-        assert "unknown MCP server" in response.text
+        # Error detail is logged server-side; the UI shows a generic alert only.
+        assert "unknown MCP server" not in response.text
+        assert "error" in response.text.lower()

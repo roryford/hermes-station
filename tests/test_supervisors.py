@@ -37,10 +37,18 @@ def test_should_autostart_forced_off() -> None:
 
 
 def test_should_autostart_auto_requires_provider_and_channel(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Ensure no provider credentials leak in from other tests via os.environ
+    # Ensure no credentials leak in from other tests via os.environ.
+    # Provider keys:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("COPILOT_GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    # All CHANNEL_ENV_KEYS (from hermes_station.admin.channels):
+    from hermes_station.admin.channels import CHANNEL_ENV_KEYS
+    for key in CHANNEL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
     # No provider configured
     assert (
         should_autostart(mode="auto", config={}, env_values={"TELEGRAM_BOT_TOKEN": "abc"})
@@ -90,7 +98,12 @@ def test_filter_request_headers_drops_hop_by_hop_and_host() -> None:
         "Connection": "keep-alive",
         "Transfer-Encoding": "chunked",
         "Upgrade": "websocket",
+        # Client-injected forwarding headers are stripped to prevent CSRF bypass
+        # via X-Forwarded-Host spoofing (the proxy re-injects correct values).
         "X-Real-IP": "10.0.0.1",
+        "X-Forwarded-For": "1.2.3.4",
+        "X-Forwarded-Host": "evil.example",
+        "X-Forwarded-Proto": "https",
         "User-Agent": "smoke",
         "Cookie": "a=1; b=2",
     }
@@ -99,7 +112,10 @@ def test_filter_request_headers_drops_hop_by_hop_and_host() -> None:
     assert "Connection" not in out
     assert "Transfer-Encoding" not in out
     assert "Upgrade" not in out
-    assert out["X-Real-IP"] == "10.0.0.1"
+    assert "X-Real-IP" not in out
+    assert "X-Forwarded-For" not in out
+    assert "X-Forwarded-Host" not in out
+    assert "X-Forwarded-Proto" not in out
     assert out["User-Agent"] == "smoke"
     assert out["Cookie"] == "a=1; b=2"
 

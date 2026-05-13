@@ -285,7 +285,10 @@ async def copilot_oauth_poll(request: Request) -> Response:
         return guard
     paths = _paths(request)
     device_code = str(request.query_params.get("device_code") or "").strip()
-    interval = int(request.query_params.get("interval") or 8)
+    try:
+        interval = max(5, min(int(request.query_params.get("interval") or 8), 60))
+    except (ValueError, TypeError):
+        interval = 8
 
     if not device_code:
         context: dict[str, Any] = {"alert": {"kind": "error", "message": "Missing device_code."}}
