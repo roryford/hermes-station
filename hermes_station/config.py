@@ -97,10 +97,9 @@ def seed_env_file_to_os(path: Path) -> None:
 
     Called before the in-process gateway task starts so credentials stored via
     the admin UI override any conflicting Railway / host environment variables.
-
-    When COPILOT_GITHUB_TOKEN is set, also removes GITHUB_TOKEN and GH_TOKEN
-    from os.environ to prevent Railway's injected PAT from polluting
-    hermes-agent's Copilot credential pool alongside the valid OAuth token.
+    GITHUB_TOKEN is intentionally left in os.environ for gh CLI use; Copilot
+    credential-pool pollution is handled via auth.json suppression instead
+    (see _suppress_copilot_fallback_sources in admin/provider.py).
     """
     env_file = load_env_file(path)
     os.environ.update(env_file)
