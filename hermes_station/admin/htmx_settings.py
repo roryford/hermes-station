@@ -187,6 +187,10 @@ async def channels_fragment_save(request: Request) -> Response:
     alert: dict[str, str]
     try:
         save_channel_values(paths.env_path, updates)
+        seed_env_file_to_os(paths.env_path)
+        gateway = getattr(request.app.state, "gateway", None)
+        if gateway is not None:
+            await gateway.restart()
         alert = {"kind": "success", "message": "Channels saved."}
     except ValueError as exc:
         alert = {"kind": "error", "message": str(exc)}
@@ -211,6 +215,10 @@ async def channels_fragment_clear(request: Request) -> Response:
             updates[entry["secondary_key"]] = None
         try:
             save_channel_values(paths.env_path, updates)
+            seed_env_file_to_os(paths.env_path)
+            gateway = getattr(request.app.state, "gateway", None)
+            if gateway is not None:
+                await gateway.restart()
             alert = {"kind": "success", "message": f"{entry['label']} cleared."}
         except ValueError as exc:
             alert = {"kind": "error", "message": str(exc)}
@@ -242,6 +250,10 @@ async def channels_fragment_toggle(request: Request) -> Response:
         }
         try:
             save_channel_values(paths.env_path, updates)
+            seed_env_file_to_os(paths.env_path)
+            gateway = getattr(request.app.state, "gateway", None)
+            if gateway is not None:
+                await gateway.restart()
             label = entry["label"]
             verb = "enabled" if currently_disabled else "disabled"
             alert = {"kind": "success", "message": f"{label} {verb}."}
