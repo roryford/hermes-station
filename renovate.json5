@@ -4,8 +4,8 @@
 
     // Both upstreams release fast (hermes-webui ships multiple times per day).
     // Batch into one weekly PR per upstream — see README.md "Upstream tracking".
-    schedule: ["before 6am on monday"],
-    timezone: "Australia/Sydney",
+    schedule: ["after 8am and before 9am on friday"],
+    timezone: "UTC",
     prHourlyLimit: 0,
     prConcurrentLimit: 5,
 
