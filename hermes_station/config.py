@@ -101,18 +101,23 @@ def seed_env_file_to_os(path: Path) -> None:
     credential-pool pollution is handled via auth.json suppression instead
     (see _suppress_copilot_fallback_sources in admin/provider.py).
 
-    Also writes _HERMES_FORCE_GITHUB_TOKEN so GITHUB_TOKEN reaches terminal
-    subprocesses despite being in hermes-agent's provider env blocklist (it is
-    a Copilot accepted credential and is stripped by default). The _HERMES_FORCE_
-    prefix is hermes-agent's escape hatch for exactly this case.
+    Also writes _HERMES_FORCE_GITHUB_TOKEN and _HERMES_FORCE_GH_TOKEN so both
+    vars reach terminal subprocesses despite being in hermes-agent's provider
+    env blocklist (Copilot accepted credentials, stripped by default). GH_TOKEN
+    is the preferred var for the gh CLI and for agent GitHub diagnostics; both
+    are sourced from GITHUB_TOKEN (Railway injects it; GH_TOKEN is not set).
+    The _HERMES_FORCE_ prefix is hermes-agent's escape hatch for exactly this.
     """
     env_file = load_env_file(path)
     os.environ.update(env_file)
     github_token = os.environ.get("GITHUB_TOKEN", "")
     if github_token:
         os.environ["_HERMES_FORCE_GITHUB_TOKEN"] = github_token
+        os.environ.setdefault("GH_TOKEN", github_token)
+        os.environ["_HERMES_FORCE_GH_TOKEN"] = os.environ["GH_TOKEN"]
     else:
         os.environ.pop("_HERMES_FORCE_GITHUB_TOKEN", None)
+        os.environ.pop("_HERMES_FORCE_GH_TOKEN", None)
 
 
 def _write_secret_file(path: Path, body: str) -> None:
