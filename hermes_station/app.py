@@ -79,7 +79,7 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         if added_mcp:
             logger.info("seeded default MCP servers (disabled): %s", ", ".join(added_mcp))
         config = load_yaml_config(paths.config_path)
-        _ensure_env_passthrough(paths, config, ["GITHUB_TOKEN"])
+        _ensure_env_passthrough(paths, config, ["GITHUB_TOKEN", "GH_TOKEN"])
         env_values = load_env_file(paths.env_path)
         # CONTRACT.md §2.1: .env values take precedence over process env.
         # The gateway runs in-process and reads os.environ directly — seed here
