@@ -17,6 +17,7 @@ uv run pytest -q
 # CI builds + runs linux/amd64 (matches Railway), so the Railway-parity check happens there.
 # Build both stages; `test` extends `runtime` so layers are shared.
 "$RUNTIME" build \
+  --target runtime \
   --build-arg IMAGE_REVISION="$(git rev-parse HEAD)" \
   -t hermes-station:dx-verify .
 "$RUNTIME" build \
