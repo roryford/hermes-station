@@ -216,6 +216,33 @@ def test_attach_station_handler_preserves_ring_buffer(capsys):
     assert obj["message"] == msg
 
 
+def test_webui_stdout_event_filtered_from_station_buffer(capsys):
+    """Webui subprocess stdout (event=webui_stdout) hits real stdout as
+    JSON but is filtered out of STATION_LOGS so the admin Logs station
+    tab stays free of subprocess output."""
+    logs_mod._station_handler = None
+    attach_station_handler()
+    before = list(STATION_LOGS.tail(10))
+    msg = "webui-subproc-stdout-line"
+    logging.getLogger("hermes_station.webui").info(
+        msg, extra={"event": "webui_stdout"}
+    )
+
+    # Did NOT land in station ring buffer (filtered).
+    after = list(STATION_LOGS.tail(10))
+    new_lines = [line for line in after if line not in before]
+    assert not any(msg in line for line in new_lines), new_lines
+
+    # Did land on real stdout as JSON.
+    captured = capsys.readouterr()
+    json_lines = [ln for ln in captured.out.splitlines() if msg in ln]
+    assert json_lines, captured.out
+    obj = json.loads(json_lines[-1])
+    assert obj["message"] == msg
+    assert obj["component"] == "webui"
+    assert obj["event"] == "webui_stdout"
+
+
 def test_jsonformatter_direct_stream_handler_roundtrip():
     """Run a JsonFormatter through a real StreamHandler to confirm it
     produces valid JSON in actual stream output."""

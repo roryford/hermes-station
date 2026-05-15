@@ -254,8 +254,11 @@ class WebUIProcess:
             async for raw in self.process.stdout:
                 line = raw.decode("utf-8", errors="replace").rstrip()
                 if line:
-                    # Goes to our stdout → Railway log stream
-                    print(f"[webui] {line}", flush=True)
+                    # Route through the structured logger so each subprocess
+                    # stdout line becomes one JSON record with component=webui
+                    # on our stdout, while still landing in the admin Logs
+                    # ring buffer in plain text.
+                    logger.info(line, extra={"event": "webui_stdout"})
                     WEBUI_LOGS.append(line)
         except asyncio.CancelledError:
             raise

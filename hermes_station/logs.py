@@ -227,6 +227,21 @@ def attach_stdout_json_handler() -> None:
         _stdout_json_handler = handler
 
 
+class _DropWebuiStdoutFilter(logging.Filter):
+    """Keep webui subprocess stdout out of the station ring buffer.
+
+    WebUIProcess._pump_logs routes child stdout through the structured
+    logger so each line becomes a JSON record on real stdout. Without
+    this filter those lines would also propagate to the station handler
+    on the `hermes_station` logger and pollute the admin Logs "station"
+    tab — that tab is meant for control-plane messages only; the "webui"
+    tab is fed separately via WEBUI_LOGS.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return getattr(record, "event", None) != "webui_stdout"
+
+
 def attach_station_handler() -> None:
     global _station_handler
     attach_stdout_json_handler()
@@ -234,6 +249,7 @@ def attach_station_handler() -> None:
         if _station_handler is not None:
             return
         handler = RingBufferHandler(STATION_LOGS)
+        handler.addFilter(_DropWebuiStdoutFilter())
         logging.getLogger("hermes_station").addHandler(handler)
         _station_handler = handler
 
