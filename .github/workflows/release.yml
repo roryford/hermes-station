@@ -73,13 +73,7 @@ jobs:
       RAILWAY_ENVIRONMENT_ID: ddbd4898-55eb-4e67-b993-b170644b0931
       IMAGE: ghcr.io/roryford/hermes-station:${{ github.ref_name }}
     steps:
-      - name: install Railway CLI
-        run: |
-          curl -fsSL https://railway.app/install.sh | bash
-          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
-
       - name: point service at new image
-        # No CLI equivalent for switching source type — GraphQL only.
         run: |
           curl -fsSL https://backboard.railway.com/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
@@ -93,8 +87,15 @@ jobs:
               }
             }"
 
-      - name: redeploy from new image source
+      - name: trigger redeploy
         run: |
-          railway redeploy \
-            --service "$RAILWAY_SERVICE_ID" \
-            --yes
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"mutation Redeploy(\$svc: String!, \$env: String!) { serviceInstanceRedeploy(serviceId: \$svc, environmentId: \$env) }\",
+              \"variables\": {
+                \"svc\": \"$RAILWAY_SERVICE_ID\",
+                \"env\": \"$RAILWAY_ENVIRONMENT_ID\"
+              }
+            }"
