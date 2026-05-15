@@ -113,7 +113,10 @@ jobs:
         env:
           HERMES_STATION_E2E_URL: http://127.0.0.1:8787
           HERMES_STATION_E2E_PASSWORD: ci
-        run: .venv/bin/pytest tests/test_login_smoke.py -q
+        # --no-cov: this is an integration step against the running container,
+        # not a unit run — pyproject's --cov-fail-under=85 makes no sense for
+        # a single-file invocation that doesn't exercise the package directly.
+        run: .venv/bin/pytest tests/test_login_smoke.py -q --no-cov
 
       - name: container logs on failure
         if: failure()
