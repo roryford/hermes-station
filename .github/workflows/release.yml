@@ -74,7 +74,9 @@ jobs:
       IMAGE: ghcr.io/roryford/hermes-station:${{ github.ref_name }}
     steps:
       - name: install Railway CLI
-        run: curl -fsSL https://railway.app/install.sh | sh
+        run: |
+          curl -fsSL https://railway.app/install.sh | bash
+          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
 
       - name: point service at new image
         # No CLI equivalent for switching source type — GraphQL only.
