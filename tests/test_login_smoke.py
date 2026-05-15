@@ -44,9 +44,7 @@ def webui_password() -> str:
     return pw
 
 
-def test_login_through_proxy_passes_csrf_and_sets_session_cookie(
-    base_url: str, webui_password: str
-) -> None:
+def test_login_through_proxy_passes_csrf_and_sets_session_cookie(base_url: str, webui_password: str) -> None:
     with httpx.Client(base_url=base_url, follow_redirects=False, timeout=10.0) as client:
         resp = client.post(
             "/api/auth/login",
@@ -59,14 +57,10 @@ def test_login_through_proxy_passes_csrf_and_sets_session_cookie(
         "CSRF reject; check that proxy.py forwards X-Forwarded-Host / X-Real-Host "
         "and that hermes-webui sees Origin matching Host."
     )
-    assert "hermes_session" in resp.cookies, (
-        f"expected hermes_session cookie, got {dict(resp.cookies)}"
-    )
+    assert "hermes_session" in resp.cookies, f"expected hermes_session cookie, got {dict(resp.cookies)}"
 
 
-def test_gzipped_json_response_preserves_content_encoding(
-    base_url: str, webui_password: str
-) -> None:
+def test_gzipped_json_response_preserves_content_encoding(base_url: str, webui_password: str) -> None:
     """webui gzips JSON responses >1KB. /api/session/new returns ~1.5KB of
     metadata, so the proxy must keep Content-Encoding intact for the client
     to decode it. httpx auto-decompresses and still exposes the original
@@ -85,14 +79,9 @@ def test_gzipped_json_response_preserves_content_encoding(
             json={},
         )
 
-    assert resp.status_code == 200, (
-        f"/api/session/new returned {resp.status_code} (body={resp.text[:200]!r})"
-    )
+    assert resp.status_code == 200, f"/api/session/new returned {resp.status_code} (body={resp.text[:200]!r})"
     assert resp.headers.get("content-encoding", "").lower() == "gzip", (
-        "proxy stripped Content-Encoding from a gzipped upstream response — "
-        f"headers={dict(resp.headers)}"
+        f"proxy stripped Content-Encoding from a gzipped upstream response — headers={dict(resp.headers)}"
     )
     body = resp.json()
-    assert body.get("session", {}).get("session_id"), (
-        f"expected session.session_id in response, got {body!r}"
-    )
+    assert body.get("session", {}).get("session_id"), f"expected session.session_id in response, got {body!r}"

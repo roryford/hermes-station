@@ -28,9 +28,7 @@ def _build_app() -> Starlette:
 
 
 async def _login(client: httpx.AsyncClient, password: str) -> None:
-    response = await client.post(
-        "/admin/login", data={"password": password}, follow_redirects=False
-    )
+    response = await client.post("/admin/login", data={"password": password}, follow_redirects=False)
     assert response.status_code == 302, response.text
 
 
@@ -52,9 +50,7 @@ async def test_settings_requires_admin(fake_data_dir: Path, admin_password: str)
     assert response.headers["location"] == "/admin/login"
 
 
-async def test_settings_renders_after_login(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_settings_renders_after_login(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -65,23 +61,19 @@ async def test_settings_renders_after_login(
     assert "Provider" in body
     assert "Channels" in body
     # Provider + channels forms are present.
-    assert "hx-post=\"/admin/_partial/provider/setup\"" in body
-    assert "hx-post=\"/admin/_partial/channels/save\"" in body
+    assert 'hx-post="/admin/_partial/provider/setup"' in body
+    assert 'hx-post="/admin/_partial/channels/save"' in body
     assert "GitHub Copilot" in body
     # All channel labels should appear so we can be sure the catalog renders.
     for label in ("Telegram", "Discord", "Slack", "WhatsApp", "Email"):
         assert label in body
 
 
-async def test_settings_shows_existing_provider(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_settings_shows_existing_provider(fake_data_dir: Path, admin_password: str) -> None:
     config_path = fake_data_dir / ".hermes" / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
-        yaml.safe_dump(
-            {"model": {"provider": "anthropic", "default": "claude-sonnet-4.6"}}
-        ),
+        yaml.safe_dump({"model": {"provider": "anthropic", "default": "claude-sonnet-4.6"}}),
         encoding="utf-8",
     )
 
@@ -122,9 +114,7 @@ async def test_provider_fragment_save_persists_and_returns_card(
     assert config["model"]["provider"] == "anthropic"
 
 
-async def test_provider_fragment_save_supports_copilot(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_provider_fragment_save_supports_copilot(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -155,9 +145,7 @@ async def test_provider_fragment_save_supports_copilot(
 # ──────────────────────────────────────────────────────────── pairings page
 
 
-async def test_pairings_renders_after_login(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_pairings_renders_after_login(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -171,9 +159,7 @@ async def test_pairings_renders_after_login(
     assert "/admin/_partial/pairings" in body
 
 
-async def test_pairings_fragment_returns_html(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_pairings_fragment_returns_html(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -188,9 +174,7 @@ async def test_pairings_fragment_returns_html(
     assert "No approved users." in body
 
 
-async def test_pairings_panel_shows_pending_users(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_pairings_panel_shows_pending_users(fake_data_dir: Path, admin_password: str) -> None:
     pairing_dir = fake_data_dir / ".hermes" / "pairing"
     _write_pairing(
         pairing_dir / "telegram-pending.json",
@@ -215,14 +199,12 @@ async def test_pairings_panel_shows_pending_users(
     assert "7" in body
     assert "bob" in body
     # Approve/Deny/Revoke buttons rendered for the right rows.
-    assert "hx-post=\"/admin/_partial/pairing/approve\"" in body
-    assert "hx-post=\"/admin/_partial/pairing/deny\"" in body
-    assert "hx-post=\"/admin/_partial/pairing/revoke\"" in body
+    assert 'hx-post="/admin/_partial/pairing/approve"' in body
+    assert 'hx-post="/admin/_partial/pairing/deny"' in body
+    assert 'hx-post="/admin/_partial/pairing/revoke"' in body
 
 
-async def test_pairings_fragment_requires_admin(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_pairings_fragment_requires_admin(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -236,17 +218,13 @@ async def test_pairings_approve_fragment_moves_and_returns_panel(
     fake_data_dir: Path, admin_password: str
 ) -> None:
     pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(
-        pairing_dir / "telegram-pending.json", {"42": {"user_name": "alice"}}
-    )
+    _write_pairing(pairing_dir / "telegram-pending.json", {"42": {"user_name": "alice"}})
 
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         await _login(client, admin_password)
-        response = await client.post(
-            "/admin/_partial/pairing/approve", data={"user_id": "42"}
-        )
+        response = await client.post("/admin/_partial/pairing/approve", data={"user_id": "42"})
     assert response.status_code == 200, response.text
     body = response.text
     # After approval the user is in the Approved table, not Pending.

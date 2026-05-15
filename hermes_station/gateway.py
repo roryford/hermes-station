@@ -97,14 +97,8 @@ class Gateway:
 
         # Detect token/auth errors from a structured error field.
         connection = "unknown"
-        error_blob = " ".join(
-            str(raw.get(k, ""))
-            for k in ("last_error", "error", "status_detail")
-        ).lower()
-        if any(
-            tok in error_blob
-            for tok in ("token", "unauthorized", "401", "auth", "credential")
-        ):
+        error_blob = " ".join(str(raw.get(k, "")) for k in ("last_error", "error", "status_detail")).lower()
+        if any(tok in error_blob for tok in ("token", "unauthorized", "401", "auth", "credential")):
             connection = "token_invalid"
         elif state == "running":
             updated_at = raw.get("updated_at")
@@ -231,9 +225,7 @@ class Gateway:
                     continue
                 state["updated_at"] = datetime.now(timezone.utc).isoformat()
                 tmp = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
-                tmp.write_text(
-                    json.dumps(state, separators=(",", ":")), encoding="utf-8"
-                )
+                tmp.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
                 tmp.replace(self.state_path)
             except (OSError, json.JSONDecodeError):
                 pass
@@ -253,9 +245,7 @@ class Gateway:
             if ok:
                 logger.info("gateway exited cleanly; not restarting")
                 return
-            logger.warning(
-                "gateway failed/exited unexpectedly; retrying in %.1fs", backoff
-            )
+            logger.warning("gateway failed/exited unexpectedly; retrying in %.1fs", backoff)
             try:
                 await asyncio.sleep(backoff)
             except asyncio.CancelledError:

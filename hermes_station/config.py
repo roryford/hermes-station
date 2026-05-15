@@ -185,9 +185,7 @@ def write_yaml_config(path: Path, data: dict[str, Any]) -> None:
 DEFAULT_MEMORY_PROVIDER = "holographic"
 
 
-def seed_default_memory_provider(
-    path: Path, *, provider: str = DEFAULT_MEMORY_PROVIDER
-) -> bool:
+def seed_default_memory_provider(path: Path, *, provider: str = DEFAULT_MEMORY_PROVIDER) -> bool:
     """First-boot seed: set `memory.provider` in config.yaml if unset.
 
     hermes-agent ships with 8 memory providers but none active by default —
@@ -276,9 +274,7 @@ def _server_seed_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return seed
 
 
-def seed_default_mcp_servers(
-    path: Path, *, catalog: list[dict[str, Any]] | None = None
-) -> list[str]:
+def seed_default_mcp_servers(path: Path, *, catalog: list[dict[str, Any]] | None = None) -> list[str]:
     """First-boot seed: add curated stdio MCP servers to config.yaml, default-off.
 
     Each server in `MCP_SERVER_CATALOG` is added under the top-level
@@ -329,9 +325,7 @@ def normalize_config(config: dict[str, Any]) -> tuple[dict[str, Any], list[str]]
         if isinstance(ep, str):
             items = [item.strip() for item in ep.split(",") if item.strip()]
             terminal["env_passthrough"] = items
-            changes.append(
-                f"coerced terminal.env_passthrough from string to list ({len(items)} entries)"
-            )
+            changes.append(f"coerced terminal.env_passthrough from string to list ({len(items)} entries)")
 
     if "env_passthrough" in config:
         value = config["env_passthrough"]
@@ -429,6 +423,7 @@ def load_or_create_signing_key(paths: "Paths") -> bytes:
     admin password strength and keeps sessions valid across password changes.
     """
     import secrets as _secrets
+
     key_path = paths.hermes_home / ".signing_key"
     if key_path.exists():
         hex_key = key_path.read_text(encoding="ascii").strip()

@@ -56,9 +56,7 @@ def test_ring_buffer_handler_formats_and_appends() -> None:
 
 
 async def _login(client: httpx.AsyncClient, password: str) -> None:
-    response = await client.post(
-        "/admin/login", data={"password": password}, follow_redirects=False
-    )
+    response = await client.post("/admin/login", data={"password": password}, follow_redirects=False)
     assert response.status_code == 302, response.text
 
 

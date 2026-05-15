@@ -226,9 +226,7 @@ class _FakeGateway:
 def _build_app(gateway: Any | None = None) -> Starlette:
     base_routes: list[Route] = list(htmx_routes())
     base_routes.extend(
-        route
-        for route in admin_routes()
-        if not (isinstance(route, Route) and route.path == "/admin")
+        route for route in admin_routes() if not (isinstance(route, Route) and route.path == "/admin")
     )
     app = Starlette(routes=base_routes)
     app.state.paths = Paths()
@@ -238,15 +236,11 @@ def _build_app(gateway: Any | None = None) -> Starlette:
 
 
 async def _login(client: httpx.AsyncClient, password: str) -> None:
-    response = await client.post(
-        "/admin/login", data={"password": password}, follow_redirects=False
-    )
+    response = await client.post("/admin/login", data={"password": password}, follow_redirects=False)
     assert response.status_code == 302, response.text
 
 
-async def test_dashboard_renders_mcp_card(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_dashboard_renders_mcp_card(fake_data_dir: Path, admin_password: str) -> None:
     config_path = fake_data_dir / ".hermes" / "config.yaml"
     seed_default_mcp_servers(config_path)
     app = _build_app()
@@ -263,9 +257,7 @@ async def test_dashboard_renders_mcp_card(
         assert "GitHub" in body
 
 
-async def test_toggle_endpoint_flips_and_restarts_gateway(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_toggle_endpoint_flips_and_restarts_gateway(fake_data_dir: Path, admin_password: str) -> None:
     config_path = fake_data_dir / ".hermes" / "config.yaml"
     seed_default_mcp_servers(config_path)
     gateway = _FakeGateway()
@@ -274,9 +266,7 @@ async def test_toggle_endpoint_flips_and_restarts_gateway(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         await _login(client, admin_password)
-        response = await client.post(
-            "/admin/_partial/mcp/toggle", data={"name": "filesystem"}
-        )
+        response = await client.post("/admin/_partial/mcp/toggle", data={"name": "filesystem"})
         assert response.status_code == 200
         assert "filesystem" in response.text
         # Card came back with the updated badge.
@@ -285,18 +275,14 @@ async def test_toggle_endpoint_flips_and_restarts_gateway(
         assert gateway.restart_count == 1
 
 
-async def test_toggle_endpoint_rejects_unknown_server(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_toggle_endpoint_rejects_unknown_server(fake_data_dir: Path, admin_password: str) -> None:
     seed_default_mcp_servers(fake_data_dir / ".hermes" / "config.yaml")
     app = _build_app(gateway=_FakeGateway())
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         await _login(client, admin_password)
-        response = await client.post(
-            "/admin/_partial/mcp/toggle", data={"name": "bogus"}
-        )
+        response = await client.post("/admin/_partial/mcp/toggle", data={"name": "bogus"})
         assert response.status_code == 200
         # Error detail is logged server-side; the UI shows a generic alert only.
         assert "unknown MCP server" not in response.text

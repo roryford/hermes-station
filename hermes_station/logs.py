@@ -65,13 +65,21 @@ _RESERVED_LOGRECORD_ATTRS = frozenset(
 
 
 def _infer_component(logger_name: str) -> str:
-    if logger_name == "gateway" or logger_name.startswith("gateway.") or logger_name.startswith("hermes_station.gateway"):
+    if (
+        logger_name == "gateway"
+        or logger_name.startswith("gateway.")
+        or logger_name.startswith("hermes_station.gateway")
+    ):
         return "gateway"
     if logger_name.startswith("hermes_station.webui"):
         return "webui"
     if logger_name.startswith("hermes_station.readiness"):
         return "readiness"
-    if logger_name == "hermes_station" or logger_name.startswith("hermes_station.app") or logger_name == "hermes_station.app":
+    if (
+        logger_name == "hermes_station"
+        or logger_name.startswith("hermes_station.app")
+        or logger_name == "hermes_station.app"
+    ):
         return "control_plane"
     if logger_name.startswith("hermes_station."):
         # other hermes_station.* subloggers fall under control_plane

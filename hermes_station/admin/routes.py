@@ -57,7 +57,8 @@ def _prune_login_attempts() -> None:
             _login_attempts.pop(ip, None)
     now = time.time()
     stale = [
-        ip for ip, times in list(_login_attempts.items())
+        ip
+        for ip, times in list(_login_attempts.items())
         if not any(now - t < _LOGIN_WINDOW_SECONDS for t in times)
     ]
     for ip in stale:
@@ -187,7 +188,9 @@ async def api_provider_setup(request: Request) -> Response:
         )
     except ValueError as exc:
         logger.warning("provider setup error: %s", exc)
-        return JSONResponse({"ok": False, "error": "Invalid configuration — check logs for details."}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "Invalid configuration — check logs for details."}, status_code=400
+        )
     seed_env_file_to_os(paths.env_path)
     gateway: Gateway = request.app.state.gateway
     await gateway.restart()
@@ -220,7 +223,9 @@ async def api_channels_save(request: Request) -> Response:
         env_values = save_channel_values(paths.env_path, updates)
     except ValueError as exc:
         logger.warning("channel save error: %s", exc)
-        return JSONResponse({"ok": False, "error": "Invalid configuration — check logs for details."}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "Invalid configuration — check logs for details."}, status_code=400
+        )
     seed_env_file_to_os(paths.env_path)
     gateway: Gateway = request.app.state.gateway
     await gateway.restart()
@@ -298,7 +303,9 @@ async def _supervisor_action(request: Request, supervisor_attr: str) -> Response
             await supervisor.restart()
     except Exception as exc:  # noqa: BLE001
         logger.warning("supervisor action error (%s %s): %s", supervisor_attr, action, exc)
-        return JSONResponse({"ok": False, "error": "Action failed — check logs for details."}, status_code=500)
+        return JSONResponse(
+            {"ok": False, "error": "Action failed — check logs for details."}, status_code=500
+        )
     return JSONResponse({"ok": True, "action": action})
 
 

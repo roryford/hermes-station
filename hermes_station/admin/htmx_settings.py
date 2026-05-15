@@ -242,12 +242,8 @@ async def channels_fragment_toggle(request: Request) -> Response:
     if entry and entry.get("disable_key"):
         disable_key = entry["disable_key"]
         env_values = load_env_file(paths.env_path)
-        currently_disabled = env_values.get(disable_key, "").strip().lower() in {
-            "1", "true", "yes", "on"
-        }
-        updates: dict[str, str | None] = {
-            disable_key: None if currently_disabled else "1"
-        }
+        currently_disabled = env_values.get(disable_key, "").strip().lower() in {"1", "true", "yes", "on"}
+        updates: dict[str, str | None] = {disable_key: None if currently_disabled else "1"}
         try:
             save_channel_values(paths.env_path, updates)
             seed_env_file_to_os(paths.env_path)
@@ -275,7 +271,9 @@ async def copilot_oauth_start(request: Request) -> Response:
     try:
         flow = await start_device_flow()
     except Exception as exc:
-        context: dict[str, Any] = {"alert": {"kind": "error", "message": f"Could not start GitHub OAuth: {exc}"}}
+        context: dict[str, Any] = {
+            "alert": {"kind": "error", "message": f"Could not start GitHub OAuth: {exc}"}
+        }
         context.update(_provider_context(paths))
         return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
     return _templates.TemplateResponse(
@@ -344,6 +342,7 @@ async def copilot_oauth_poll(request: Request) -> Response:
             )
             seed_env_file_to_os(paths.env_path)
             from hermes_station.gateway import Gateway as _Gateway
+
             gateway: _Gateway = request.app.state.gateway
             await gateway.restart()
             alert: dict[str, str] = {"kind": "success", "message": "GitHub Copilot connected."}

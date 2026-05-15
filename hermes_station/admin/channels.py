@@ -81,9 +81,7 @@ def channel_status(env_values: dict[str, str]) -> list[dict[str, Any]]:
             enabled = primary.lower() in _WHATSAPP_ON
         else:
             disabled_flag = (
-                env_values.get(disable_key, "").strip().lower() in _WHATSAPP_ON
-                if disable_key
-                else False
+                env_values.get(disable_key, "").strip().lower() in _WHATSAPP_ON if disable_key else False
             )
             enabled = bool(primary) and not disabled_flag
         out.append(

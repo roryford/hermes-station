@@ -130,9 +130,7 @@ def test_unknown_provider_marked_not_ready(fake_paths: Paths) -> None:
     assert "unknown provider" in row.reason
 
 
-def test_placeholder_token_is_not_a_credential(
-    fake_paths: Paths, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_placeholder_token_is_not_a_credential(fake_paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     config = {"model": {"provider": "anthropic"}}
     rd = validate_readiness(fake_paths, config, {"ANTHROPIC_API_KEY": "changeme"})
@@ -142,6 +140,7 @@ def test_placeholder_token_is_not_a_credential(
 # ---------------------------------------------------------------------------
 # credential_source unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_credential_source_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MY_KEY", raising=False)
@@ -178,15 +177,14 @@ def test_credential_source_first_of_multiple_keys(monkeypatch: pytest.MonkeyPatc
 # source field propagation through check functions
 # ---------------------------------------------------------------------------
 
+
 def test_provider_source_env_file(fake_paths: Paths) -> None:
     config = {"model": {"provider": "anthropic"}}
     rd = validate_readiness(fake_paths, config, {"ANTHROPIC_API_KEY": "sk-x"})
     assert rd.readiness["provider:anthropic"].source == "env_file"
 
 
-def test_provider_source_absent_when_missing(
-    fake_paths: Paths, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_provider_source_absent_when_missing(fake_paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     config = {"model": {"provider": "anthropic"}}
     rd = validate_readiness(fake_paths, config, {})
@@ -211,9 +209,7 @@ def test_provider_source_absent_omitted_from_dict_when_not_intended(
     assert "source" not in d
 
 
-def test_web_search_source_process_env(
-    fake_paths: Paths, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_web_search_source_process_env(fake_paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BRAVE_API_KEY", "bv-x")
     config = {"web": {"search_backend": "brave"}}
     rd = validate_readiness(fake_paths, config, {})
@@ -236,6 +232,7 @@ def test_github_source_env_file(fake_paths: Paths) -> None:
 # model.default warning
 # ---------------------------------------------------------------------------
 
+
 def test_model_default_warning_when_provider_set_but_no_default(
     fake_paths: Paths,
     caplog: pytest.LogCaptureFixture,
@@ -257,8 +254,7 @@ def test_no_model_default_warning_when_default_set(
     with caplog.at_level(logging.WARNING, logger="hermes_station.readiness"):
         validate_readiness(fake_paths, config, {"ANTHROPIC_API_KEY": "sk-x"})
     model_default_warnings = [
-        r for r in caplog.records
-        if r.levelno >= logging.WARNING and "model.default" in r.message
+        r for r in caplog.records if r.levelno >= logging.WARNING and "model.default" in r.message
     ]
     assert not model_default_warnings
 
@@ -266,7 +262,7 @@ def test_no_model_default_warning_when_default_set(
 def test_no_model_default_warning_when_no_provider(fake_paths: Paths) -> None:
     """A bare config with no provider should not emit the model.default warning."""
     from hermes_station.readiness import validate_readiness
-    import logging
+
     # If no exception is raised and no unexpected side effects, test passes.
     rd = validate_readiness(fake_paths, {}, {})
     assert isinstance(rd, Readiness)
@@ -286,6 +282,7 @@ def test_summary_includes_platforms_and_toolsets(fake_paths: Paths) -> None:
 # ---------------------------------------------------------------------------
 # image_gen: all config shapes must be detected as intended
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "config",
