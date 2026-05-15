@@ -14,8 +14,37 @@
 CVE-2026-33811
 CVE-2026-33814
 CVE-2026-39820
+CVE-2026-39823
+CVE-2026-39825
+CVE-2026-39826
 CVE-2026-39836
 CVE-2026-42499
+# github.com/in-toto/in-toto-golang bundled in gh binary; no patched gh release yet
+GHSA-pmwq-pjrm-6p5r
+
+# ── @modelcontextprotocol/sdk in MCP npm cache ───────────────────────────────
+# server-github 2025.4.8 is the current latest; the sdk CVEs require the MCP
+# team to release a new server version. Accepted until a patched release ships.
+CVE-2025-66414
+CVE-2026-0621
+
+# ── System npm packages (Node.js bundled npm deps) ───────────────────────────
+# picomatch, ip-address, brace-expansion are transitive deps of npm itself.
+# Fixing requires a Node.js version that ships updated bundled npm deps — not
+# something we control. Risk: npm-internal tooling only, not user-facing code.
+CVE-2026-33671
+CVE-2026-33672
+CVE-2026-42338
+CVE-2026-33750
+
+# ── pip CVEs ─────────────────────────────────────────────────────────────────
+# pip is installed by the uv base image. These CVEs affect pip's download/install
+# behavior — not exploitable in our read-only production image where pip is not
+# invoked at runtime (uv handles all installs at build time).
+CVE-2025-8869
+CVE-2026-6357
+CVE-2026-3219
+CVE-2026-1703
 
 # ── Long-standing Debian bookworm CVEs with no backport ──────────────────────
 # These have been open in Debian bookworm for 2+ years with no security

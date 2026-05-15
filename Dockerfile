@@ -119,6 +119,9 @@ RUN set -eux; \
     # then `uvx --from mcp-server-fetch==X` and uv reuses the installed env.
     uv tool install "mcp-server-fetch==${MCP_SERVER_FETCH_VERSION}"; \
     chmod -R a+rX /opt/mcp-cache; \
+    # Clear the default uv cache that leaked to /root/.cache during tool installs.
+    # All persistent MCP caches live under /opt/mcp-cache (UV_CACHE_DIR above).
+    rm -rf /root/.cache/uv; \
     echo "MCP cache warmed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
 
 # Copy the real source last. At runtime `python -m hermes_station` runs from
