@@ -33,9 +33,7 @@ jobs:
         run: .venv/bin/ruff format --check hermes_station tests
 
       - name: mypy
-        run: |
-          uv pip install mypy
-          .venv/bin/mypy hermes_station --ignore-missing-imports
+        run: .venv/bin/mypy hermes_station --ignore-missing-imports
 
       - name: pytest
         run: .venv/bin/pytest -q

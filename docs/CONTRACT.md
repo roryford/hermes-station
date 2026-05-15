@@ -218,16 +218,16 @@ Stable keys that hermes-station must preserve (covered by `tests/test_compat.py`
     "workspace_dir": "/data/workspace"
   },
   "model": {"provider": "...", "default": "...", "base_url": "..."},
-  "channels": [{"slug": "telegram", "enabled": true, ...}, ...],
-  "env_masked": {"ANTHROPIC_API_KEY": "sk-a…ke", ...},
-  "provider_catalog": [...],
-  "autostart": true,
-  "webui": {"running": true, "healthy": true, "log_tail": [...], ...},
-  "gateway": {"running": true, "healthy": true, "log_tail": [...], ...}
+  "env_keys_present": true,
+  "autostart_mode": "auto",
+  "auth": {"enabled": true, "authenticated": true},
+  "webui": {"running": true, "healthy": true},
+  "gateway": {"running": true, "healthy": true, "state": "running"},
+  "phase": "1"
 }
 ```
 
-In hermes-station, `log_tail` should source from the real log stream (Railway logs / stdout buffer) rather than the in-memory `deque` used today, but the response shape stays the same so the admin UI keeps working unchanged during the rebuild.
+Channel status and provider catalog are available via the dedicated `/admin/api/channels` endpoint.
 
 ---
 

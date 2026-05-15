@@ -10,7 +10,7 @@ hermes-station reads the following from the process environment. Anything not se
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `HERMES_ADMIN_PASSWORD` | _unset_ | Password for `/admin`. **No default — if unset, the admin UI is open.** Set this before exposing a public deployment. |
+| `HERMES_ADMIN_PASSWORD` | _unset_ | Password for `/admin`. Falls back to `HERMES_WEBUI_PASSWORD` if that is set; if both are unset, `/admin` is open. Set this before exposing a public deployment. |
 | `HERMES_WEBUI_PASSWORD` | _unset_ | Password for the WebUI at `/`. Same hardening note as above. |
 | `HERMES_ADMIN_SESSION_TTL` | `86400` | Admin session lifetime in seconds. |
 
