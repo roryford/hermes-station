@@ -45,6 +45,53 @@ curl http://127.0.0.1:8787/health
 
 Apple `container` and `docker` are both supported (commands are compatible enough for the build/run flow used here).
 
+## Running it yourself
+
+hermes-station is **warn-and-continue on first boot**: the container starts on an empty `/data` with zero secrets, `/health` reports `degraded`, and the admin UI walks you through configuration. Nothing is required to get a running process.
+
+### What you can configure
+
+The first two things to set for any non-local deployment are `HERMES_ADMIN_PASSWORD` and `HERMES_WEBUI_PASSWORD` — without them, both UIs are open. After that, capabilities (LLM providers, Discord, web search, image gen, etc.) unlock as you add the corresponding secrets.
+
+See [`docs/configuration.md`](docs/configuration.md) for the full env-var reference, the first-boot config seeding behavior, and the warn-and-continue capability model. A minimal starter `config.yaml` lives at [`docs/config.example.yaml`](docs/config.example.yaml).
+
+### Checking status
+
+Three health endpoints, intended for different consumers:
+
+- `GET /health/live` — process is alive. Cheap; suitable for orchestrator **liveness** probes.
+- `GET /health/ready` — composite ready check. Returns `503` when degraded; suitable for orchestrator **readiness** probes.
+- `GET /health` — full JSON, **always 200**. The body's `status` field carries the verdict (`ok` / `degraded` / `down`) so dashboards can read it without treating non-2xx as fatal.
+
+Example `/health` body on a fresh boot with only `HERMES_ADMIN_PASSWORD` set:
+
+```json
+{
+  "status": "degraded",
+  "ts": "2026-05-15T12:34:56Z",
+  "readiness": {
+    "webui":      {"ready": true},
+    "gateway":    {"ready": true},
+    "openrouter": {"ready": false, "reason": "OPENROUTER_API_KEY not set"},
+    "discord":    {"ready": false, "reason": "DISCORD_BOT_TOKEN not set"}
+  }
+}
+```
+
+A capability listed in `config.yaml` but missing its secret shows up as `ready: false` with a `reason`; the container does **not** exit.
+
+### Structured logs
+
+Stdout is JSON, one object per line, with `ts`, `level`, `component`, `event`, `message`, and contextual extras. Pipe to `jq` for filtering:
+
+```bash
+# Readiness checks only
+container logs hermes-station | jq 'select(.component=="readiness")'
+
+# Just warnings and errors
+container logs hermes-station | jq 'select(.level=="warning" or .level=="error")'
+```
+
 ## License
 
 MIT — see `LICENSE`. The pinned upstreams (`hermes-agent`, `hermes-webui`) are also MIT.

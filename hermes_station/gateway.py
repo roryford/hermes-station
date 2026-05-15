@@ -74,6 +74,62 @@ class Gateway:
     def is_healthy(self) -> bool:
         return self.is_running() and self.gateway_state == "running"
 
+    def snapshot(self) -> dict[str, Any]:
+        """Live, cheap snapshot of gateway state for /health.
+
+        Reads gateway_state.json once and derives:
+          - state: the gateway lifecycle value (running, stopped, ...)
+          - platform: best-effort string from the state file (or None)
+          - connection: connected | disconnected | token_invalid |
+            not_configured | unknown
+          - is_running / is_healthy: same as the existing predicates
+        """
+        raw = self.read_state()
+        state: GatewayState = raw.get("gateway_state", "unknown")  # type: ignore[assignment]
+
+        # Platform: try a few common keys; fall back to None.
+        platform_value: str | None = None
+        for key in ("platform", "active_platform", "primary_platform"):
+            v = raw.get(key)
+            if isinstance(v, str) and v.strip():
+                platform_value = v.strip()
+                break
+
+        # Detect token/auth errors from a structured error field.
+        connection = "unknown"
+        error_blob = " ".join(
+            str(raw.get(k, ""))
+            for k in ("last_error", "error", "status_detail")
+        ).lower()
+        if any(
+            tok in error_blob
+            for tok in ("token", "unauthorized", "401", "auth", "credential")
+        ):
+            connection = "token_invalid"
+        elif state == "running":
+            updated_at = raw.get("updated_at")
+            if isinstance(updated_at, str) and updated_at:
+                try:
+                    ts = datetime.fromisoformat(updated_at)
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    age = (datetime.now(timezone.utc) - ts).total_seconds()
+                    connection = "connected" if age < 120 else "disconnected"
+                except ValueError:
+                    connection = "disconnected"
+            else:
+                connection = "disconnected"
+        elif state in {"unknown", "stopped"}:
+            connection = "not_configured"
+
+        return {
+            "state": state,
+            "platform": platform_value,
+            "connection": connection,
+            "is_running": self.is_running(),
+            "is_healthy": self.is_healthy(),
+        }
+
     async def start(self) -> None:
         if self.is_running() or (self._supervisor_task and not self._supervisor_task.done()):
             return

@@ -229,4 +229,8 @@ async def test_health_is_always_open(fake_data_dir: Path) -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")
         assert response.status_code == 200
-        assert response.text == "ok"
+        # /health is now a structured payload (see hermes_station/health.py);
+        # the auth-bypass contract is preserved — anonymous GET still 200s.
+        body = response.json()
+        assert body["status"] in {"ok", "degraded", "down"}
+        assert "components" in body

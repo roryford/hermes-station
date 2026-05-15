@@ -16,10 +16,16 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 
 REQUIRE = os.environ.get("HERMES_STATION_REQUIRE_TOOLBELT") == "1"
+
+# procps (ps/pgrep/pkill) on Linux supports GNU `--version`; macOS ships
+# BSD variants that don't. The container is Linux, so the meaningful
+# coverage is in-image; skip these three on darwin hosts.
+_PROCPS_BINS = {"ps", "pgrep", "pkill"}
 
 # (binary, args-that-print-version-and-exit-0)
 # Some tools (ripgrep, fd, tesseract, yq) accept --version; others need
@@ -35,11 +41,27 @@ TOOLBELT: list[tuple[str, list[str]]] = [
     ("sqlite3", ["--version"]),
     ("pdftotext", ["-v"]),  # poppler-utils; writes to stderr, exits 0
     ("yq", ["--version"]),
+    # operator-diagnostics toolbelt — added for the shareable image so
+    # agents can introspect processes, manage subprocess sessions, page
+    # long output, browse the workspace tree, and move archives around.
+    ("ps", ["--version"]),
+    ("pgrep", ["--version"]),
+    ("pkill", ["--version"]),
+    ("tmux", ["-V"]),
+    ("less", ["--version"]),
+    ("tree", ["--version"]),
+    ("unzip", ["-v"]),
+    ("zip", ["--version"]),
+    ("rsync", ["--version"]),
 ]
 
 
 @pytest.mark.parametrize(("binary", "args"), TOOLBELT, ids=[b for b, _ in TOOLBELT])
 def test_toolbelt_binary_on_path_and_runnable(binary: str, args: list[str]) -> None:
+    if binary in _PROCPS_BINS and sys.platform == "darwin" and not REQUIRE:
+        pytest.skip(
+            f"{binary!r} on macOS is BSD (no --version flag); container is Linux/procps"
+        )
     path = shutil.which(binary)
     if path is None:
         msg = f"{binary!r} not on PATH"

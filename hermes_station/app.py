@@ -16,7 +16,6 @@ from pathlib import Path
 
 import httpx
 from starlette.applications import Starlette
-from starlette.responses import PlainTextResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -35,8 +34,10 @@ from hermes_station.config import (
     write_yaml_config,
 )
 from hermes_station.gateway import Gateway, should_autostart
+from hermes_station.health import routes as health_routes
 from hermes_station.logs import attach_station_handler
 from hermes_station.proxy import proxy_to_webui
+from hermes_station.readiness import validate_readiness
 from hermes_station.webui import WebUIProcess
 
 logger = logging.getLogger("hermes_station.app")
@@ -85,6 +86,15 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         # The gateway runs in-process and reads os.environ directly — seed here
         # so provider credentials stored via the admin UI override Railway env vars.
         seed_env_file_to_os(paths.env_path)
+        # Boot validator: reconcile intended vs actual readiness. The result
+        # is cached on app.state for /health to consume; we never abort on
+        # missing capability — image is publicly shareable, default posture
+        # is warn-and-continue.
+        try:
+            app.state.readiness = validate_readiness(paths, config, env_values)
+        except Exception:  # noqa: BLE001
+            logger.exception("readiness validation raised; continuing")
+            app.state.readiness = None
         if should_autostart(
             mode=settings.gateway_autostart, config=config, env_values=env_values
         ):
@@ -112,6 +122,7 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         except Exception:  # noqa: BLE001
             logger.exception("hermes-webui startup raised; supervisor will keep trying")
     else:
+        webui.mark_disabled()
         logger.warning(
             "hermes-webui source not found at %s; subprocess will not start", paths.webui_src
         )
@@ -128,10 +139,6 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
             await app.state.proxy_client.aclose()
 
 
-async def health(request) -> PlainTextResponse:  # noqa: ARG001
-    return PlainTextResponse("ok")
-
-
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 
 
@@ -141,7 +148,7 @@ def create_app() -> Starlette:
     base_dir = Path(__file__).resolve().parent
 
     routes = [
-        Route("/health", health),
+        *health_routes(),
         *dashboard_routes(),
         *settings_routes(),
         *logs_routes(),
@@ -165,6 +172,9 @@ def create_app() -> Starlette:
         config_path=paths.config_path,
     )
     app.state.gateway = Gateway(hermes_home=paths.hermes_home)
+    # Filled in by lifespan after config load. Set a default so /health
+    # responds gracefully if a probe lands before lifespan completes.
+    app.state.readiness = None
     return app
 
 
