@@ -54,6 +54,8 @@ _WEBUI_ENV_PASSTHROUGH = frozenset(
         "NPM_CONFIG_CACHE",
         "UV_CACHE_DIR",
         "UV_TOOL_DIR",
+        # Auth — forwarded explicitly so Railway env var is honoured when set
+        "HERMES_WEBUI_PASSWORD",
     }
 )
 
