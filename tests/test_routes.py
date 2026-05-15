@@ -130,6 +130,7 @@ async def test_json_body_returns_empty_dict_when_body_is_list(
 
 def test_admin_auth_disabled_when_no_password(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HERMES_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
     from hermes_station.admin.auth import admin_auth_enabled
 
     assert admin_auth_enabled() is False

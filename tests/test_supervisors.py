@@ -611,9 +611,11 @@ async def test_webui_is_healthy_false_when_not_running(tmp_path: Path) -> None:
     assert result is False
 
 
-async def test_webui_is_healthy_false_on_connection_error(tmp_path: Path) -> None:
-    """is_healthy() returns False when HTTP probe fails (no real server)."""
-    from unittest.mock import MagicMock
+async def test_webui_is_healthy_false_on_connection_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """is_healthy() returns False when the HTTP probe raises a connection error."""
+    from unittest.mock import AsyncMock, MagicMock
 
     proc = WebUIProcess(
         webui_src=tmp_path,
@@ -625,6 +627,11 @@ async def test_webui_is_healthy_false_on_connection_error(tmp_path: Path) -> Non
     mock_process = MagicMock()
     mock_process.returncode = None
     proc.process = mock_process
+
+    async def _raise(*_a: object, **_kw: object) -> None:
+        raise httpx.ConnectError("mocked: nothing listening")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", AsyncMock(side_effect=_raise))
 
     result = await proc.is_healthy()
     assert result is False
