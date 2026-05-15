@@ -41,3 +41,19 @@ def admin_password(monkeypatch: pytest.MonkeyPatch) -> str:
     password = "test-admin-pw"
     monkeypatch.setenv("HERMES_ADMIN_PASSWORD", password)
     return password
+
+
+@pytest.fixture(autouse=True)
+def _clear_login_rate_limit() -> Iterator[None]:
+    """Reset the in-process login rate-limit counter before every test.
+
+    _login_attempts in admin/routes.py is module-level state. With random
+    test ordering (pytest-randomly), wrong-password tests from different
+    files accumulate against the same 'unknown' client IP and exhaust the
+    10-per-60s limit before legitimate login tests run, causing 429s.
+    """
+    from hermes_station.admin import routes as _routes
+
+    _routes._login_attempts.clear()
+    yield
+    _routes._login_attempts.clear()
