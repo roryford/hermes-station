@@ -180,3 +180,141 @@ async def test_webui_snapshot_disabled(tmp_path: Path) -> None:
     proc.mark_disabled()
     snap = proc.snapshot()
     assert snap["state"] == "disabled"
+
+
+# ---------------------------------------------------------------------------
+# Scheduler block unit tests
+# ---------------------------------------------------------------------------
+
+def test_scheduler_block_unknown_when_no_files(tmp_path: Path) -> None:
+    from hermes_station.health import _scheduler_block
+
+    class FakePaths:
+        hermes_home = tmp_path
+
+    block = _scheduler_block(FakePaths())
+    assert block["state"] == "unknown"
+    assert block["last_run_at"] is None
+    assert block["failed_jobs"] is None
+    assert block["job_count"] is None
+
+
+def test_scheduler_block_configured_from_cron_jobs_list(tmp_path: Path) -> None:
+    """cron/jobs.json present (list format) but no state file → state=configured."""
+    import json
+
+    from hermes_station.health import _scheduler_block
+
+    cron_dir = tmp_path / "cron"
+    cron_dir.mkdir()
+    (cron_dir / "jobs.json").write_text(
+        json.dumps([{"id": "job1"}, {"id": "job2"}, {"id": "job3"}])
+    )
+
+    class FakePaths:
+        hermes_home = tmp_path
+
+    block = _scheduler_block(FakePaths())
+    assert block["state"] == "configured"
+    assert block["job_count"] == 3
+    assert block["last_run_at"] is None
+
+
+def test_scheduler_block_configured_from_cron_jobs_dict(tmp_path: Path) -> None:
+    """cron/jobs.json in dict format (keyed by job id) → job_count is len of dict."""
+    import json
+
+    from hermes_station.health import _scheduler_block
+
+    cron_dir = tmp_path / "cron"
+    cron_dir.mkdir()
+    (cron_dir / "jobs.json").write_text(json.dumps({"daily": {}, "hourly": {}}))
+
+    class FakePaths:
+        hermes_home = tmp_path
+
+    block = _scheduler_block(FakePaths())
+    assert block["state"] == "configured"
+    assert block["job_count"] == 2
+
+
+def test_scheduler_block_ready_from_state_file(tmp_path: Path) -> None:
+    """scheduler_state.json present but no cron/jobs.json → state=ready."""
+    import json
+
+    from hermes_station.health import _scheduler_block
+
+    (tmp_path / "scheduler_state.json").write_text(
+        json.dumps({"last_run_at": "2026-05-15T10:00:00+00:00", "failed_jobs": 0})
+    )
+
+    class FakePaths:
+        hermes_home = tmp_path
+
+    block = _scheduler_block(FakePaths())
+    assert block["state"] == "ready"
+    assert block["last_run_at"] == "2026-05-15T10:00:00+00:00"
+    assert block["failed_jobs"] == 0
+    assert block["job_count"] is None
+
+
+def test_scheduler_block_ready_with_both_files(tmp_path: Path) -> None:
+    """Both files present → state=ready (state file wins) and job_count set."""
+    import json
+
+    from hermes_station.health import _scheduler_block
+
+    cron_dir = tmp_path / "cron"
+    cron_dir.mkdir()
+    (cron_dir / "jobs.json").write_text(json.dumps([{"id": "j1"}]))
+    (tmp_path / "scheduler_state.json").write_text(
+        json.dumps({"last_run_at": "2026-05-15T12:00:00+00:00", "failed_jobs": 1})
+    )
+
+    class FakePaths:
+        hermes_home = tmp_path
+
+    block = _scheduler_block(FakePaths())
+    assert block["state"] == "ready"
+    assert block["job_count"] == 1
+    assert block["failed_jobs"] == 1
+
+
+def test_scheduler_block_tolerates_malformed_json(tmp_path: Path) -> None:
+    """Malformed JSON in either file is swallowed; state stays unknown."""
+    from hermes_station.health import _scheduler_block
+
+    cron_dir = tmp_path / "cron"
+    cron_dir.mkdir()
+    (cron_dir / "jobs.json").write_text("not json {{{")
+    (tmp_path / "scheduler_state.json").write_text("also bad")
+
+    class FakePaths:
+        hermes_home = tmp_path
+
+    block = _scheduler_block(FakePaths())
+    assert block["state"] == "unknown"
+    assert block["job_count"] is None
+
+
+def test_scheduler_job_count_in_health_payload(fake_data_dir: Path) -> None:
+    """job_count is exposed in the /health response under components.scheduler."""
+    import json
+    import os
+
+    os.environ["HERMES_WEBUI_SRC"] = str(fake_data_dir / "no-webui")
+    from hermes_station.app import create_app
+    from hermes_station.config import Paths
+
+    paths = Paths()
+    cron_dir = paths.hermes_home / "cron"
+    cron_dir.mkdir(parents=True, exist_ok=True)
+    (cron_dir / "jobs.json").write_text(json.dumps([{"id": "test-job"}]))
+
+    app = create_app()
+    with TestClient(app) as client:
+        resp = client.get("/health")
+    assert resp.status_code == 200
+    scheduler = resp.json()["components"]["scheduler"]
+    assert scheduler["job_count"] == 1
+    assert scheduler["state"] in {"configured", "ready"}

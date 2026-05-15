@@ -144,3 +144,51 @@ def test_summary_includes_platforms_and_toolsets(fake_paths: Paths) -> None:
     assert "telegram" in rd.summary["platforms"]
     assert "image_gen" in rd.summary["toolsets"]
     assert "web" in rd.summary["toolsets"]
+
+
+# ---------------------------------------------------------------------------
+# image_gen: all config shapes must be detected as intended
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"toolsets": ["image_gen"]},
+        {"toolsets": {"image_gen": True}},
+        {"toolsets": {"image_gen": {"enabled": True}}},
+        {"fal": {"api_key": "placeholder"}},
+    ],
+    ids=["list", "dict-bool", "dict-block", "fal-block"],
+)
+def test_image_gen_intended_all_config_shapes(fake_paths: Paths, config: dict) -> None:
+    rd = validate_readiness(fake_paths, config, {})
+    assert rd.readiness["image_gen"].intended is True, f"intended=False for config {config}"
+    assert rd.readiness["image_gen"].ready is False
+    assert rd.readiness["image_gen"].reason == "missing FAL_KEY"
+
+
+def test_image_gen_not_intended_when_explicitly_disabled(fake_paths: Paths) -> None:
+    config = {"toolsets": {"image_gen": {"enabled": False}}}
+    rd = validate_readiness(fake_paths, config, {})
+    assert rd.readiness["image_gen"].intended is False
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"toolsets": ["image_gen"]},
+        {"toolsets": {"image_gen": True}},
+        {"toolsets": {"image_gen": {"enabled": True}}},
+        {"fal": {"api_key": "placeholder"}},
+    ],
+    ids=["list", "dict-bool", "dict-block", "fal-block"],
+)
+def test_summary_toolsets_consistent_with_readiness_intent(fake_paths: Paths, config: dict) -> None:
+    """summary.toolsets must include image_gen iff readiness.image_gen.intended is True."""
+    rd = validate_readiness(fake_paths, config, {})
+    intended = rd.readiness["image_gen"].intended
+    in_summary = "image_gen" in rd.summary["toolsets"]
+    assert intended == in_summary, (
+        f"Mismatch: readiness.intended={intended} but "
+        f"'image_gen' in summary.toolsets={in_summary} for config {config}"
+    )
