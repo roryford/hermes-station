@@ -4,7 +4,7 @@
 # /health will report "degraded" (because no provider API keys are set),
 # but the container stays up and the admin UI is reachable.
 #
-# Drop this at /data/hermes/config.yaml (or wherever HERMES_CONFIG_PATH
+# Drop this at /data/.hermes/config.yaml (or wherever HERMES_CONFIG_PATH
 # points) and fill in secrets via .env / env vars — never inline.
 
 # --- Primary LLM provider ----------------------------------------------------
@@ -13,7 +13,7 @@
 # NOT here in the YAML.
 model:
   provider: openrouter
-  model: anthropic/claude-3.5-sonnet
+  default: anthropic/claude-3.5-sonnet
 
 # --- Delegation (sub-agent / tool-call) provider -----------------------------
 # Can point at the same provider as `model` or a cheaper one for tool calls.
@@ -35,7 +35,7 @@ memory:
 # Curated entries land here disabled; flip `enabled: true` once you've
 # supplied any keys they need. The admin UI manages this list for you.
 mcp_servers:
-  - name: github
+  github:
     enabled: false
     # Needs GITHUB_TOKEN or GH_TOKEN in the environment when enabled.
 

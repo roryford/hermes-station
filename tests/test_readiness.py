@@ -130,7 +130,10 @@ def test_unknown_provider_marked_not_ready(fake_paths: Paths) -> None:
     assert "unknown provider" in row.reason
 
 
-def test_placeholder_token_is_not_a_credential(fake_paths: Paths) -> None:
+def test_placeholder_token_is_not_a_credential(
+    fake_paths: Paths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     config = {"model": {"provider": "anthropic"}}
     rd = validate_readiness(fake_paths, config, {"ANTHROPIC_API_KEY": "changeme"})
     assert rd.readiness["provider:anthropic"].ready is False

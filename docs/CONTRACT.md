@@ -12,8 +12,8 @@ Held invariant across Hermes deployments.
 
 | Property | Value | Source |
 |---|---|---|
-| Container public port | `$PORT` (Railway-injected, default `8787`) | `Dockerfile` ENV, `start.sh` |
-| Public bind host | `0.0.0.0` (settable via `CONTROL_PLANE_HOST`) | `start.sh` |
+| Container public port | `$PORT` (Railway-injected, default `8787`) | `Dockerfile` ENV |
+| Public bind host | `0.0.0.0` (settable via `CONTROL_PLANE_HOST`) | `Dockerfile` ENV |
 | Healthcheck endpoint | `GET /health` → `200` | `railway.toml`, `control_plane/server.py:385` |
 | Volume mount path | `/data` (single mount, single attach) | `Dockerfile` ENV, `railway.toml` |
 | `$HOME` inside container | `/data` | `Dockerfile` ENV |
@@ -36,7 +36,6 @@ Held invariant across Hermes deployments.
 | `HERMES_GATEWAY_AUTOSTART` | no | `auto` | `auto` \| `1`/`true`/`on` \| `0`/`false`/`off` |
 | `HERMES_ADMIN_SESSION_TTL` | no | `86400` (seconds) | Admin session lifetime |
 | `CONTROL_PLANE_HOST` | no | `0.0.0.0` | Public bind host |
-| `CONTROL_PLANE_STATUS_CACHE_TTL` | no | `2.0` (seconds) | Admin status cache TTL |
 
 Channel secrets and provider keys are typically managed via `/admin` (which writes them to `$HERMES_HOME/.env`), but **any of them may also be set as Railway env vars** — `os.environ` takes precedence over the `.env` file at process boot in well-behaved Python code (hermes-agent uses `python-dotenv` style loading). This is the basis for the Option C (layered, env-wins) secrets model in hermes-station.
 

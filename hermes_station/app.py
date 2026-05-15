@@ -33,6 +33,8 @@ from hermes_station.config import (
     seed_default_mcp_servers,
     seed_default_memory_provider,
     seed_env_file_to_os,
+    seed_neutral_personality_default,
+    seed_show_cost_default,
     write_yaml_config,
 )
 from hermes_station.gateway import Gateway, should_autostart
@@ -137,18 +139,16 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
                 "HERMES_ADMIN_PASSWORD is unset — falling back to HERMES_WEBUI_PASSWORD "
                 "for admin auth. Set HERMES_ADMIN_PASSWORD to use a dedicated credential."
             )
-        # First-boot only: default-enable the holographic memory provider so
-        # fresh deployments have semantic memory active out of the box. No-op
-        # on subsequent boots (respects any existing `memory.provider` value,
-        # including the user explicitly choosing built-in only with "").
+        # First-boot only seeds (all no-clobber — any existing value wins).
         if seed_default_memory_provider(paths.config_path):
             logger.info("seeded default memory provider: holographic")
-        # First-boot only: seed the curated stdio MCP servers (default-off).
-        # No-clobber per server name — existing entries keep their config and
-        # `enabled` flag. See `MCP_SERVER_CATALOG` for the catalog.
         added_mcp = seed_default_mcp_servers(paths.config_path)
         if added_mcp:
             logger.info("seeded default MCP servers (disabled): %s", ", ".join(added_mcp))
+        if seed_neutral_personality_default(paths.config_path):
+            logger.info("seeded default personality: default")
+        if seed_show_cost_default(paths.config_path):
+            logger.info("seeded default show_cost: true")
         config = load_yaml_config(paths.config_path)
         config, norm_changes = normalize_config(config)
         if norm_changes:

@@ -21,8 +21,8 @@ hermes-station reads the following from the process environment. Anything not se
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HERMES_GATEWAY_AUTOSTART` | `auto` | `auto` / `on` / `off`. Whether the gateway boots with the container. |
-| `HERMES_HOME` | `/data/hermes` | Hermes runtime home. |
-| `HERMES_CONFIG_PATH` | `/data/hermes/config.yaml` | Path to the active config file. |
+| `HERMES_HOME` | `/data/.hermes` | Hermes runtime home. |
+| `HERMES_CONFIG_PATH` | `/data/.hermes/config.yaml` | Path to the active config file. |
 | `HERMES_WEBUI_STATE_DIR` | `/data/webui` | WebUI per-user state. |
 | `HERMES_WORKSPACE_DIR` | `/data/workspace` | Agent workspace root. |
 | `HERMES_WEBUI_SRC` | _baked into image_ | Override path to a WebUI checkout (dev only). |
