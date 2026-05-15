@@ -610,8 +610,17 @@ async def test_webui_is_healthy_false_when_not_running(tmp_path: Path) -> None:
 async def test_webui_is_healthy_false_on_connection_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """is_healthy() returns False when the HTTP probe raises a connection error."""
-    from unittest.mock import AsyncMock, MagicMock
+    """is_healthy() returns False when the HTTP probe can't connect.
+
+    We redirect the health probe to a port that is guaranteed to be closed
+    rather than mocking httpx.AsyncClient — class-level httpx mocks are
+    unreliable when a real server is running on the default port (e.g. in
+    the container self-test), because the mock can be bypassed by an
+    already-open connection pool.
+    """
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(WebUIProcess, "INTERNAL_PORT", 19999)
 
     proc = WebUIProcess(
         webui_src=tmp_path,
@@ -623,11 +632,6 @@ async def test_webui_is_healthy_false_on_connection_error(
     mock_process = MagicMock()
     mock_process.returncode = None
     proc.process = mock_process
-
-    async def _raise(*_a: object, **_kw: object) -> None:
-        raise httpx.ConnectError("mocked: nothing listening")
-
-    monkeypatch.setattr(httpx.AsyncClient, "get", AsyncMock(side_effect=_raise))
 
     result = await proc.is_healthy()
     assert result is False

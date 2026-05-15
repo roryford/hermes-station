@@ -21,15 +21,19 @@ uv run pytest -q
 
 # 2. Build for the host arch — Apple `container` lacks qemu so it can only run native.
 # CI builds + runs linux/amd64 (matches Railway), so the Railway-parity check happens there.
-# Build both stages; `test` extends `runtime` so layers are shared.
+# Tag images by commit SHA so stale images from previous runs can never be confused
+# for the current build — a static tag like :dx-test silently reuses whatever was
+# last built, which caused phantom test failures during bisection.
+REV="$(git rev-parse HEAD)"
+SHORT_REV="$(git rev-parse --short HEAD)"
 "$RUNTIME" build \
   --target runtime \
-  --build-arg IMAGE_REVISION="$(git rev-parse HEAD)" \
-  -t hermes-station:dx-verify .
+  --build-arg IMAGE_REVISION="$REV" \
+  -t "hermes-station:dx-verify-${SHORT_REV}" .
 "$RUNTIME" build \
   --target test \
-  --build-arg IMAGE_REVISION="$(git rev-parse HEAD)" \
-  -t hermes-station:dx-test .
+  --build-arg IMAGE_REVISION="$REV" \
+  -t "hermes-station:dx-test-${SHORT_REV}" .
 
 # 3. Boot the TEST stage image as a server — this single container runs the
 # full test suite (unit + toolbelt + e2e) in step 7 via `exec`.
@@ -42,7 +46,7 @@ DATA=$(mktemp -d)
   -e HERMES_WEBUI_PASSWORD="$E2E_PW" \
   -e OPENROUTER_API_KEY=sk-or-v1-VERIFY \
   -v "$DATA:/data" \
-  hermes-station:dx-test \
+  "hermes-station:dx-test-${SHORT_REV}" \
   python -m hermes_station
 
 trap '"$RUNTIME" rm -f hs-dx >/dev/null 2>&1; rm -rf "$DATA"' EXIT
@@ -54,8 +58,12 @@ for i in $(seq 1 90); do
 done
 
 # 5. Assert all DX fixes are live (from host, same as an operator would check)
+# Stale-image guard: fail immediately if the container is running old code.
+# image_revision is baked in at build time — a mismatch means `docker build`
+# wasn't run before this step, which caused phantom test failures via bisection.
+jq -e --arg rev "$REV" '.versions.image_revision == $rev' /tmp/hs-health.json \
+  || { echo "ERROR: image_revision mismatch — the container is running stale code. Rebuild first."; exit 1; }
 jq -e '.versions.hermes_webui != null and .versions.hermes_webui != ""'  /tmp/hs-health.json
-jq -e '.versions.image_revision != null and .versions.image_revision != ""' /tmp/hs-health.json
 jq -e '.readiness."provider:openrouter".intended == true'  /tmp/hs-health.json
 jq -e '.readiness."provider:openrouter".ready == true'     /tmp/hs-health.json
 jq -e '.status == "ok"'                                    /tmp/hs-health.json

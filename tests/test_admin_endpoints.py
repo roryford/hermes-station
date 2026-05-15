@@ -167,7 +167,13 @@ def test_apply_provider_setup_blank_key_reuses_existing(fake_data_dir: Path) -> 
     assert load_env_file(env_path)["ANTHROPIC_API_KEY"] == "sk-ant-original"
 
 
-def test_apply_provider_setup_blank_key_no_existing_raises(fake_data_dir: Path) -> None:
+def test_apply_provider_setup_blank_key_no_existing_raises(
+    fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Clear the env var in case a prior test's seed_env_file_to_os call leaked it
+    # into os.environ (seed_env_file_to_os writes directly to os.environ, bypassing
+    # monkeypatch cleanup, so it can persist across tests when run in random order).
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     config_path = fake_data_dir / ".hermes" / "config.yaml"
     env_path = fake_data_dir / ".hermes" / ".env"
 

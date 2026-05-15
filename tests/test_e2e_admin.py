@@ -131,9 +131,14 @@ def test_clear_channel_unknown_slug_shows_error(admin_client: httpx.Client) -> N
 
 def test_blank_save_preserves_existing_token(admin_client: httpx.Client) -> None:
     """Blank form submission must NOT delete stored tokens (regression for blank-preserve bug)."""
-    # Seed
+    # Seed token
     seed = _channels_card(admin_client, TELEGRAM_BOT_TOKEN="12345:keepme")
     assert "Channels saved" in seed.text
+
+    # If a prior toggle test left TELEGRAM_DISABLED set, the token exists but shows
+    # "unconfigured" rather than "Enabled". Drive to a known enabled state.
+    if "Enabled" not in seed.text:
+        _toggle_channel(admin_client, "telegram")
 
     # Submit completely blank form — all fields absent / empty
     blank = _channels_card(admin_client)
@@ -150,6 +155,9 @@ def test_disable_toggle_returns_channels_card(admin_client: httpx.Client) -> Non
     resp = _toggle_channel(admin_client, "telegram")
     assert resp.status_code == 200
     assert "channels-card" in resp.text
+    # Restore enabled state so subsequent tests aren't left with a dangling disable flag.
+    if "Telegram disabled" in resp.text:
+        _toggle_channel(admin_client, "telegram")
 
 
 def test_disable_toggle_round_trip(admin_client: httpx.Client) -> None:

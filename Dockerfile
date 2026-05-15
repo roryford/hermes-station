@@ -152,11 +152,15 @@ LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 
 # --- test stage (not shipped to prod) ---
-# Extends runtime with dev deps + test suite so container-toolbelt tests
-# can be run inside the image where the required binaries are present.
+# Extends runtime with dev deps + test suite so the full test suite
+# (unit + toolbelt + e2e) can run inside the image via `exec`.
 FROM runtime AS test
+COPY uv.lock ./
 COPY tests/ /app/tests/
-RUN uv pip install --system ".[dev]"
+# Install pinned dev deps from the lockfile — faster than resolution and
+# deterministic. uv export reads uv.lock directly, no network needed.
+RUN uv export --only-group dev --frozen --no-hashes --no-header \
+    | uv pip install --system -r /dev/stdin
 CMD ["python", "-m", "pytest", "tests/", "-q", "--no-cov"]
 
 # --- default stage ---
