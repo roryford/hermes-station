@@ -52,19 +52,45 @@ docker run --rm -p 8787:8787 \
 
 ## Running tests
 
+### Unit suite (no container needed)
+
 ```bash
 pytest -q
 ```
 
-This runs the unit and compat test suite. No running container needed. Coverage is enforced at 85% — the run fails if it drops below that.
+All tests are hermetic — no ambient services, ports, or filesystem state required. Coverage is enforced at 85%.
 
-**Compat test** (`tests/test_compat.py`): boots a real container against fixture data. Auto-skips if Docker/container isn't available in the environment.
+### E2e and smoke tests (requires a running container)
 
-**Login smoke test** (`tests/test_login_smoke.py`): requires a running container. Skipped by default unless you set `HERMES_STATION_E2E_URL`:
+Boot a container first:
 
 ```bash
-HERMES_STATION_E2E_URL=http://127.0.0.1:8787 HERMES_STATION_E2E_PASSWORD=dev pytest tests/test_login_smoke.py -q
+docker run -d --name hs-local -p 8788:8787 \
+  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
+  -e HERMES_WEBUI_PASSWORD=test-admin-pw \
+  ghcr.io/roryford/hermes-station:latest
 ```
+
+Then run:
+
+```bash
+HERMES_STATION_E2E_URL=http://127.0.0.1:8788 \
+  HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+  pytest tests/test_e2e_admin.py tests/test_login_smoke.py -q
+```
+
+### Container toolbelt tests (run inside the image)
+
+These verify that required binaries (`tesseract`, `fd`, `node`, etc.) are present in the built image. They must run inside the container:
+
+```bash
+docker build --target test -t hermes-station:test .
+docker run --rm hermes-station:test pytest tests/test_container_toolbelt.py -q
+```
+
+### Full local verification
+
+`scripts/dx-verify.sh` runs all three tiers in sequence: unit tests, image build, container health checks, toolbelt tests, and e2e tests.
 
 ## Compat fixtures
 
@@ -89,7 +115,7 @@ hermes-agent and hermes-webui are pinned to exact versions in `pyproject.toml` a
 
 1. Fork the repo and create a branch: `git checkout -b my-fix`
 2. Make your changes
-3. Run `pytest -q` and `ruff check hermes_station tests` locally
+3. Run `pytest -q` and `ruff check hermes_station tests` locally (see [Running tests](#running-tests))
 4. Push your branch and open a PR against `main`
 
 ## PR checklist

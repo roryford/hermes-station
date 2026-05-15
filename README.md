@@ -90,18 +90,18 @@ Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no
     "memory:holographic": {"intended": true,  "ready": true}
   },
   "versions": {
-    "hermes_station": "0.1.1",
-    "hermes_agent":   "0.71.0",
-    "hermes_webui":   "v0.51.61",
-    "python":         "3.12.7",
+    "hermes_station": "0.1.x",
+    "hermes_agent":   "0.x.y",
+    "hermes_webui":   "v0.51.x",
+    "python":         "3.12.x",
     "image_revision": "dev"
   },
   "boot_at": "2026-05-15T12:34:56+00:00",
   "summary": {
     "image_revision": "dev",
-    "hermes_agent":   "0.71.0",
-    "hermes_webui":   "v0.51.61",
-    "python":         "3.12.7",
+    "hermes_agent":   "0.x.y",
+    "hermes_webui":   "v0.51.x",
+    "python":         "3.12.x",
     "platforms":      [],
     "toolsets":       []
   }
@@ -132,18 +132,18 @@ Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.p
     "memory:holographic":  {"intended": true,  "ready": true}
   },
   "versions": {
-    "hermes_station": "0.1.1",
-    "hermes_agent":   "0.71.0",
-    "hermes_webui":   "v0.51.61",
-    "python":         "3.12.7",
+    "hermes_station": "0.1.x",
+    "hermes_agent":   "0.x.y",
+    "hermes_webui":   "v0.51.x",
+    "python":         "3.12.x",
     "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd"
   },
   "boot_at": "2026-05-15T12:34:56+00:00",
   "summary": {
     "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd",
-    "hermes_agent":   "0.71.0",
-    "hermes_webui":   "v0.51.61",
-    "python":         "3.12.7",
+    "hermes_agent":   "0.x.y",
+    "hermes_webui":   "v0.51.x",
+    "python":         "3.12.x",
     "platforms":      [],
     "toolsets":       []
   }
