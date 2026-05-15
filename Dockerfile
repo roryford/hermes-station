@@ -158,3 +158,8 @@ FROM runtime AS test
 COPY tests/ /app/tests/
 RUN uv pip install --system ".[dev]"
 CMD ["python", "-m", "pytest", "tests/", "-q", "--no-cov"]
+
+# --- default stage ---
+# Plain `docker build .` (no --target) must produce the runtime image.
+# Railway has no dockerTarget config — it always builds the final stage.
+FROM runtime

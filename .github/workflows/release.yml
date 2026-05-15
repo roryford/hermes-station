@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write  # required for GHCR push
 
 jobs:
   release:
@@ -19,3 +20,81 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           generate_release_notes: true
+
+  publish:
+    name: build + push image to GHCR
+    runs-on: ubuntu-latest
+    needs: release
+    outputs:
+      image: ${{ steps.meta.outputs.tags && 'ghcr.io/roryford/hermes-station:latest' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: image metadata
+        id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbea8a156e6c5d9ec7f43e4a6a15 # v5.7.0
+        with:
+          images: ghcr.io/roryford/hermes-station
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: build and push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          target: runtime
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            IMAGE_REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+
+  deploy:
+    name: update Railway hermes-dx-eval → new image
+    runs-on: ubuntu-latest
+    needs: publish
+    env:
+      RAILWAY_SERVICE_ID: a74d9666-4e53-494f-9dc9-f73b608836f4
+      RAILWAY_ENVIRONMENT_ID: ddbd4898-55eb-4e67-b993-b170644b0931
+      IMAGE: ghcr.io/roryford/hermes-station:${{ github.ref_name }}
+    steps:
+      - name: point service at new image
+        run: |
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"mutation Update(\$svc: String!, \$env: String!, \$in: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$svc, environmentId: \$env, input: \$in) }\",
+              \"variables\": {
+                \"svc\": \"$RAILWAY_SERVICE_ID\",
+                \"env\": \"$RAILWAY_ENVIRONMENT_ID\",
+                \"in\": { \"source\": { \"image\": \"$IMAGE\" } }
+              }
+            }"
+
+      - name: trigger redeploy
+        run: |
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"mutation Redeploy(\$svc: String!, \$env: String!) { serviceInstanceRedeploy(serviceId: \$svc, environmentId: \$env) }\",
+              \"variables\": {
+                \"svc\": \"$RAILWAY_SERVICE_ID\",
+                \"env\": \"$RAILWAY_ENVIRONMENT_ID\"
+              }
+            }"
