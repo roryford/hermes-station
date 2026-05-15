@@ -61,6 +61,35 @@ Seeding is **no-clobber**: any value already present in `config.yaml` wins. Re-r
 
 A minimal annotated starter that boots cleanly with zero secrets (degraded but running) is at [`config.example.yaml`](config.example.yaml).
 
+### Provider auto-seed
+
+If you set one of the provider env vars below at first boot, hermes-station writes a matching `model:` block to `config.yaml` automatically — no manual `/admin/settings` step required. The seeder is implemented as `seed_provider_from_env` in `hermes_station/config.py`; the spec is pinned by [`tests/test_config_seed_provider.py`](../tests/test_config_seed_provider.py).
+
+| Env var               | Seeded `model.provider` | Default `model.name`            |
+| --------------------- | ----------------------- | ------------------------------- |
+| `OPENROUTER_API_KEY`  | `openrouter`            | `anthropic/claude-sonnet-4.5`   |
+| `ANTHROPIC_API_KEY`   | `anthropic`             | `claude-sonnet-4-5`             |
+| `OPENAI_API_KEY`      | `openai`                | `gpt-4.1`                       |
+
+Rules:
+
+- **Precedence is table order.** If multiple keys are set, the first non-empty one wins (OpenRouter first because it's the template's headline path). Empty / whitespace-only values are treated as unset.
+- **No-clobber is absolute.** If `config.yaml` has *any* `model:` block — even a partial one like `model: {name: foo}` with no `provider` — the seeder skips and logs why. Operators who edited the file get to keep their state.
+- **Always logs.** One INFO line per boot describing the outcome (seeded / skipped-because-already-set / skipped-because-no-keys / skipped-because-empty), so `railway logs` makes the chosen path obvious.
+- **Drift detection.** If `model.provider` is configured but its env var is missing *and* a different provider's key is present, a single WARNING is emitted at boot pointing the operator at `/admin/settings` to switch.
+
+## Build metadata
+
+### `IMAGE_REVISION`
+
+The Dockerfile accepts `--build-arg IMAGE_REVISION=<git-sha>`, defaulting to `${RAILWAY_GIT_COMMIT_SHA:-dev}`. The value is written to `/etc/hermes-station-build` inside the image, attached as `org.opencontainers.image.revision`, and surfaced on `/health` as `versions.image_revision` and `summary.image_revision`.
+
+Three deploy modes:
+
+- **Railway template deploy** — `RAILWAY_GIT_COMMIT_SHA` is set by the builder; the JSON template threads it into the build via the `IMAGE_REVISION` reference variable. `image_revision` ends up as a 7–40 char hex SHA.
+- **CI build** — `.github/workflows/ci.yml` passes `--build-arg IMAGE_REVISION=${{ github.sha }}` explicitly.
+- **Local `docker build .`** — neither is set, so `IMAGE_REVISION` falls through to `"dev"` and `/health` shows `image_revision: "dev"`. That's expected; pass `--build-arg IMAGE_REVISION=$(git rev-parse HEAD)` if you want the real SHA locally.
+
 ## Health surface
 
 Three endpoints (see the README for the exact JSON example):

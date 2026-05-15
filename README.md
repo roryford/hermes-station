@@ -14,6 +14,10 @@ A single Railway-deployable container that runs:
 
 Everything writes to `/data` (single Railway volume) and shares one Hermes identity across WebUI, Telegram, Discord, Slack, and other channels. See `docs/CONTRACT.md` §3 for the full filesystem layout.
 
+![Admin dashboard](docs/screenshots/admin-dashboard.png)
+
+![Admin settings](docs/screenshots/admin-settings.png)
+
 ## Volume compatibility
 
 hermes-station is engineered to accept an existing Hermes `/data` volume unchanged. The CI compat test (`tests/test_compat.py`) boots the container against a fixture `/data` snapshot and asserts the contract holds. If that test is green for a given upstream version combo, the image is a verified drop-in.
@@ -31,13 +35,14 @@ See `renovate.json5` for the schedule and `.github/workflows/ci.yml` for the gat
 
 ```bash
 # Build
-container build --tag hermes-station:local .
+docker build -t hermes-station:local .
+# (or `container build` — Apple's container CLI is a drop-in)
 
 # Run with a fresh /data
 mkdir -p /tmp/hermes-station-data
-container run --rm -d --name hermes-station -p 8787:8787 \
+docker run --rm -d --name hermes-station -p 8787:8787 \
   -e HERMES_WEBUI_PASSWORD=dev -e HERMES_ADMIN_PASSWORD=dev \
-  --mount type=bind,source=/tmp/hermes-station-data,target=/data \
+  -v /tmp/hermes-station-data:/data \
   hermes-station:local
 
 # Smoke
@@ -64,22 +69,98 @@ Three health endpoints, intended for different consumers:
 - `GET /health/ready` — composite ready check. Returns `503` when degraded; suitable for orchestrator **readiness** probes.
 - `GET /health` — full JSON, **always 200**. The body's `status` field carries the verdict (`ok` / `degraded` / `down`) so dashboards can read it without treating non-2xx as fatal.
 
-Example `/health` body on a fresh boot with only `HERMES_ADMIN_PASSWORD` set:
+Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no** `OPENROUTER_API_KEY` — the auto-seeder finds nothing to seed, so no `provider:*` row appears:
 
 ```json
 {
   "status": "degraded",
-  "ts": "2026-05-15T12:34:56Z",
+  "components": {
+    "control_plane": {"state": "ready"},
+    "webui":         {"state": "ready", "pid": 42},
+    "gateway":       {"state": "stopped"},
+    "scheduler":     {"jobs": null, "last_run_at": null},
+    "storage":       {"data_writable": true, "config_readable": true},
+    "memory":        {"provider": "holographic", "db_ok": true}
+  },
   "readiness": {
-    "webui":      {"ready": true},
-    "gateway":    {"ready": true},
-    "openrouter": {"ready": false, "reason": "OPENROUTER_API_KEY not set"},
-    "discord":    {"ready": false, "reason": "DISCORD_BOT_TOKEN not set"}
+    "discord":            {"intended": false, "ready": false},
+    "web_search":         {"intended": false, "ready": false},
+    "image_gen":          {"intended": false, "ready": false},
+    "github":             {"intended": false, "ready": false},
+    "memory:holographic": {"intended": true,  "ready": true}
+  },
+  "versions": {
+    "hermes_station": "0.1.1",
+    "hermes_agent":   "0.71.0",
+    "hermes_webui":   "v0.51.61",
+    "python":         "3.12.7",
+    "image_revision": "dev"
+  },
+  "boot_at": "2026-05-15T12:34:56+00:00",
+  "summary": {
+    "image_revision": "dev",
+    "hermes_agent":   "0.71.0",
+    "hermes_webui":   "v0.51.61",
+    "python":         "3.12.7",
+    "platforms":      [],
+    "toolsets":       []
   }
 }
 ```
 
-A capability listed in `config.yaml` but missing its secret shows up as `ready: false` with a `reason`; the container does **not** exit.
+`status: "degraded"` here is operational (the gateway is stopped pending a provider) — no readiness rows are `intended: true && ready: false`. Visit `/admin` to add a provider key, or set `OPENROUTER_API_KEY` (etc.) at boot to skip the manual step.
+
+Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.provider: openrouter` to `config.yaml` on first start, so a `provider:openrouter` readiness row appears and `status` flips to `ok`:
+
+```json
+{
+  "status": "ok",
+  "components": {
+    "control_plane": {"state": "ready"},
+    "webui":         {"state": "ready", "pid": 42},
+    "gateway":       {"state": "running"},
+    "scheduler":     {"jobs": null, "last_run_at": null},
+    "storage":       {"data_writable": true, "config_readable": true},
+    "memory":        {"provider": "holographic", "db_ok": true}
+  },
+  "readiness": {
+    "discord":             {"intended": false, "ready": false},
+    "provider:openrouter": {"intended": true,  "ready": true,  "source": "process_env"},
+    "web_search":          {"intended": false, "ready": false},
+    "image_gen":           {"intended": false, "ready": false},
+    "github":              {"intended": false, "ready": false},
+    "memory:holographic":  {"intended": true,  "ready": true}
+  },
+  "versions": {
+    "hermes_station": "0.1.1",
+    "hermes_agent":   "0.71.0",
+    "hermes_webui":   "v0.51.61",
+    "python":         "3.12.7",
+    "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd"
+  },
+  "boot_at": "2026-05-15T12:34:56+00:00",
+  "summary": {
+    "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd",
+    "hermes_agent":   "0.71.0",
+    "hermes_webui":   "v0.51.61",
+    "python":         "3.12.7",
+    "platforms":      [],
+    "toolsets":       []
+  }
+}
+```
+
+A capability listed in `config.yaml` but missing its secret shows up as `ready: false` with a `reason`; the container does **not** exit. The exact seeder behavior (precedence, default models, no-clobber) is documented in [`docs/configuration.md`](docs/configuration.md#provider-auto-seed) and pinned by [`tests/test_config_seed_provider.py`](tests/test_config_seed_provider.py).
+
+### Version visibility
+
+To see exactly which `hermes-station`, `hermes-agent`, `hermes-webui`, and image revision a deployment is running:
+
+```bash
+curl https://your-app/health | jq .versions
+```
+
+`image_revision` is the git SHA the image was built from (or `"dev"` for a local `docker build .`).
 
 ### Structured logs
 
