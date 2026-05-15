@@ -266,7 +266,6 @@ def test_no_model_default_warning_when_default_set(
 def test_no_model_default_warning_when_no_provider(fake_paths: Paths) -> None:
     """A bare config with no provider should not emit the model.default warning."""
     from hermes_station.readiness import validate_readiness
-    import logging
     # If no exception is raised and no unexpected side effects, test passes.
     rd = validate_readiness(fake_paths, {}, {})
     assert isinstance(rd, Readiness)
