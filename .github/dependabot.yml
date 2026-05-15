@@ -1,0 +1,14 @@
+# Dependabot configuration for GitHub Actions only.
+# Python and Docker dependencies are managed by Renovate.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    assignees:
+      - "roryford"

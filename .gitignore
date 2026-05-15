@@ -17,3 +17,6 @@ build/
 
 # Realistic /data fixture is sanitized locally and not committed — see tests/fixtures/README.md
 tests/fixtures/data-realistic/
+
+# Claude Code project settings (local-only; contains machine-specific paths and permissions)
+.claude/

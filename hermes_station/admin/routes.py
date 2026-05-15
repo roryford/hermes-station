@@ -38,10 +38,23 @@ logger = logging.getLogger(__name__)
 _login_attempts: dict[str, list[float]] = defaultdict(list)
 _LOGIN_MAX_ATTEMPTS = 10
 _LOGIN_WINDOW_SECONDS = 60.0
+_LOGIN_MAX_IPS = 10_000
 
 
 def _prune_login_attempts() -> None:
-    """Evict IPs whose last attempt is outside the rate-limit window."""
+    """Evict IPs outside the rate-limit window; cap total entries to prevent unbounded growth.
+
+    When the dict exceeds _LOGIN_MAX_IPS entries, the oldest (by most-recent attempt)
+    are evicted down to 75% of the cap before the time-window prune runs.
+    """
+    if len(_login_attempts) > _LOGIN_MAX_IPS:
+        target = int(_LOGIN_MAX_IPS * 0.75)
+        sorted_ips = sorted(
+            _login_attempts.keys(),
+            key=lambda ip: max(_login_attempts[ip]) if _login_attempts[ip] else 0.0,
+        )
+        for ip in sorted_ips[: len(_login_attempts) - target]:
+            _login_attempts.pop(ip, None)
     now = time.time()
     stale = [
         ip for ip, times in list(_login_attempts.items())

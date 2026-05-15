@@ -10,6 +10,10 @@ import os
 
 import httpx
 
+# Public OAuth client ID — not a secret. GitHub's device flow intentionally uses a
+# public client ID; the per-user device code is the secret. This ID matches the
+# opencode and Copilot CLI apps so the resulting gho_* token is accepted by the
+# Copilot API. Override via COPILOT_OAUTH_CLIENT_ID env var if needed.
 COPILOT_OAUTH_CLIENT_ID = os.getenv("COPILOT_OAUTH_CLIENT_ID", "Ov23li8tweQw6odWQebz")
 _SCOPE = "read:user"
 _POLL_SAFETY_MARGIN = 3  # seconds added to GitHub's requested interval

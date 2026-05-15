@@ -66,6 +66,12 @@ class _SecurityHeadersMiddleware:
                 headers.setdefault("X-Content-Type-Options", "nosniff")
                 headers.setdefault("Referrer-Policy", "no-referrer")
                 headers.setdefault("X-XSS-Protection", "0")
+                headers.setdefault(
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'self' https://unpkg.com 'unsafe-inline';"
+                    " style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+                    " connect-src 'self'; frame-ancestors 'none';",
+                )
             await send(message)
 
         await self.app(scope, receive, send_with_security_headers)

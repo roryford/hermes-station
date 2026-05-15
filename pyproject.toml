@@ -1,11 +1,15 @@
 [project]
 name = "hermes-station"
-version = "0.0.1"
-description = "Single-container deployment scaffolding for Hermes Agent + WebUI."
+version = "0.1.0"
+description = "Single-container deployment for Hermes Agent + WebUI — drop-in Railway image with an in-process control plane."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.12"
 authors = [{name = "Rory Ford", email = "me@roryford.com"}]
+
+[project.urls]
+Repository = "https://github.com/roryford/hermes-station"
+"Bug Tracker" = "https://github.com/roryford/hermes-station/issues"
 
 dependencies = [
     "starlette>=0.40",
