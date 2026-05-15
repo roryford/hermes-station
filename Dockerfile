@@ -81,11 +81,9 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 # image; the layer itself caches as long as pyproject.toml, __init__.py, and
 # HERMES_WEBUI_VERSION are unchanged.
 #
-# Railway's Metal builder requires cache mount `id` in the exact format
-# `s/<service-id>-<path>`. GHA + local Docker treat the id as opaque, so this
-# works on every builder. Service ID is for `hermes-all-in-one` in the
-# `perpetual-courtesy` project — change if redeploying under a new service.
-RUN --mount=type=cache,target=/root/.cache/uv,id=s/fc796d07-dc86-467e-8269-1b6a6472ce3b-/root/.cache/uv \
+# No explicit id= — Railway auto-generates a per-service cache key prefix,
+# BuildKit uses the target path as the implicit key on GHA and local Docker.
+RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
