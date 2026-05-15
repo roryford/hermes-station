@@ -28,7 +28,26 @@ def test_health_live_returns_200_alive(fake_data_dir: Path) -> None:
     assert resp.json() == {"status": "alive"}
 
 
-def test_health_full_returns_payload_shape(fake_data_dir: Path) -> None:
+def test_health_full_returns_payload_shape(
+    fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Patch the readiness module-level path constants so the versions block is
+    # populated in-process without writing to /etc/. Fall back to env vars if
+    # the constants are not (yet) exposed by hermes_station.readiness.
+    import hermes_station.readiness as readiness_mod
+
+    rev_file = tmp_path / "build-revision"
+    rev_file.write_text("abc1234")
+    if hasattr(readiness_mod, "_BUILD_REVISION_FILE"):
+        monkeypatch.setattr(readiness_mod, "_BUILD_REVISION_FILE", rev_file)
+    monkeypatch.setenv("HERMES_STATION_REVISION", "abc1234")
+
+    webui_file = tmp_path / "webui-version"
+    webui_file.write_text("v0.51.61")
+    if hasattr(readiness_mod, "_WEBUI_VERSION_FILE"):
+        monkeypatch.setattr(readiness_mod, "_WEBUI_VERSION_FILE", webui_file)
+    monkeypatch.setenv("HERMES_WEBUI_VERSION", "v0.51.61")
+
     app = _build_app(fake_data_dir)
     with TestClient(app) as client:
         resp = client.get("/health")
@@ -43,6 +62,8 @@ def test_health_full_returns_payload_shape(fake_data_dir: Path) -> None:
     assert "versions" in body
     assert body["versions"]["python"]
     assert body["versions"]["hermes_station"]
+    assert body["versions"]["hermes_webui"]
+    assert body["versions"]["image_revision"]
 
 
 def test_health_ready_503_when_intended_missing(fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
