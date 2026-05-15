@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file gnupg \
@@ -150,3 +150,11 @@ RUN echo "${IMAGE_REVISION}" > /etc/hermes-station-build
 LABEL org.opencontainers.image.source="https://github.com/roryford/hermes-station"
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
+
+# --- test stage (not shipped to prod) ---
+# Extends runtime with dev deps + test suite so container-toolbelt tests
+# can be run inside the image where the required binaries are present.
+FROM runtime AS test
+COPY tests/ /app/tests/
+RUN uv pip install --system ".[dev]"
+CMD ["python", "-m", "pytest", "tests/", "-q", "--no-cov"]
