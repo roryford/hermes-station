@@ -171,9 +171,7 @@ def _delegation_providers(config: dict[str, Any]) -> list[str]:
     return out
 
 
-def _check_provider(
-    provider: str, env_values: dict[str, str], *, intended: bool
-) -> CapabilityRow:
+def _check_provider(provider: str, env_values: dict[str, str], *, intended: bool) -> CapabilityRow:
     if not provider:
         return CapabilityRow(intended=False, ready=False, reason="no provider")
     if provider not in PROVIDER_CATALOG:
@@ -196,9 +194,7 @@ def _check_web_search(config: dict[str, Any], env_values: dict[str, str]) -> Cap
         return CapabilityRow(intended=False, ready=False)
     key = _WEB_SEARCH_KEYS.get(backend)
     if not key:
-        return CapabilityRow(
-            intended=True, ready=False, reason=f"unknown web search backend {backend!r}"
-        )
+        return CapabilityRow(intended=True, ready=False, reason=f"unknown web search backend {backend!r}")
     source = _credential_source(env_values, key)
     ok = source != "absent"
     return CapabilityRow(intended=True, ready=ok, reason="" if ok else f"missing {key}", source=source)
@@ -230,7 +226,9 @@ def _check_github(config: dict[str, Any], env_values: dict[str, str]) -> Capabil
     source = _credential_source(env_values, "GITHUB_TOKEN", "GH_TOKEN")
     ok = source != "absent"
     return CapabilityRow(
-        intended=True, ready=ok, reason="" if ok else "missing GITHUB_TOKEN or GH_TOKEN",
+        intended=True,
+        ready=ok,
+        reason="" if ok else "missing GITHUB_TOKEN or GH_TOKEN",
         source=source,
     )
 
@@ -247,9 +245,7 @@ def _check_memory(config: dict[str, Any], paths: Any) -> CapabilityRow:
     # being writable as readiness.
     hermes_home: Path = getattr(paths, "hermes_home", Path("/data/.hermes"))
     ok = _dir_writable(hermes_home)
-    return CapabilityRow(
-        intended=True, ready=ok, reason="" if ok else f"{hermes_home} not writable"
-    )
+    return CapabilityRow(intended=True, ready=ok, reason="" if ok else f"{hermes_home} not writable")
 
 
 def _dir_writable(path: Path) -> bool:

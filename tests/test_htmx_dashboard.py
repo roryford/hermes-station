@@ -33,9 +33,7 @@ def _build_app() -> Starlette:
     # Skip the legacy stub `admin_index` (also matches GET /admin) so the new
     # dashboard wins. Everything else (login, logout, /admin/api/*) stays.
     base_routes.extend(
-        route
-        for route in admin_routes()
-        if not (isinstance(route, Route) and route.path == "/admin")
+        route for route in admin_routes() if not (isinstance(route, Route) and route.path == "/admin")
     )
     app = Starlette(routes=base_routes)
     app.state.paths = Paths()

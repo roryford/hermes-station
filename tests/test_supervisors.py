@@ -47,19 +47,14 @@ def test_should_autostart_auto_requires_provider_and_channel(monkeypatch: pytest
     monkeypatch.delenv("GH_TOKEN", raising=False)
     # All CHANNEL_ENV_KEYS (from hermes_station.admin.channels):
     from hermes_station.admin.channels import CHANNEL_ENV_KEYS
+
     for key in CHANNEL_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
     # No provider configured
-    assert (
-        should_autostart(mode="auto", config={}, env_values={"TELEGRAM_BOT_TOKEN": "abc"})
-        is False
-    )
+    assert should_autostart(mode="auto", config={}, env_values={"TELEGRAM_BOT_TOKEN": "abc"}) is False
     # Provider set, but env var missing
     config = {"model": {"provider": "anthropic", "default": "claude-sonnet-4.6"}}
-    assert (
-        should_autostart(mode="auto", config=config, env_values={"TELEGRAM_BOT_TOKEN": "abc"})
-        is False
-    )
+    assert should_autostart(mode="auto", config=config, env_values={"TELEGRAM_BOT_TOKEN": "abc"}) is False
     # Provider configured with key but no channel
     env = {"ANTHROPIC_API_KEY": "sk-ant-xxx"}
     assert should_autostart(mode="auto", config=config, env_values=env) is False

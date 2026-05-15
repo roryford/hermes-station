@@ -161,6 +161,7 @@ def test_apply_provider_setup_blank_key_reuses_existing(fake_data_dir: Path) -> 
     )
 
     import yaml
+
     config = yaml.safe_load(config_path.read_text())
     assert config["model"]["default"] == "claude-opus-4.6"
     assert load_env_file(env_path)["ANTHROPIC_API_KEY"] == "sk-ant-original"

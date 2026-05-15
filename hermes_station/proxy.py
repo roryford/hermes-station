@@ -154,9 +154,7 @@ async def proxy_to_webui(request: Request) -> Response:
             await upstream.aclose()
 
     out_headers, set_cookies = _response_headers(upstream)
-    response = StreamingResponse(
-        _stream(), status_code=upstream.status_code, headers=out_headers
-    )
+    response = StreamingResponse(_stream(), status_code=upstream.status_code, headers=out_headers)
     # MutableHeaders.append() preserves duplicates — multiple Set-Cookie
     # headers on one response are valid and dict assignment would collapse
     # them to the last value.

@@ -164,9 +164,7 @@ def test_jsonformatter_nonserializable_extra():
         def __repr__(self) -> str:
             return "<Weird>"
 
-    rec = _make_record(
-        "hermes_station", logging.INFO, "x", extra={"obj": Weird()}
-    )
+    rec = _make_record("hermes_station", logging.INFO, "x", extra={"obj": Weird()})
     obj = json.loads(fmt.format(rec))
     assert obj["obj"] == "<Weird>"
 
@@ -224,9 +222,7 @@ def test_webui_stdout_event_filtered_from_station_buffer(capsys):
     attach_station_handler()
     before = list(STATION_LOGS.tail(10))
     msg = "webui-subproc-stdout-line"
-    logging.getLogger("hermes_station.webui").info(
-        msg, extra={"event": "webui_stdout"}
-    )
+    logging.getLogger("hermes_station.webui").info(msg, extra={"event": "webui_stdout"})
 
     # Did NOT land in station ring buffer (filtered).
     after = list(STATION_LOGS.tail(10))

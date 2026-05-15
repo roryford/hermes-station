@@ -45,9 +45,7 @@ def test_health_full_returns_payload_shape(fake_data_dir: Path) -> None:
     assert body["versions"]["hermes_station"]
 
 
-def test_health_ready_503_when_intended_missing(
-    fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_health_ready_503_when_intended_missing(fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Seed a config that intends to use Anthropic but no key in env or .env.
     from hermes_station.config import Paths, write_yaml_config
 
@@ -190,6 +188,7 @@ async def test_webui_snapshot_disabled(tmp_path: Path) -> None:
 # Gateway failure signal passthrough tests
 # ---------------------------------------------------------------------------
 
+
 async def test_gateway_snapshot_no_failure_signals_when_absent(tmp_path: Path) -> None:
     """Failure signal keys must be absent (not None) when not in state file."""
     import json
@@ -213,11 +212,13 @@ async def test_gateway_snapshot_passes_through_failure_signals(tmp_path: Path) -
 
     state_file = tmp_path / "gateway_state.json"
     state_file.write_text(
-        json.dumps({
-            "gateway_state": "startup_failed",
-            "last_auth_failure_at": "2026-05-15T09:00:00+00:00",
-            "last_crash_at": "2026-05-15T08:55:00+00:00",
-        })
+        json.dumps(
+            {
+                "gateway_state": "startup_failed",
+                "last_auth_failure_at": "2026-05-15T09:00:00+00:00",
+                "last_crash_at": "2026-05-15T08:55:00+00:00",
+            }
+        )
     )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
@@ -229,6 +230,7 @@ async def test_gateway_snapshot_passes_through_failure_signals(tmp_path: Path) -
 # ---------------------------------------------------------------------------
 # Scheduler block unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_scheduler_block_unknown_when_no_files(tmp_path: Path) -> None:
     from hermes_station.health import _scheduler_block
@@ -252,9 +254,7 @@ def test_scheduler_block_configured_from_cron_jobs_list(tmp_path: Path) -> None:
 
     cron_dir = tmp_path / "cron"
     cron_dir.mkdir()
-    (cron_dir / "jobs.json").write_text(
-        json.dumps([{"id": "job1"}, {"id": "job2"}, {"id": "job3"}])
-    )
+    (cron_dir / "jobs.json").write_text(json.dumps([{"id": "job1"}, {"id": "job2"}, {"id": "job3"}]))
 
     class FakePaths:
         hermes_home = tmp_path

@@ -87,9 +87,7 @@ def test_seed_no_clobber_when_user_picked_built_in_only(tmp_path: Path) -> None:
 def _build_app() -> Starlette:
     base_routes: list[Route] = list(htmx_routes())
     base_routes.extend(
-        route
-        for route in admin_routes()
-        if not (isinstance(route, Route) and route.path == "/admin")
+        route for route in admin_routes() if not (isinstance(route, Route) and route.path == "/admin")
     )
     app = Starlette(routes=base_routes)
     app.state.paths = Paths()

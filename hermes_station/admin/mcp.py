@@ -65,10 +65,8 @@ def mcp_status(
         # `${X}` interpolation happens at MCP launch time — for the UI we
         # just check whether each required key is non-empty in .env or os.env.
         import os
-        needs_satisfied = all(
-            (env_values.get(key) or os.environ.get(key) or "").strip()
-            for key in needs
-        )
+
+        needs_satisfied = all((env_values.get(key) or os.environ.get(key) or "").strip() for key in needs)
         out.append(
             {
                 "name": name,

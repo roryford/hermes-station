@@ -63,6 +63,7 @@ class _SecurityHeadersMiddleware:
         async def send_with_security_headers(message: object) -> None:
             if isinstance(message, dict) and message.get("type") == "http.response.start":
                 from starlette.datastructures import MutableHeaders
+
                 headers = MutableHeaders(scope=message)
                 headers.setdefault("X-Frame-Options", "DENY")
                 headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -94,6 +95,7 @@ class _BodySizeLimitMiddleware:
                 try:
                     if int(cl_raw) > self.max_bytes:
                         from starlette.responses import Response
+
                         resp = Response("Request body too large", status_code=413)
                         await resp(scope, receive, send)
                         return
@@ -170,18 +172,14 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         except Exception:  # noqa: BLE001
             logger.exception("readiness validation raised; continuing")
             app.state.readiness = None
-        if should_autostart(
-            mode=settings.gateway_autostart, config=config, env_values=env_values
-        ):
+        if should_autostart(mode=settings.gateway_autostart, config=config, env_values=env_values):
             logger.info(
                 "autostarting gateway (mode=%s, provider configured + channel present)",
                 settings.gateway_autostart,
             )
             await gateway.start()
         else:
-            logger.info(
-                "gateway not autostarting (mode=%s)", settings.gateway_autostart
-            )
+            logger.info("gateway not autostarting (mode=%s)", settings.gateway_autostart)
     except Exception:  # noqa: BLE001
         logger.exception("gateway autostart check failed")
 
@@ -198,9 +196,7 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
             logger.exception("hermes-webui startup raised; supervisor will keep trying")
     else:
         webui.mark_disabled()
-        logger.warning(
-            "hermes-webui source not found at %s; subprocess will not start", paths.webui_src
-        )
+        logger.warning("hermes-webui source not found at %s; subprocess will not start", paths.webui_src)
 
     try:
         yield

@@ -26,14 +26,15 @@ import httpx
 from hermes_station.logs import WEBUI_LOGS
 
 _SECRET_PATTERN = _re.compile(
-    r'(?i)(password|token|api_key|secret|credential|auth)[^\S\r\n]*[=:]\s*\S+',
+    r"(?i)(password|token|api_key|secret|credential|auth)[^\S\r\n]*[=:]\s*\S+",
     _re.IGNORECASE,
 )
 
 
 def _redact_secrets(line: str) -> str:
     """Replace secret values in log lines with ***."""
-    return _SECRET_PATTERN.sub(r'\1=***', line)
+    return _SECRET_PATTERN.sub(r"\1=***", line)
+
 
 logger = logging.getLogger("hermes_station.webui")
 
@@ -41,10 +42,18 @@ logger = logging.getLogger("hermes_station.webui")
 _WEBUI_ENV_PASSTHROUGH = frozenset(
     {
         # System / runtime
-        "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM",
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TMPDIR",
+        "TERM",
         "PYTHONPATH",
         # MCP cache dirs set by the Dockerfile
-        "NPM_CONFIG_CACHE", "UV_CACHE_DIR", "UV_TOOL_DIR",
+        "NPM_CONFIG_CACHE",
+        "UV_CACHE_DIR",
+        "UV_TOOL_DIR",
     }
 )
 
@@ -102,9 +111,7 @@ class WebUIProcess:
             return
         self._stopping.clear()
         await self._spawn()
-        self._supervisor_task = asyncio.create_task(
-            self._supervise(), name="hermes-station.webui-supervisor"
-        )
+        self._supervisor_task = asyncio.create_task(self._supervise(), name="hermes-station.webui-supervisor")
 
     async def stop(self) -> None:
         self._stopping.set()
@@ -173,9 +180,7 @@ class WebUIProcess:
     def _build_env(self) -> dict[str, str]:
         # Pass only the minimum env vars hermes-webui needs.
         # Do NOT forward arbitrary secrets (API keys, admin password, bot tokens).
-        env: dict[str, str] = {
-            k: v for k, v in os.environ.items() if k in _WEBUI_ENV_PASSTHROUGH
-        }
+        env: dict[str, str] = {k: v for k, v in os.environ.items() if k in _WEBUI_ENV_PASSTHROUGH}
         if not env.get("HERMES_WEBUI_AGENT_DIR"):
             import sysconfig
 
@@ -211,9 +216,7 @@ class WebUIProcess:
             env=self._build_env(),
             cwd=str(self.webui_src),
         )
-        self._log_pump_task = asyncio.create_task(
-            self._pump_logs(), name="hermes-station.webui-log-pump"
-        )
+        self._log_pump_task = asyncio.create_task(self._pump_logs(), name="hermes-station.webui-log-pump")
 
     async def _terminate_process(self) -> None:
         if not self.process or self.process.returncode is not None:
@@ -244,9 +247,7 @@ class WebUIProcess:
             returncode = await self.process.wait()
             if self._stopping.is_set():
                 return
-            logger.warning(
-                "hermes-webui exited (rc=%s); restarting in %.1fs", returncode, backoff
-            )
+            logger.warning("hermes-webui exited (rc=%s); restarting in %.1fs", returncode, backoff)
             await asyncio.sleep(backoff)
             if self._stopping.is_set():
                 return

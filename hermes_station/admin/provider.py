@@ -133,8 +133,7 @@ def _validate_base_url(url: str) -> str:
             continue
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
             raise ValueError(
-                f"base_url resolves to a disallowed address ({ip}); "
-                "only public endpoints are accepted"
+                f"base_url resolves to a disallowed address ({ip}); only public endpoints are accepted"
             )
     return url
 
@@ -167,14 +166,9 @@ def apply_provider_setup(
         raise ValueError("model is required")
     if not api_key:
         env_values = load_env_file(env_path)
-        api_key = (
-            env_values.get(meta["env_var"], "").strip()
-            or os.environ.get(meta["env_var"], "").strip()
-        )
+        api_key = env_values.get(meta["env_var"], "").strip() or os.environ.get(meta["env_var"], "").strip()
         if not api_key:
-            raise ValueError(
-                f"No existing {meta['env_var']} found — please paste your API key."
-            )
+            raise ValueError(f"No existing {meta['env_var']} found — please paste your API key.")
 
     config = load_yaml_config(config_path)
     raw_model = config.get("model")
@@ -214,6 +208,7 @@ def _suppress_copilot_fallback_sources() -> None:
     """
     try:
         from hermes_cli.auth import suppress_credential_source
+
         suppress_credential_source("copilot", "env:GITHUB_TOKEN")
         suppress_credential_source("copilot", "env:GH_TOKEN")
     except Exception:

@@ -60,9 +60,7 @@ def test_lifespan_normalizes_string_env_passthrough_on_disk(
     assert "MY_KEY" in ep
 
 
-def test_lifespan_normalization_emits_warning(
-    fake_data_dir: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_lifespan_normalization_emits_warning(fake_data_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
     """A denormalized config must produce a WARNING log during lifespan."""
     from hermes_station.config import Paths, write_yaml_config
 
@@ -101,8 +99,7 @@ def test_lifespan_no_normalization_warning_for_clean_config(
             pass
 
     norm_warnings = [
-        r for r in caplog.records
-        if r.levelno >= logging.WARNING and "normalized" in r.message.lower()
+        r for r in caplog.records if r.levelno >= logging.WARNING and "normalized" in r.message.lower()
     ]
     assert not norm_warnings, f"Unexpected normalization warnings: {norm_warnings}"
 

@@ -28,6 +28,7 @@ class AuthState:
 
 def _signer() -> TimestampSigner:
     from hermes_station.config import Paths, load_or_create_signing_key
+
     try:
         paths = Paths()
         key = load_or_create_signing_key(paths)

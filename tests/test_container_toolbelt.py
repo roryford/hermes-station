@@ -59,9 +59,7 @@ TOOLBELT: list[tuple[str, list[str]]] = [
 @pytest.mark.parametrize(("binary", "args"), TOOLBELT, ids=[b for b, _ in TOOLBELT])
 def test_toolbelt_binary_on_path_and_runnable(binary: str, args: list[str]) -> None:
     if binary in _PROCPS_BINS and sys.platform == "darwin" and not REQUIRE:
-        pytest.skip(
-            f"{binary!r} on macOS is BSD (no --version flag); container is Linux/procps"
-        )
+        pytest.skip(f"{binary!r} on macOS is BSD (no --version flag); container is Linux/procps")
     path = shutil.which(binary)
     if path is None:
         msg = f"{binary!r} not on PATH"
@@ -76,8 +74,7 @@ def test_toolbelt_binary_on_path_and_runnable(binary: str, args: list[str]) -> N
         timeout=10,
     )
     assert proc.returncode == 0, (
-        f"{binary} {' '.join(args)} exited {proc.returncode}: "
-        f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+        f"{binary} {' '.join(args)} exited {proc.returncode}: stdout={proc.stdout!r} stderr={proc.stderr!r}"
     )
     # Some tools write version to stderr (ffmpeg, pdftotext); accept either.
     output = (proc.stdout + proc.stderr).strip()
