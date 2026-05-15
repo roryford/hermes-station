@@ -16,10 +16,16 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 
 REQUIRE = os.environ.get("HERMES_STATION_REQUIRE_TOOLBELT") == "1"
+
+# procps (ps/pgrep/pkill) on Linux supports GNU `--version`; macOS ships
+# BSD variants that don't. The container is Linux, so the meaningful
+# coverage is in-image; skip these three on darwin hosts.
+_PROCPS_BINS = {"ps", "pgrep", "pkill"}
 
 # (binary, args-that-print-version-and-exit-0)
 # Some tools (ripgrep, fd, tesseract, yq) accept --version; others need
@@ -35,11 +41,27 @@ TOOLBELT: list[tuple[str, list[str]]] = [
     ("sqlite3", ["--version"]),
     ("pdftotext", ["-v"]),  # poppler-utils; writes to stderr, exits 0
     ("yq", ["--version"]),
+    # operator-diagnostics toolbelt — added for the shareable image so
+    # agents can introspect processes, manage subprocess sessions, page
+    # long output, browse the workspace tree, and move archives around.
+    ("ps", ["--version"]),
+    ("pgrep", ["--version"]),
+    ("pkill", ["--version"]),
+    ("tmux", ["-V"]),
+    ("less", ["--version"]),
+    ("tree", ["--version"]),
+    ("unzip", ["-v"]),
+    ("zip", ["--version"]),
+    ("rsync", ["--version"]),
 ]
 
 
 @pytest.mark.parametrize(("binary", "args"), TOOLBELT, ids=[b for b, _ in TOOLBELT])
 def test_toolbelt_binary_on_path_and_runnable(binary: str, args: list[str]) -> None:
+    if binary in _PROCPS_BINS and sys.platform == "darwin" and not REQUIRE:
+        pytest.skip(
+            f"{binary!r} on macOS is BSD (no --version flag); container is Linux/procps"
+        )
     path = shutil.which(binary)
     if path is None:
         msg = f"{binary!r} not on PATH"
@@ -62,9 +84,9 @@ def test_toolbelt_binary_on_path_and_runnable(binary: str, args: list[str]) -> N
     assert output, f"{binary} produced no version output"
 
 
-def test_node_is_v20_lts() -> None:
-    """Pin guard: NodeSource repo is `node_20.x`, so node --version must
-    be v20.x. If this fails after a Dockerfile bump, that bump was unintended."""
+def test_node_is_v24() -> None:
+    """Pin guard: NodeSource repo is `node_24.x`, so node --version must
+    be v24.x. If this fails after a Dockerfile bump, that bump was unintended."""
     path = shutil.which("node")
     if path is None:
         if REQUIRE:
@@ -75,8 +97,8 @@ def test_node_is_v20_lts() -> None:
     )
     assert proc.returncode == 0
     version = proc.stdout.strip()
-    if not version.startswith("v20."):
-        msg = f"expected Node 20.x LTS, got {version!r}"
+    if not version.startswith("v24."):
+        msg = f"expected Node 24.x, got {version!r}"
         # On a dev laptop, the host's nodejs version is irrelevant — only the
         # container build matters. Fail only when REQUIRE is set (CI / in-image).
         if REQUIRE:

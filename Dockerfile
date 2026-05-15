@@ -24,6 +24,15 @@ RUN apt-get update \
          fd-find \
          sqlite3 \
          poppler-utils \
+         # operator-diagnostics toolbelt — required for a shareable image
+         # (see test_container_toolbelt.py and HERMES_CONTAINER_REQUIREMENTS §4)
+         procps \
+         tmux \
+         less \
+         tree \
+         unzip \
+         zip \
+         rsync \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 from contextlib import suppress
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -61,6 +62,11 @@ class WebUIProcess:
         self._supervisor_task: asyncio.Task[None] | None = None
         self._log_pump_task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
+        # Snapshot bookkeeping — set/cleared by wait_ready and _supervise so
+        # /health can give a cheap answer without doing an HTTP probe.
+        self._last_healthy_at: datetime | None = None
+        self._last_unhealthy_reason: str | None = None
+        self._disabled: bool = False
 
     @property
     def health_url(self) -> str:
@@ -105,11 +111,52 @@ class WebUIProcess:
         deadline = asyncio.get_event_loop().time() + (timeout or self.STARTUP_GRACE_SECONDS)
         while asyncio.get_event_loop().time() < deadline:
             if await self.is_healthy():
+                self._last_healthy_at = datetime.now(timezone.utc)
+                self._last_unhealthy_reason = None
                 return True
             if not self.is_running():
+                self._last_unhealthy_reason = "process not running"
                 return False
             await asyncio.sleep(0.5)
+        self._last_unhealthy_reason = "wait_ready timed out"
         return False
+
+    def mark_disabled(self) -> None:
+        """Called when hermes-webui source is not present and we won't spawn."""
+        self._disabled = True
+
+    def snapshot(self) -> dict[str, object]:
+        """Cheap state snapshot for /health.
+
+        Reports state from the supervisor's view — does NOT do an HTTP probe
+        (too expensive for the /health request path). Returns:
+
+            {"state": "ready|starting|down|disabled",
+             "pid": <int|None>,
+             "internal_url": str,
+             "is_running": bool}
+        """
+        if self._disabled:
+            return {
+                "state": "disabled",
+                "pid": None,
+                "internal_url": self.health_url,
+                "is_running": False,
+            }
+        running = self.is_running()
+        pid = self.process.pid if (self.process and running) else None
+        if not running:
+            state = "down"
+        elif self._last_healthy_at is not None:
+            state = "ready"
+        else:
+            state = "starting"
+        return {
+            "state": state,
+            "pid": pid,
+            "internal_url": self.health_url,
+            "is_running": running,
+        }
 
     def _build_env(self) -> dict[str, str]:
         # Pass only the minimum env vars hermes-webui needs.
@@ -193,8 +240,11 @@ class WebUIProcess:
                 return
             await self._spawn()
             if await self.wait_ready(timeout=self.STARTUP_GRACE_SECONDS):
+                self._last_healthy_at = datetime.now(timezone.utc)
+                self._last_unhealthy_reason = None
                 backoff = self.BACKOFF_BASE_SECONDS
             else:
+                self._last_unhealthy_reason = f"restart wait_ready failed (rc={returncode})"
                 backoff = min(backoff * 2, self.BACKOFF_MAX_SECONDS)
 
     async def _pump_logs(self) -> None:
@@ -204,8 +254,11 @@ class WebUIProcess:
             async for raw in self.process.stdout:
                 line = raw.decode("utf-8", errors="replace").rstrip()
                 if line:
-                    # Goes to our stdout → Railway log stream
-                    print(f"[webui] {line}", flush=True)
+                    # Route through the structured logger so each subprocess
+                    # stdout line becomes one JSON record with component=webui
+                    # on our stdout, while still landing in the admin Logs
+                    # ring buffer in plain text.
+                    logger.info(line, extra={"event": "webui_stdout"})
                     WEBUI_LOGS.append(line)
         except asyncio.CancelledError:
             raise

@@ -310,6 +310,100 @@ def seed_default_mcp_servers(
     return added
 
 
+def normalize_config(config: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Heal common config-shape drift in-place. Returns (config, changes).
+
+    Two known sources of breakage on real /data volumes:
+
+    1. `terminal.env_passthrough` written as a comma-separated string (YAML
+       scalar that should have been a list) — hermes-agent reads it as a
+       string and silently passes nothing through.
+    2. A stray top-level `env_passthrough:` key with a blank/null value,
+       the broken sibling of `terminal.env_passthrough` that older versions
+       used to write. It does nothing but clutter the file.
+
+    Idempotent: a second call on the result yields an empty changes list.
+    Does NOT seed defaults — see the `seed_*` functions for that.
+    """
+    changes: list[str] = []
+
+    terminal = config.get("terminal")
+    if isinstance(terminal, dict) and "env_passthrough" in terminal:
+        ep = terminal["env_passthrough"]
+        if isinstance(ep, str):
+            items = [item.strip() for item in ep.split(",") if item.strip()]
+            terminal["env_passthrough"] = items
+            changes.append(
+                f"coerced terminal.env_passthrough from string to list ({len(items)} entries)"
+            )
+
+    if "env_passthrough" in config:
+        value = config["env_passthrough"]
+        is_blank = value is None or (isinstance(value, (str, list, dict)) and len(value) == 0)
+        if is_blank:
+            del config["env_passthrough"]
+            changes.append("removed blank top-level env_passthrough key")
+
+    return config, changes
+
+
+def seed_neutral_personality_default(path: Path) -> bool:
+    """First-boot seed: set `display.personality: "default"` if unset.
+
+    Mirrors `seed_default_memory_provider`. A deliberate neutral value chosen
+    over the historical accidental `kawaii` default — operators expect a
+    polished, generic persona out of the box.
+
+    No-clobber per CONTRACT.md §3.3: any existing value (including "") wins.
+    Returns True iff a write happened.
+    """
+    config = load_yaml_config(path)
+    display = config.get("display")
+    if isinstance(display, dict) and "personality" in display:
+        return False
+    if not isinstance(display, dict):
+        display = {}
+    display["personality"] = "default"
+    config["display"] = display
+    write_yaml_config(path, config)
+    return True
+
+
+def seed_show_cost_default(path: Path) -> bool:
+    """First-boot seed: set `display.show_cost: True` if unset.
+
+    Operator-facing default — surfaces token/dollar spend in the UI by default
+    so accidental runaway loops are visible. No-clobber per CONTRACT.md §3.3.
+    Returns True iff a write happened.
+    """
+    config = load_yaml_config(path)
+    display = config.get("display")
+    if isinstance(display, dict) and "show_cost" in display:
+        return False
+    if not isinstance(display, dict):
+        display = {}
+    display["show_cost"] = True
+    config["display"] = display
+    write_yaml_config(path, config)
+    return True
+
+
+def apply_first_boot_seeds(path: Path) -> dict[str, bool]:
+    """Apply all first-boot seeders in sequence, returning a per-seed write map.
+
+    Pure additive helper for future consolidation — `app.py` still calls the
+    individual seeders. Each entry is True iff that seeder wrote to disk.
+    `seed_default_mcp_servers` returns a list of names; we summarize as True
+    iff any names were added.
+    """
+    results: dict[str, bool] = {}
+    results["memory_provider"] = seed_default_memory_provider(path)
+    results["mcp_servers"] = bool(seed_default_mcp_servers(path))
+    results["neutral_personality"] = seed_neutral_personality_default(path)
+    results["show_cost"] = seed_show_cost_default(path)
+    return results
+
+
 class ModelConfig(BaseModel):
     """Shape of the `model:` block in config.yaml. See CONTRACT.md §4.2."""
 
