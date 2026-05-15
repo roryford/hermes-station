@@ -20,6 +20,8 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           generate_release_notes: true
+          make_latest: true
+          overwrite: true
 
   publish:
     name: build + push image to GHCR
