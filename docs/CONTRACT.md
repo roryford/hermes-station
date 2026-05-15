@@ -14,7 +14,7 @@ Held invariant across Hermes deployments.
 |---|---|---|
 | Container public port | `$PORT` (Railway-injected, default `8787`) | `Dockerfile` ENV |
 | Public bind host | `0.0.0.0` (settable via `CONTROL_PLANE_HOST`) | `Dockerfile` ENV |
-| Healthcheck endpoint | `GET /health` → `200` | `railway.toml`, `control_plane/server.py:385` |
+| Healthcheck endpoint | `GET /health` → `200` | `railway.toml`, `hermes_station/health.py:271` |
 | Volume mount path | `/data` (single mount, single attach) | `Dockerfile` ENV, `railway.toml` |
 | `$HOME` inside container | `/data` | `Dockerfile` ENV |
 | Restart policy | `ON_FAILURE`, 10 retries | `railway.toml` |
@@ -39,7 +39,7 @@ Held invariant across Hermes deployments.
 
 Channel secrets and provider keys are typically managed via `/admin` (which writes them to `$HERMES_HOME/.env`), but **any of them may also be set as Railway env vars** — `os.environ` takes precedence over the `.env` file at process boot in well-behaved Python code (hermes-agent uses `python-dotenv` style loading). This is the basis for the Option C (layered, env-wins) secrets model in hermes-station.
 
-See `provider_catalog()` in `control_plane/config.py:336` for the supported provider env-var names.
+See `PROVIDER_CATALOG` in `hermes_station/admin/provider.py:23` for the supported provider env-var names.
 
 ### 2.2 Internal — set by the container at boot
 
@@ -122,13 +122,13 @@ On subsequent boots, existing files are **never** clobbered (`cp -rn` semantics 
 
 ### 3.4 Skill bootstrap path (changes in hermes-station)
 
-Today: `start.sh:34-39` does `cp -rn /app/vendor/hermes-agent/skills/. /data/.hermes/skills/` to seed skills on first boot, and the same for `optional-skills/`.
+Today (upstream): the old image's `start.sh` did `cp -rn /app/vendor/hermes-agent/skills/. /data/.hermes/skills/` to seed skills on first boot, and the same for `optional-skills/`.
 
 In hermes-station: since `hermes-agent` is pip-installed (no `vendor/`), the source path becomes the installed package's data dir — `importlib.resources.files("hermes_agent") / "skills"` or equivalent. Functionally identical, but the implementation differs.
 
 ### 3.5 The signing_key invariant
 
-`/data/webui/.signing_key` is a 32-byte secret used by hermes-webui to sign session cookies. **Any container restart that loses this file invalidates every logged-in browser session.** The existing `scripts/smoke.sh:119-135` already asserts this byte-stable across restart. hermes-station must keep this invariant.
+`/data/webui/.signing_key` is a 32-byte secret used by hermes-webui to sign session cookies. **Any container restart that loses this file invalidates every logged-in browser session.** The compat test (`tests/test_compat.py`) asserts this byte-stable across restart. hermes-station must keep this invariant.
 
 ---
 
@@ -145,9 +145,9 @@ TELEGRAM_ALLOWED_USERS=99999999
 TELEGRAM_BOT_TOKEN=12345:…
 ```
 
-**Reader behavior (`config.py:123-133`):** skip blank lines, skip lines starting with `#`, skip lines without `=`, strip surrounding quotes from value.
+**Reader behavior (`hermes_station/config.py:73` — `load_env_file`):** skip blank lines, skip lines starting with `#`, skip lines without `=`, strip surrounding quotes from value.
 
-**Writer behavior (`config.py:136-151`):** load current values, apply updates (key with value `None` → delete), write whole file back atomically.
+**Writer behavior (`hermes_station/config.py:156` — `write_env_file`):** load current values, apply updates (key with value `None` → delete), write whole file back atomically.
 
 ### 4.2 `$HERMES_HOME/config.yaml`
 
@@ -202,11 +202,11 @@ These routes are exposed at `/admin/api/*` and called by the admin UI. Their req
 | GET | `/admin/api/pairing/approved` | Approved users |
 | POST | `/admin/api/pairing/{approve\|deny\|revoke}` | Pairing actions |
 
-Source of truth: `control_plane/server.py:385-403`.
+Source of truth: `hermes_station/admin/routes.py`.
 
 ### 5.1 `/admin/api/status` response shape
 
-Stable keys that hermes-station must preserve (covered by `scripts/smoke.sh:103-111`):
+Stable keys that hermes-station must preserve (covered by `tests/test_compat.py`):
 
 ```json
 {
@@ -233,7 +233,7 @@ In hermes-station, `log_tail` should source from the real log stream (Railway lo
 
 ## 6. Provider catalog
 
-Defined in `control_plane/config.py:35-61`. Stable identifiers — `hermes-station` must keep these exact IDs so existing `config.yaml` files continue to validate.
+Defined in `hermes_station/admin/provider.py:23` (`PROVIDER_CATALOG`). Stable identifiers — `hermes-station` must keep these exact IDs so existing `config.yaml` files continue to validate.
 
 | ID | Label | Env var | Default model | Base URL required |
 |---|---|---|---|---|
@@ -247,7 +247,7 @@ Defined in `control_plane/config.py:35-61`. Stable identifiers — `hermes-stati
 
 ## 7. Channel catalog
 
-Defined in `control_plane/config.py:69-100`. Stable slugs.
+Defined in `hermes_station/admin/channels.py:16` (`CHANNEL_CATALOG`). Stable slugs.
 
 | Slug | Primary env var | Secondary env var |
 |---|---|---|
@@ -269,7 +269,7 @@ Controlled by `HERMES_GATEWAY_AUTOSTART`:
 - `1`/`true`/`on`: force autostart whenever config is sufficient.
 - `0`/`false`/`off`: never autostart; admin must press Start.
 
-Source: `should_autostart_gateway()` in `control_plane/config.py`. hermes-station may refactor the implementation but must preserve these three modes and the "auto" semantics, because users have set `HERMES_GATEWAY_AUTOSTART` values in Railway that we don't want to break.
+Source: `should_autostart()` in `hermes_station/gateway.py:266`. hermes-station may refactor the implementation but must preserve these three modes and the "auto" semantics, because users have set `HERMES_GATEWAY_AUTOSTART` values in Railway that we don't want to break.
 
 ---
 
@@ -281,7 +281,7 @@ Things hermes-station may change freely:
 - The proxy at `/` → `127.0.0.1:8788` — eliminated.
 - `WebUIManager` / `GatewayManager` subprocess shape — replaced with in-process asyncio tasks.
 - In-memory log `deque(maxlen=N)` — replaced with stdout streaming.
-- `scripts/patch-vendor-models.py` runtime patch — replaced with proper configuration injection.
+- `patch-vendor-models.py` runtime patch (upstream only) — replaced with proper configuration injection.
 - `cp -rn` skill seeding mechanism — same behavior, different source path (pip package data).
 - Status cache (`_status_cache`, `STATUS_CACHE_TTL`) — likely eliminated (single-user product, no concurrency concern).
 - Container base image — may switch from `bookworm-slim` to `alpine` or distroless.
