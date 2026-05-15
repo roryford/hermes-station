@@ -32,7 +32,7 @@ Held invariant across hermes-all-in-one and hermes-station.
 | `PORT` | yes (Railway-injected) | `8787` | Public listener port |
 | `HERMES_WEBUI_PASSWORD` | yes | _(empty = WebUI lockdown)_ | WebUI login |
 | `HERMES_ADMIN_PASSWORD` | no (recommended) | falls back to `HERMES_WEBUI_PASSWORD` | `/admin` login |
-| `HERMES_ADMIN_USERNAME` | no | `admin` | Currently unused (password-only auth); reserved |
+| `HERMES_ADMIN_USERNAME` | no | `admin` | Not yet implemented — single-password auth only; reserved for future use |
 | `HERMES_GATEWAY_AUTOSTART` | no | `auto` | `auto` \| `1`/`true`/`on` \| `0`/`false`/`off` |
 | `HERMES_ADMIN_SESSION_TTL` | no | `86400` (seconds) | Admin session lifetime |
 | `CONTROL_PLANE_HOST` | no | `0.0.0.0` | Public bind host |
@@ -332,10 +332,8 @@ PORT=18999
 
 ---
 
-## Open questions (resolve before promoting this doc to hermes-station)
+## Known limitations
 
-1. **`state.db` schema stability.** Confirm whether hermes-agent migrates this DB on version bumps, and what the rollback story is. If schema changes between pinned upstream versions, the rebuild needs a documented "minimum agent version" for each `/data` schema generation.
-2. **`memories/` format.** Empty in our probe — confirm with a longer-running real deployment whether this is a directory of files, a single file, or further nested.
-3. **`bin/` directory contents.** Empty in our probe — confirm what hermes-agent stages there over time (likely downloaded helpers/tools per skill).
-4. **Pairing path migration.** `config.py:350-351` references both `$HERMES_HOME/pairing/` and `$HERMES_HOME/platforms/pairing/` — upstream has been migrating this. Confirm which path the current pinned hermes-agent version writes to.
-5. **WebUI session blob format.** Whether hermes-station's `webui/sessions/` content is just opaque to us or whether we need to inspect.
+- **Opaque hermes-agent state.** The internal formats for `state.db`, `memories/`, and `bin/` are owned entirely by hermes-agent. hermes-station does not read or modify them — it preserves them verbatim across restarts. Schema migrations (if any) are hermes-agent's responsibility.
+- **Pairing directory path.** `$HERMES_HOME/pairing/` is the path tracked against the currently-pinned hermes-agent version. The compat test (`tests/test_compat.py`) catches any upstream path change before it reaches a release.
+- **WebUI session blobs.** `webui/sessions/` is treated as opaque by hermes-station; it is preserved across restarts but not inspected or modified.
