@@ -6,6 +6,14 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.12"
 authors = [{name = "Rory Ford", email = "me@roryford.com"}]
+keywords = ["railway", "self-hosted", "ai-assistant", "hermes", "docker"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [project.urls]
 Repository = "https://github.com/roryford/hermes-station"
@@ -28,7 +36,7 @@ dependencies = [
 # hermes-webui is pinned in the Dockerfile (regex manager) because it has no pyproject.toml upstream.
 # Kept as an extra so local dev / lint / unit-test cycles don't pull the full agent dep tree.
 hermes = [
-    "hermes-agent[messaging] @ git+https://github.com/NousResearch/hermes-agent.git@v2026.5.7",
+    "hermes-agent[messaging] @ git+https://github.com/NousResearch/hermes-agent.git@498bfc7bc12a937621b4215312049b1000726df3",  # v2026.5.7
 ]
 dev = [
     "pytest>=8.0",

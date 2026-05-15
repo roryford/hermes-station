@@ -13,13 +13,16 @@ A clear description of what happened and what you expected instead.
 3. 
 
 **Environment**
-- hermes-station version:
-- hermes-agent version (from `pyproject.toml`):
+- hermes-station version (image tag or from `/health`):
+- hermes-agent version (from `/health` or image build args):
 - Deployment: Railway / local Docker / Apple container
 
 **Logs**
 Relevant JSON log lines. Filter with `jq` to keep it focused:
 ```bash
+# Docker
+docker logs hermes-station | jq 'select(.level=="error" or .level=="warning")'
+# Apple container
 container logs hermes-station | jq 'select(.level=="error" or .level=="warning")'
 ```
 

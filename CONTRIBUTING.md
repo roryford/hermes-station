@@ -7,6 +7,7 @@ Requires Python 3.12+ and [uv](https://github.com/astral-sh/uv).
 ```bash
 uv venv --python 3.12
 uv pip install -e ".[dev]"
+source .venv/bin/activate
 ```
 
 This installs the control-plane dependencies and dev tools (pytest, ruff). It does **not** install hermes-agent — see below.
@@ -23,17 +24,31 @@ The container always installs it. Local unit tests do not require it — the tes
 
 ### Full container build
 
+Both Apple `container` and Docker are supported — the commands are compatible for build and run:
+
 ```bash
+# Apple container
 container build --tag hermes-station:local .
 
+# Docker
+docker build --tag hermes-station:local .
+```
+
+```bash
 mkdir -p /tmp/hs-data
+
+# Apple container
 container run --rm -p 8787:8787 \
   -e HERMES_ADMIN_PASSWORD=dev -e HERMES_WEBUI_PASSWORD=dev \
   --mount type=bind,source=/tmp/hs-data,target=/data \
   hermes-station:local
-```
 
-Apple `container` and Docker are both supported.
+# Docker
+docker run --rm -p 8787:8787 \
+  -e HERMES_ADMIN_PASSWORD=dev -e HERMES_WEBUI_PASSWORD=dev \
+  -v /tmp/hs-data:/data \
+  hermes-station:local
+```
 
 ## Running tests
 
@@ -59,15 +74,23 @@ HERMES_STATION_E2E_URL=http://127.0.0.1:8787 HERMES_STATION_E2E_PASSWORD=dev pyt
 ## Linting and formatting
 
 ```bash
-ruff check hermes_station tests   # lint
-ruff format hermes_station tests  # format
+ruff check hermes_station tests        # lint
+ruff format hermes_station tests       # format
+ruff format --check hermes_station tests  # check only (what CI runs)
 ```
 
-Both run in CI. PRs must be green on both.
+Both lint and format are enforced in CI. PRs must be green on both.
 
-## Upstream pinning
+## Upstream pinning and Renovate
 
-hermes-agent and hermes-webui are pinned to exact versions in `pyproject.toml` and `Dockerfile` respectively, and bumped weekly by Renovate. PRs that bump upstream versions run the full compat test and auto-merge on green.
+hermes-agent and hermes-webui are pinned to exact versions in `pyproject.toml` and `Dockerfile` respectively. A [Renovate](https://docs.renovatebot.com/) bot opens weekly PRs to bump them — Renovate requires a [GitHub App install](https://github.com/apps/renovate) to run on forks. If you fork this repo and want automated dependency updates, install the Renovate app and it will pick up `renovate.json5` automatically. Without it, you'll still get GitHub Actions updates via Dependabot (configured in `.github/dependabot.yml`), but Python and Docker dep bumps will need to be done manually.
+
+## PR workflow
+
+1. Fork the repo and create a branch: `git checkout -b my-fix`
+2. Make your changes
+3. Run `pytest -q` and `ruff check hermes_station tests` locally
+4. Push your branch and open a PR against `main`
 
 ## PR checklist
 

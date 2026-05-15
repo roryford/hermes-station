@@ -20,11 +20,11 @@ You can expect an acknowledgement within 3 business days and a resolution or sta
 ## Scope
 
 In-scope:
-- The hermes-station Python codebase (`hermes_station/`)
-- The Docker image and its build process (`Dockerfile`)
-- Authentication and session handling (`admin/auth.py`)
-- The HTTP proxy and header-injection surface (`proxy.py`)
-- Secret storage and file permission handling (`config.py`, `secrets.py`)
+- The hermes-station Python control plane and admin UI
+- The Docker image and its build process
+- Authentication, session handling, and cookie security
+- The HTTP proxy and header-injection surface
+- Secret storage and file permission handling
 
 Out of scope (report upstream instead):
 - Vulnerabilities in [hermes-agent](https://github.com/NousResearch/hermes-agent)

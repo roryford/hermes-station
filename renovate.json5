@@ -26,21 +26,18 @@
 
     packageRules: [
         {
-            description: "Group hermes-agent bumps",
+            description: "Group hermes-agent bumps — manual merge required (public repo, supply chain caution)",
             matchPackageNames: ["hermes-agent"],
             groupName: "hermes-agent",
             commitMessagePrefix: "chore(deps):",
-            // Auto-merge if CI is green — single-user product, low blast radius.
-            automerge: true,
-            automergeType: "pr",
+            automerge: false,
         },
         {
-            description: "Group hermes-webui bumps",
+            description: "Group hermes-webui bumps — manual merge required (public repo, supply chain caution)",
             matchPackageNames: ["nesquena/hermes-webui"],
             groupName: "hermes-webui",
             commitMessagePrefix: "chore(deps):",
-            automerge: true,
-            automergeType: "pr",
+            automerge: false,
         },
         {
             description: "Group all other deps together; require manual merge",
