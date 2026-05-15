@@ -300,3 +300,319 @@ def test_gateway_handles_malformed_state_file(tmp_path: Path) -> None:
     (tmp_path / "gateway_state.json").write_text("not json")
     gw = Gateway(hermes_home=tmp_path)
     assert gw.gateway_state == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Gateway.snapshot() unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+import json
+
+
+def test_gateway_snapshot_unknown_state(tmp_path: Path) -> None:
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["state"] == "unknown"
+    assert snap["connection"] == "not_configured"
+    assert snap["platform"] is None
+    assert snap["is_running"] is False
+    assert snap["is_healthy"] is False
+
+
+def test_gateway_snapshot_running_state_connected(tmp_path: Path) -> None:
+    from datetime import datetime, timezone
+
+    state_file = tmp_path / "gateway_state.json"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    state_file.write_text(json.dumps({
+        "gateway_state": "running",
+        "platform": "telegram",
+        "updated_at": now_iso,
+    }))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["state"] == "running"
+    assert snap["platform"] == "telegram"
+    assert snap["connection"] == "connected"
+
+
+def test_gateway_snapshot_token_invalid(tmp_path: Path) -> None:
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text(json.dumps({
+        "gateway_state": "startup_failed",
+        "last_error": "unauthorized: token invalid",
+    }))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["connection"] == "token_invalid"
+
+
+def test_gateway_snapshot_stopped_state(tmp_path: Path) -> None:
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text(json.dumps({"gateway_state": "stopped"}))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["state"] == "stopped"
+    assert snap["connection"] == "not_configured"
+
+
+def test_gateway_snapshot_failure_signals_passthrough(tmp_path: Path) -> None:
+    """Failure signal keys should pass through to the snapshot dict."""
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text(json.dumps({
+        "gateway_state": "startup_failed",
+        "last_auth_failure_at": "2026-01-01T00:00:00Z",
+        "last_crash_at": "2026-01-01T00:01:00Z",
+    }))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap.get("last_auth_failure_at") == "2026-01-01T00:00:00Z"
+    assert snap.get("last_crash_at") == "2026-01-01T00:01:00Z"
+
+
+def test_gateway_snapshot_running_stale_updated_at(tmp_path: Path) -> None:
+    """updated_at older than 120s → disconnected."""
+    from datetime import datetime, timezone, timedelta
+
+    state_file = tmp_path / "gateway_state.json"
+    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
+    state_file.write_text(json.dumps({
+        "gateway_state": "running",
+        "updated_at": old_ts,
+    }))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["connection"] == "disconnected"
+
+
+def test_gateway_snapshot_running_bad_updated_at(tmp_path: Path) -> None:
+    """Malformed updated_at → disconnected."""
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text(json.dumps({
+        "gateway_state": "running",
+        "updated_at": "not-a-timestamp",
+    }))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["connection"] == "disconnected"
+
+
+def test_gateway_snapshot_platform_keys(tmp_path: Path) -> None:
+    """active_platform / primary_platform should also be picked up."""
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text(json.dumps({
+        "gateway_state": "unknown",
+        "active_platform": "discord",
+    }))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["platform"] == "discord"
+
+
+def test_gateway_snapshot_running_no_tz_updated_at(tmp_path: Path) -> None:
+    """updated_at without timezone info should be treated as UTC."""
+    from datetime import datetime
+
+    state_file = tmp_path / "gateway_state.json"
+    naive_now = datetime.utcnow().isoformat()  # no tzinfo
+    state_file.write_text(json.dumps({
+        "gateway_state": "running",
+        "updated_at": naive_now,
+    }))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["connection"] == "connected"
+
+
+def test_gateway_read_state_fallback_on_oserror(tmp_path: Path) -> None:
+    """read_state returns unknown dict when file exists but can't be read."""
+    import stat
+
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text('{"gateway_state": "running"}')
+    try:
+        state_file.chmod(0o000)
+        gw = Gateway(hermes_home=tmp_path)
+        result = gw.read_state()
+        assert result.get("gateway_state") == "unknown"
+    finally:
+        state_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+
+# ---------------------------------------------------------------------------
+# WebUIProcess unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+def test_webui_snapshot_starting_state(tmp_path: Path) -> None:
+    """Snapshot returns 'starting' when process running but not yet healthy."""
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    mock_process = MagicMock()
+    mock_process.returncode = None
+    mock_process.pid = 12345
+    proc.process = mock_process
+    proc._last_healthy_at = None  # Not yet healthy
+
+    snap = proc.snapshot()
+    assert snap["state"] == "starting"
+    assert snap["pid"] == 12345
+    assert snap["is_running"] is True
+
+
+def test_webui_snapshot_ready_state(tmp_path: Path) -> None:
+    """Snapshot returns 'ready' when process has been healthy."""
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    mock_process = MagicMock()
+    mock_process.returncode = None
+    mock_process.pid = 12345
+    proc.process = mock_process
+    proc._last_healthy_at = datetime.now(timezone.utc)
+
+    snap = proc.snapshot()
+    assert snap["state"] == "ready"
+    assert snap["is_running"] is True
+
+
+def test_webui_build_env_includes_required_keys(tmp_path: Path) -> None:
+    """_build_env includes the minimal env keys hermes-webui needs."""
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    env = proc._build_env()
+    assert env["HERMES_WEBUI_HOST"] == proc.INTERNAL_HOST
+    assert env["HERMES_WEBUI_PORT"] == str(proc.INTERNAL_PORT)
+    assert "HERMES_HOME" in env
+    assert "HERMES_CONFIG_PATH" in env
+    assert "PYTHONUNBUFFERED" in env
+
+
+def test_webui_build_env_passes_admin_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """HERMES_ADMIN_PASSWORD is propagated as HERMES_WEBUI_PASSWORD."""
+    monkeypatch.setenv("HERMES_ADMIN_PASSWORD", "test-admin-pw")
+    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
+
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    env = proc._build_env()
+    assert env.get("HERMES_WEBUI_PASSWORD") == "test-admin-pw"
+
+
+def test_webui_build_env_no_secret_passthrough(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ANTHROPIC_API_KEY and HERMES_ADMIN_PASSWORD must NOT pass through directly."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    monkeypatch.setenv("HERMES_ADMIN_PASSWORD", "my-password")
+
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    env = proc._build_env()
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "HERMES_ADMIN_PASSWORD" not in env
+
+
+def test_webui_build_env_no_admin_password_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """_build_env when HERMES_ADMIN_PASSWORD is not set does not add HERMES_WEBUI_PASSWORD."""
+    monkeypatch.delenv("HERMES_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
+
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    env = proc._build_env()
+    assert "HERMES_WEBUI_PASSWORD" not in env
+
+
+async def test_webui_is_healthy_false_when_not_running(tmp_path: Path) -> None:
+    """is_healthy() returns False when process is not running."""
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    result = await proc.is_healthy()
+    assert result is False
+
+
+async def test_webui_is_healthy_false_on_connection_error(tmp_path: Path) -> None:
+    """is_healthy() returns False when HTTP probe fails (no real server)."""
+    from unittest.mock import MagicMock
+
+    proc = WebUIProcess(
+        webui_src=tmp_path,
+        hermes_home=tmp_path / "hermes",
+        webui_state_dir=tmp_path / "webui",
+        workspace_dir=tmp_path / "workspace",
+        config_path=tmp_path / "hermes" / "config.yaml",
+    )
+    mock_process = MagicMock()
+    mock_process.returncode = None
+    proc.process = mock_process
+
+    result = await proc.is_healthy()
+    assert result is False
+
+
+# ---------------------------------------------------------------------------
+# webui._redact_secrets unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+def test_redact_secrets_replaces_api_key() -> None:
+    from hermes_station.webui import _redact_secrets
+
+    result = _redact_secrets("ANTHROPIC_API_KEY=sk-ant-abc123")
+    assert "sk-ant-abc123" not in result
+    assert "***" in result
+
+
+def test_redact_secrets_replaces_password() -> None:
+    from hermes_station.webui import _redact_secrets
+
+    result = _redact_secrets("password: supersecret123")
+    assert "supersecret123" not in result
+    assert "***" in result
+
+
+def test_redact_secrets_passes_through_safe_lines() -> None:
+    from hermes_station.webui import _redact_secrets
+
+    safe = "INFO: Server started on port 8788"
+    assert _redact_secrets(safe) == safe

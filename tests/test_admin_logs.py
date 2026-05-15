@@ -125,3 +125,38 @@ async def test_logs_fragment_unauth_returns_401(fake_data_dir: Path, admin_passw
 def test_buffers_registry_has_three_sources() -> None:
     assert set(BUFFERS.keys()) == {"station", "gateway", "webui"}
     assert BUFFERS["station"] is STATION_LOGS
+
+
+# ---------------------------------------------------------------------------
+# _parse_limit helper unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_limit_default_when_none() -> None:
+    from hermes_station.admin.htmx_logs import _parse_limit
+
+    assert _parse_limit(None) == 200
+
+
+def test_parse_limit_default_when_invalid() -> None:
+    from hermes_station.admin.htmx_logs import _parse_limit
+
+    assert _parse_limit("abc") == 200
+
+
+def test_parse_limit_clamped_to_max() -> None:
+    from hermes_station.admin.htmx_logs import _parse_limit
+
+    assert _parse_limit("9999") == 500
+
+
+def test_parse_limit_clamped_to_min() -> None:
+    from hermes_station.admin.htmx_logs import _parse_limit
+
+    assert _parse_limit("-5") == 1
+
+
+def test_parse_limit_normal() -> None:
+    from hermes_station.admin.htmx_logs import _parse_limit
+
+    assert _parse_limit("50") == 50

@@ -3,12 +3,28 @@
 from __future__ import annotations
 
 import logging
+import stat
 from pathlib import Path
 
 import pytest
 
 from hermes_station.config import Paths
-from hermes_station.readiness import Readiness, validate_readiness, _credential_source
+from hermes_station.readiness import (
+    CapabilityRow,
+    Readiness,
+    _channel_intended,
+    _configured_platforms,
+    _credential_source,
+    _delegation_providers,
+    _dir_writable,
+    _enabled_toolsets,
+    _first_present,
+    _has_value,
+    _image_gen_intended,
+    _read_hermes_webui_version,
+    _read_image_revision,
+    validate_readiness,
+)
 
 
 @pytest.fixture
@@ -326,3 +342,298 @@ def test_summary_toolsets_consistent_with_readiness_intent(fake_paths: Paths, co
         f"Mismatch: readiness.intended={intended} but "
         f"'image_gen' in summary.toolsets={in_summary} for config {config}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Pure helper unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+def test_has_value_true_for_real_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("K", raising=False)
+    assert _has_value({"K": "real-key"}, "K") is True
+
+
+def test_has_value_false_for_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("K", raising=False)
+    assert _has_value({"K": "changeme"}, "K") is False
+
+
+def test_has_value_false_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("K", raising=False)
+    assert _has_value({}, "K") is False
+
+
+def test_has_value_falls_back_to_os_environ(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("K", "real-value")
+    assert _has_value({}, "K") is True
+
+
+def test_first_present_returns_first_matching(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("A", raising=False)
+    monkeypatch.delenv("B", raising=False)
+    result = _first_present({"A": "val-a", "B": "val-b"}, ("A", "B"))
+    assert result == "A"
+
+
+def test_first_present_returns_empty_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("A", raising=False)
+    monkeypatch.delenv("B", raising=False)
+    result = _first_present({}, ("A", "B"))
+    assert result == ""
+
+
+def test_channel_intended_via_messaging_block_enabled_false() -> None:
+    config = {"messaging": {"discord": {"enabled": False}}}
+    assert _channel_intended(config, "discord") is False
+
+
+def test_channel_intended_via_messaging_block_enabled_true() -> None:
+    config = {"messaging": {"discord": {"enabled": True}}}
+    assert _channel_intended(config, "discord") is True
+
+
+def test_channel_intended_via_channels_list() -> None:
+    config = {"channels": ["telegram", "discord"]}
+    assert _channel_intended(config, "telegram") is True
+    assert _channel_intended(config, "slack") is False
+
+
+def test_channel_intended_via_channels_dict() -> None:
+    config = {"channels": {"telegram": {"enabled": True}}}
+    assert _channel_intended(config, "telegram") is True
+
+
+def test_channel_intended_via_channels_dict_disabled() -> None:
+    config = {"channels": {"telegram": {"enabled": False}}}
+    assert _channel_intended(config, "telegram") is False
+
+
+def test_channel_not_intended_by_default() -> None:
+    assert _channel_intended({}, "discord") is False
+
+
+def test_delegation_providers_returns_empty_for_no_delegation() -> None:
+    assert _delegation_providers({}) == []
+
+
+def test_delegation_providers_top_level_provider() -> None:
+    config = {"delegation": {"provider": "anthropic"}}
+    result = _delegation_providers(config)
+    assert "anthropic" in result
+
+
+def test_delegation_providers_from_routes_list() -> None:
+    config = {
+        "delegation": {
+            "routes": [
+                {"provider": "openai"},
+                {"provider": "anthropic"},
+            ]
+        }
+    }
+    result = _delegation_providers(config)
+    assert "openai" in result
+    assert "anthropic" in result
+
+
+def test_delegation_providers_from_fallback_list() -> None:
+    config = {
+        "delegation": {
+            "fallback": [{"provider": "openrouter"}]
+        }
+    }
+    result = _delegation_providers(config)
+    assert "openrouter" in result
+
+
+def test_dir_writable_returns_true_for_writable_dir(tmp_path: Path) -> None:
+    assert _dir_writable(tmp_path / "subdir") is True
+
+
+def test_dir_writable_returns_false_for_non_writable(tmp_path: Path) -> None:
+    d = tmp_path / "readonly"
+    d.mkdir()
+    try:
+        d.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        assert _dir_writable(d / "probe") is False
+    finally:
+        d.chmod(stat.S_IRWXU)  # restore so pytest can clean up
+
+
+def test_read_image_revision_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HERMES_STATION_REVISION", "abc123")
+    result = _read_image_revision()
+    assert result == "abc123"
+
+
+def test_read_image_revision_returns_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HERMES_STATION_REVISION", raising=False)
+    result = _read_image_revision()
+    assert result is None
+
+
+def test_read_hermes_webui_version_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HERMES_WEBUI_VERSION", "2.0.0")
+    result = _read_hermes_webui_version()
+    assert result == "2.0.0"
+
+
+def test_read_hermes_webui_version_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HERMES_WEBUI_VERSION", raising=False)
+    result = _read_hermes_webui_version()
+    assert result is None
+
+
+def test_image_gen_intended_false_for_empty() -> None:
+    assert _image_gen_intended({}) is False
+
+
+def test_image_gen_intended_dict_false_when_disabled() -> None:
+    assert _image_gen_intended({"toolsets": {"image_gen": {"enabled": False}}}) is False
+
+
+def test_enabled_toolsets_dict_with_disabled_entry() -> None:
+    config = {"toolsets": {"image_gen": {"enabled": False}, "web": True}}
+    result = _enabled_toolsets(config)
+    assert "web" in result
+    assert "image_gen" not in result
+
+
+def test_configured_platforms_from_channels_dict() -> None:
+    config = {"channels": {"telegram": {"enabled": True}, "discord": False}}
+    result = _configured_platforms(config)
+    assert "telegram" in result
+
+
+def test_configured_platforms_from_channels_list() -> None:
+    config = {"channels": ["telegram", "slack"]}
+    result = _configured_platforms(config)
+    assert "telegram" in result
+    assert "slack" in result
+
+
+def test_configured_platforms_deduplicates(tmp_path: Path) -> None:
+    config = {
+        "messaging": {"telegram": {"enabled": True}},
+        "channels": ["telegram"],
+    }
+    result = _configured_platforms(config)
+    assert result.count("telegram") == 1
+
+
+def test_validate_readiness_with_delegation_provider(tmp_path: Path) -> None:
+    """Delegation provider should add a row to readiness."""
+    import os
+
+    os.environ.setdefault("HERMES_HOME", str(tmp_path))
+
+    class _FakePaths:
+        hermes_home = tmp_path
+
+    config = {
+        "delegation": {"provider": "anthropic"},
+        "model": {"provider": "openai"},
+    }
+    rd = validate_readiness(
+        _FakePaths(),
+        config,
+        {"ANTHROPIC_API_KEY": "sk-x", "OPENAI_API_KEY": "sk-y"},
+    )
+    assert "provider:anthropic" in rd.readiness
+    assert rd.readiness["provider:anthropic"].ready is True
+
+
+def test_readiness_as_dict_roundtrip(tmp_path: Path) -> None:
+    """Readiness.as_dict produces a serializable dict."""
+    row = CapabilityRow(intended=True, ready=False, reason="missing X", source="absent")
+    rd = Readiness(
+        readiness={"test_cap": row},
+        versions={"hermes_station": "0.1.0"},
+        boot_at="2026-01-01T00:00:00Z",
+        summary={"platforms": [], "toolsets": []},
+    )
+    d = rd.as_dict()
+    assert d["readiness"]["test_cap"]["intended"] is True
+    assert d["readiness"]["test_cap"]["ready"] is False
+    assert d["readiness"]["test_cap"]["reason"] == "missing X"
+    assert d["readiness"]["test_cap"]["source"] == "absent"
+    assert d["versions"]["hermes_station"] == "0.1.0"
+
+
+def test_capability_row_as_dict_omits_empty_fields() -> None:
+    row = CapabilityRow(intended=False, ready=False)
+    d = row.as_dict()
+    assert "reason" not in d
+    assert "source" not in d
+
+
+def test_readiness_any_intended_not_ready() -> None:
+    rd = Readiness(readiness={
+        "cap_a": CapabilityRow(intended=True, ready=False),
+        "cap_b": CapabilityRow(intended=False, ready=False),
+    })
+    assert rd.any_intended_not_ready() is True
+
+
+def test_readiness_any_intended_not_ready_false() -> None:
+    rd = Readiness(readiness={
+        "cap_a": CapabilityRow(intended=True, ready=True),
+    })
+    assert rd.any_intended_not_ready() is False
+
+
+def test_readiness_delegation_provider_already_ready_not_downgraded(tmp_path: Path) -> None:
+    """If a delegation provider row is already ready, it should not be downgraded."""
+    class _FakePaths:
+        hermes_home = tmp_path
+
+    config = {
+        "model": {"provider": "anthropic"},
+        "delegation": {"provider": "anthropic"},
+    }
+    rd = validate_readiness(
+        _FakePaths(),
+        config,
+        {"ANTHROPIC_API_KEY": "sk-real-key"},
+    )
+    assert rd.readiness["provider:anthropic"].ready is True
+
+
+def test_validate_readiness_none_config_and_env(tmp_path: Path) -> None:
+    """None config and env_values are handled gracefully."""
+    class _FakePaths:
+        hermes_home = tmp_path
+
+    rd = validate_readiness(_FakePaths(), None, None)
+    assert isinstance(rd, Readiness)
+
+
+def test_check_provider_empty_string(tmp_path: Path) -> None:
+    """Empty provider string returns not-ready row."""
+    from hermes_station.readiness import _check_provider
+
+    row = _check_provider("", {}, intended=True)
+    assert row.ready is False
+    assert "no provider" in row.reason
+
+
+def test_check_github_via_integrations_key(tmp_path: Path) -> None:
+    """GitHub intended via `integrations` key in config."""
+    class _FakePaths:
+        hermes_home = tmp_path
+
+    config = {"integrations": {"github": True}}
+    rd = validate_readiness(_FakePaths(), config, {"GITHUB_TOKEN": "ghp_x"})
+    assert rd.readiness["github"].intended is True
+    assert rd.readiness["github"].ready is True
+
+
+def test_check_github_via_github_key(tmp_path: Path) -> None:
+    """GitHub intended via top-level `github` key in config."""
+    class _FakePaths:
+        hermes_home = tmp_path
+
+    config = {"github": {"token": "placeholder"}}
+    rd = validate_readiness(_FakePaths(), config, {})
+    assert rd.readiness["github"].intended is True

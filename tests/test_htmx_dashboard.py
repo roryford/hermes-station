@@ -113,3 +113,68 @@ async def test_dashboard_shows_provider_when_configured(
         body = response.text
         assert "Anthropic" in body, "PROVIDER_CATALOG['anthropic'] label should appear"
         assert "claude-sonnet-4.6" in body
+
+
+# ---------------------------------------------------------------------------
+# Pure badge helper unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+def test_supervisor_badge_healthy() -> None:
+    from hermes_station.admin.htmx_dashboard import _supervisor_badge
+
+    badge = _supervisor_badge(running=True, healthy=True)
+    assert badge["tone"] == "success"
+    assert badge["label"] == "Healthy"
+
+
+def test_supervisor_badge_starting() -> None:
+    from hermes_station.admin.htmx_dashboard import _supervisor_badge
+
+    badge = _supervisor_badge(running=True, healthy=False)
+    assert badge["tone"] == "warning"
+    assert badge["label"] == "Starting"
+
+
+def test_supervisor_badge_stopped() -> None:
+    from hermes_station.admin.htmx_dashboard import _supervisor_badge
+
+    badge = _supervisor_badge(running=False, healthy=False)
+    assert badge["tone"] == "muted"
+    assert badge["label"] == "Stopped"
+
+
+def test_gateway_badge_running() -> None:
+    from hermes_station.admin.htmx_dashboard import _gateway_badge
+
+    badge = _gateway_badge(running=True, state="running")
+    assert badge["tone"] == "success"
+
+
+def test_gateway_badge_starting() -> None:
+    from hermes_station.admin.htmx_dashboard import _gateway_badge
+
+    badge = _gateway_badge(running=True, state="starting")
+    assert badge["tone"] == "warning"
+
+
+def test_gateway_badge_startup_failed() -> None:
+    from hermes_station.admin.htmx_dashboard import _gateway_badge
+
+    badge = _gateway_badge(running=False, state="startup_failed")
+    assert badge["tone"] == "danger"
+
+
+def test_gateway_badge_running_but_unknown_state() -> None:
+    from hermes_station.admin.htmx_dashboard import _gateway_badge
+
+    badge = _gateway_badge(running=True, state="unknown")
+    assert badge["tone"] == "warning"
+    assert badge["label"] == "Starting"
+
+
+def test_gateway_badge_stopped() -> None:
+    from hermes_station.admin.htmx_dashboard import _gateway_badge
+
+    badge = _gateway_badge(running=False, state="stopped")
+    assert badge["tone"] == "muted"
