@@ -22,15 +22,20 @@
 
     <p class="muted" style="margin:0;">Waiting for authorization&hellip;</p>
 
-    {# Polling div — silently GETs the poll endpoint, replaces the whole card.
+    {# Polling form — silently POSTs the poll endpoint, replaces the whole card.
        hx-trigger fires once on load (after poll_interval seconds) then repeats. #}
-    <div
-        hx-get="/admin/_partial/provider/copilot/poll?device_code={{ device_code }}&interval={{ poll_interval }}&user_code={{ user_code | urlencode }}&verification_uri={{ verification_uri | urlencode }}"
+    <form
+        hx-post="/admin/_partial/provider/copilot/poll"
         hx-trigger="load delay:{{ poll_interval }}s, every {{ poll_interval }}s"
         hx-target="#provider-card"
         hx-swap="outerHTML"
         style="display:none;"
-    ></div>
+    >
+        <input type="hidden" name="device_code" value="{{ device_code }}">
+        <input type="hidden" name="interval" value="{{ poll_interval }}">
+        <input type="hidden" name="user_code" value="{{ user_code }}">
+        <input type="hidden" name="verification_uri" value="{{ verification_uri }}">
+    </form>
 
     <div class="row" style="margin-top:1.25rem;">
         <button

@@ -40,6 +40,17 @@ _LOGIN_MAX_ATTEMPTS = 10
 _LOGIN_WINDOW_SECONDS = 60.0
 
 
+def _prune_login_attempts() -> None:
+    """Evict IPs whose last attempt is outside the rate-limit window."""
+    now = time.time()
+    stale = [
+        ip for ip, times in list(_login_attempts.items())
+        if not any(now - t < _LOGIN_WINDOW_SECONDS for t in times)
+    ]
+    for ip in stale:
+        _login_attempts.pop(ip, None)
+
+
 def _paths(request: Request) -> Paths:
     return request.app.state.paths
 
@@ -61,6 +72,7 @@ async def admin_login_page(request: Request) -> Response:
 
 
 async def admin_login(request: Request) -> Response:
+    _prune_login_attempts()
     # Rate-limit by client IP to slow brute-force attacks.
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
@@ -115,6 +127,9 @@ async def api_status(request: Request) -> Response:
     }
 
     # The `paths` block is part of the data contract — see CONTRACT.md §5.1.
+    # NOTE: config_path and env_path point directly at the secrets files on disk.
+    # This is admin-only (require_admin guard above), but represents an information
+    # disclosure risk if an admin session is hijacked. Kept for contract stability.
     return JSONResponse(
         {
             "paths": {
@@ -129,7 +144,7 @@ async def api_status(request: Request) -> Response:
                 "default": model.default,
                 "base_url": model.base_url,
             },
-            "env_keys_present": sorted(env_values.keys()),
+            "env_keys_present": bool(env_values),
             "autostart_mode": settings.gateway_autostart,
             "auth": {
                 "enabled": auth_state(request).enabled,

@@ -97,15 +97,46 @@ def provider_has_credentials(provider: str, env_values: dict[str, str]) -> bool:
 
 
 def _validate_base_url(url: str) -> str:
-    """Reject base_url values that aren't safe HTTPS endpoints."""
+    """Reject base_url values that aren't safe HTTPS endpoints.
+
+    Blocks private/loopback/link-local addresses to prevent SSRF attacks
+    against cloud metadata services (169.254.169.254) and internal networks.
+    """
     if not url:
         return url
+    import ipaddress
+    import socket
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     if parsed.scheme not in ("https", "http"):
         raise ValueError(f"base_url must be an http or https URL, got: {url!r}")
     if not parsed.netloc:
         raise ValueError("base_url must include a hostname")
+
+    host = parsed.hostname or ""
+    # Block well-known internal hostnames regardless of DNS resolution.
+    _BLOCKED_HOSTS = {"localhost", "metadata.google.internal", "metadata.google"}
+    if host.lower() in _BLOCKED_HOSTS:
+        raise ValueError(f"base_url hostname is not allowed: {host!r}")
+
+    # Resolve and check each returned address for private/internal ranges.
+    try:
+        addr_infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        # Cannot resolve at validation time; allow and let the actual request fail.
+        return url
+
+    for addr_info in addr_infos:
+        try:
+            ip = ipaddress.ip_address(addr_info[4][0])
+        except ValueError:
+            continue
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ValueError(
+                f"base_url resolves to a disallowed address ({ip}); "
+                "only public endpoints are accepted"
+            )
     return url
 
 

@@ -56,7 +56,6 @@ def _storage_block(paths: Any) -> dict[str, Any]:
     return {
         "data_writable": data_writable,
         "config_readable": config_readable,
-        "data_path": str(data_path),
     }
 
 
@@ -148,12 +147,11 @@ def _gateway_snapshot(app_state: Any) -> dict[str, Any]:
 def _webui_snapshot(app_state: Any) -> dict[str, Any]:
     wb = getattr(app_state, "webui", None)
     if wb is None:
-        return {"state": "disabled", "pid": None, "internal_url": ""}
+        return {"state": "disabled", "pid": None}
     snap = wb.snapshot()
     return {
         "state": snap.get("state", "down"),
         "pid": snap.get("pid"),
-        "internal_url": snap.get("internal_url", ""),
     }
 
 

@@ -296,11 +296,14 @@ async def copilot_oauth_poll(request: Request) -> Response:
     if guard is not None:
         return guard
     paths = _paths(request)
-    device_code = str(request.query_params.get("device_code") or "").strip()
+    form = await request.form()
+    device_code = str(form.get("device_code") or "").strip()
     try:
-        interval = max(5, min(int(request.query_params.get("interval") or 8), 60))
+        interval = max(5, min(int(form.get("interval") or 8), 60))
     except (ValueError, TypeError):
         interval = 8
+    user_code = str(form.get("user_code") or "").strip()
+    verification_uri = str(form.get("verification_uri") or "https://github.com/login/device").strip()
 
     if not device_code:
         context: dict[str, Any] = {"alert": {"kind": "error", "message": "Missing device_code."}}
@@ -322,10 +325,8 @@ async def copilot_oauth_poll(request: Request) -> Response:
             "admin/_copilot_device_flow.html",
             {
                 "device_code": device_code,
-                "user_code": request.query_params.get("user_code", ""),
-                "verification_uri": request.query_params.get(
-                    "verification_uri", "https://github.com/login/device"
-                ),
+                "user_code": user_code,
+                "verification_uri": verification_uri,
                 "poll_interval": result["poll_interval"],
             },
         )
@@ -406,7 +407,7 @@ def routes() -> list[Route]:
         Route("/admin/_partial/channels/clear", channels_fragment_clear, methods=["POST"]),
         Route("/admin/_partial/channels/toggle", channels_fragment_toggle, methods=["POST"]),
         Route("/admin/_partial/provider/copilot/start", copilot_oauth_start, methods=["POST"]),
-        Route("/admin/_partial/provider/copilot/poll", copilot_oauth_poll, methods=["GET"]),
+        Route("/admin/_partial/provider/copilot/poll", copilot_oauth_poll, methods=["POST"]),
         Route("/admin/_partial/provider/cancel", provider_cancel, methods=["POST"]),
         Route(
             "/admin/_partial/pairing/{action}",
