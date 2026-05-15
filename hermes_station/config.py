@@ -7,13 +7,17 @@ chosen to keep existing /data volumes mountable without migration.
 
 from __future__ import annotations
 
+import logging
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("hermes_station.config")
 
 
 class Paths(BaseSettings):
@@ -210,6 +214,148 @@ def seed_default_memory_provider(path: Path, *, provider: str = DEFAULT_MEMORY_P
     config["memory"] = memory
     write_yaml_config(path, config)
     return True
+
+
+# Provider seeder ----------------------------------------------------------
+#
+# Default model picks per provider. Update when models retire — see
+# hermes-agent provider docs. Tier policy: pick the current "balanced
+# flagship" for each provider (DX-reviewer flagged tier asymmetry against
+# `gpt-4o-mini` in earlier drafts).
+DEFAULT_MODELS_BY_PROVIDER: dict[str, str] = {
+    "openrouter": "anthropic/claude-sonnet-4.5",
+    "anthropic": "claude-sonnet-4-5",
+    "openai": "gpt-4.1",
+}
+
+
+# Order = precedence on multi-key set. OpenRouter first because it's the
+# template's headline path.
+PROVIDER_ENV_KEYS: list[tuple[str, str]] = [
+    ("openrouter", "OPENROUTER_API_KEY"),
+    ("anthropic", "ANTHROPIC_API_KEY"),
+    ("openai", "OPENAI_API_KEY"),
+]
+
+
+def seed_provider_from_env(path: Path, env: Mapping[str, str]) -> str | None:
+    """First-boot seed: pick a model provider from env vars and write to config.yaml.
+
+    Walks ``PROVIDER_ENV_KEYS`` in order; the first env var with a non-empty,
+    non-whitespace value wins. Writes ``model: {provider, name}`` to
+    ``config.yaml`` using the corresponding default from
+    ``DEFAULT_MODELS_BY_PROVIDER``.
+
+    No-clobber per CONTRACT.md §3.3 is **absolute**: if any ``model:`` block
+    already exists in config.yaml (even a partial one like
+    ``model: {name: foo}`` with no ``provider``), this function does nothing.
+    Operators who edited the file get to keep their state.
+
+    Always emits one INFO log line describing the outcome — never silently
+    skips, so deploy-time `railway logs` makes the chosen path obvious.
+
+    Returns the seeded provider name, or ``None`` if nothing was written.
+    """
+    config = load_yaml_config(path)
+    model_block = config.get("model")
+    # Treat any pre-existing model block as user-configured (even with no
+    # `provider` key) — see test_seed_provider_from_env_partial_model_block_no_clobber.
+    if isinstance(model_block, dict) and model_block:
+        existing = str(model_block.get("provider") or "").strip()
+        if existing:
+            logger.info("seed_provider_from_env: skipped: model.provider already set to %s", existing)
+        else:
+            logger.info(
+                "seed_provider_from_env: skipped: model block already present (no provider key); leaving untouched"
+            )
+        return None
+
+    # Find the first usable key. Track empty-but-set keys so we can log them.
+    chosen: tuple[str, str] | None = None
+    empty_keys: list[str] = []
+    other_present: list[str] = []
+    for provider_name, env_key in PROVIDER_ENV_KEYS:
+        if env_key not in env:
+            continue
+        value = (env.get(env_key) or "").strip()
+        if not value:
+            empty_keys.append(env_key)
+            continue
+        if chosen is None:
+            chosen = (provider_name, env_key)
+        else:
+            other_present.append(env_key)
+
+    if chosen is None:
+        if empty_keys:
+            logger.info(
+                "seed_provider_from_env: skipped: %s present but empty/whitespace",
+                ", ".join(empty_keys),
+            )
+        else:
+            logger.info("seed_provider_from_env: skipped: no recognized provider key in env")
+        return None
+
+    provider_name, env_key = chosen
+    default_model = DEFAULT_MODELS_BY_PROVIDER[provider_name]
+    config["model"] = {"provider": provider_name, "name": default_model}
+    write_yaml_config(path, config)
+    logger.info(
+        "seed_provider_from_env: seeded provider=%s model=%s from %s (other provider keys present: %s)",
+        provider_name,
+        default_model,
+        env_key,
+        other_present or [],
+    )
+    return provider_name
+
+
+def detect_provider_drift(config: dict[str, Any], env: Mapping[str, str]) -> list[str]:
+    """Detect mismatches between configured provider and present env credentials.
+
+    Emits a single human-readable warning string when ``model.provider`` is
+    set but its expected env var is missing **and** a different provider's
+    key is present — the actionable case where switching providers would
+    take seconds via ``/admin/settings``.
+
+    No auto-reseed: no-clobber stays absolute. Returns an empty list when
+    nothing is actionable (e.g. no other provider keys are set, or the
+    configured provider's env var is present).
+    """
+    model_block = config.get("model")
+    if not isinstance(model_block, dict):
+        return []
+    provider = str(model_block.get("provider") or "").strip().lower()
+    if not provider:
+        return []
+
+    # Find the env key for the configured provider, if recognized.
+    expected_key: str | None = None
+    for name, key in PROVIDER_ENV_KEYS:
+        if name == provider:
+            expected_key = key
+            break
+    if expected_key is None:
+        return []
+
+    if (env.get(expected_key) or "").strip():
+        return []
+
+    # The configured provider has no usable credential. Look for an alternative.
+    alternates: list[str] = []
+    for name, key in PROVIDER_ENV_KEYS:
+        if name == provider:
+            continue
+        if (env.get(key) or "").strip():
+            alternates.append(key)
+    if not alternates:
+        return []
+
+    msg = (
+        f"provider {provider!r} is configured but {expected_key} is unset; "
+        f"{', '.join(alternates)} is set — open /admin/settings to switch"
+    )
+    return [msg]
 
 
 MCP_SERVER_CATALOG: list[dict[str, Any]] = [

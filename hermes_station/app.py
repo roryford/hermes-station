@@ -10,6 +10,7 @@ stdlib http.server and can't be mounted as an ASGI sub-app.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -27,6 +28,7 @@ from hermes_station.admin.routes import admin_routes
 from hermes_station.config import (
     AdminSettings,
     Paths,
+    detect_provider_drift,
     load_env_file,
     load_yaml_config,
     normalize_config,
@@ -34,6 +36,7 @@ from hermes_station.config import (
     seed_default_memory_provider,
     seed_env_file_to_os,
     seed_neutral_personality_default,
+    seed_provider_from_env,
     seed_show_cost_default,
     write_yaml_config,
 )
@@ -151,6 +154,11 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
             logger.info("seeded default personality: default")
         if seed_show_cost_default(paths.config_path):
             logger.info("seeded default show_cost: true")
+        seeded_provider = seed_provider_from_env(paths.config_path, dict(os.environ))
+        if seeded_provider:
+            public_url = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+            settings_link = f"https://{public_url}/admin/settings" if public_url else "/admin/settings"
+            logger.info("provider auto-seeded — visit %s to verify", settings_link)
         config = load_yaml_config(paths.config_path)
         config, norm_changes = normalize_config(config)
         if norm_changes:
@@ -172,6 +180,8 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         except Exception:  # noqa: BLE001
             logger.exception("readiness validation raised; continuing")
             app.state.readiness = None
+        for drift_msg in detect_provider_drift(config, dict(os.environ)):
+            logger.warning("%s", drift_msg)
         if should_autostart(mode=settings.gateway_autostart, config=config, env_values=env_values):
             logger.info(
                 "autostarting gateway (mode=%s, provider configured + channel present)",

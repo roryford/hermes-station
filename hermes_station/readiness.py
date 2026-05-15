@@ -259,11 +259,18 @@ def _dir_writable(path: Path) -> bool:
         return False
 
 
+# Module-level paths — exposed so tests can monkeypatch them in-process.
+# The Dockerfile writes the build SHA into _BUILD_REVISION_FILE at image
+# build time (Track B). _WEBUI_VERSION_FILE is shipped inside the upstream
+# hermes-webui image layer.
+_BUILD_REVISION_FILE: Path = Path("/etc/hermes-station-build")
+_WEBUI_VERSION_FILE: Path = Path("/opt/hermes-webui/VERSION")
+
+
 def _read_image_revision() -> str | None:
-    build_file = Path("/etc/hermes-station-build")
     try:
-        if build_file.exists():
-            txt = build_file.read_text(encoding="utf-8").strip()
+        if _BUILD_REVISION_FILE.exists():
+            txt = _BUILD_REVISION_FILE.read_text(encoding="utf-8").strip()
             if txt:
                 return txt
     except OSError:
@@ -284,10 +291,9 @@ def _read_hermes_agent_version() -> str | None:
 
 
 def _read_hermes_webui_version() -> str | None:
-    vfile = Path("/opt/hermes-webui/VERSION")
     try:
-        if vfile.exists():
-            txt = vfile.read_text(encoding="utf-8").strip()
+        if _WEBUI_VERSION_FILE.exists():
+            txt = _WEBUI_VERSION_FILE.read_text(encoding="utf-8").strip()
             if txt:
                 return txt
     except OSError:
