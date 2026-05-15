@@ -486,9 +486,7 @@ def test_compose_status_down_when_storage_not_writable() -> None:
 def test_compose_status_degraded_dict_readiness() -> None:
     from hermes_station.health import _compose_status
 
-    readiness = {
-        "readiness": {"provider:anthropic": {"intended": True, "ready": False}}
-    }
+    readiness = {"readiness": {"provider:anthropic": {"intended": True, "ready": False}}}
     status = _compose_status(
         storage={"data_writable": True},
         readiness=readiness,

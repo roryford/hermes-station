@@ -434,9 +434,7 @@ async def test_api_provider_setup_invalid_provider(
     assert resp.json()["ok"] is False
 
 
-async def test_admin_logout(
-    fake_data_dir: Path, admin_password: str, clear_login_rate_limit: None
-) -> None:
+async def test_admin_logout(fake_data_dir: Path, admin_password: str, clear_login_rate_limit: None) -> None:
     """Logout redirects to login page."""
     from hermes_station.app import create_app
 

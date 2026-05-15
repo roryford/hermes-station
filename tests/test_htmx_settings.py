@@ -366,9 +366,7 @@ def _build_app_with_gateway(fake_data_dir: Path) -> Starlette:
     return app
 
 
-async def test_channels_fragment_save_persists(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_save_persists(fake_data_dir: Path, admin_password: str) -> None:
     """Channel save fragment returns HTML with success message."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -383,9 +381,7 @@ async def test_channels_fragment_save_persists(
     assert "Channels saved." in resp.text
 
 
-async def test_channels_fragment_clear(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_clear(fake_data_dir: Path, admin_password: str) -> None:
     """Channels clear fragment returns HTML."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -400,9 +396,7 @@ async def test_channels_fragment_clear(
     assert "cleared." in resp.text
 
 
-async def test_channels_fragment_clear_unknown_slug(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_clear_unknown_slug(fake_data_dir: Path, admin_password: str) -> None:
     """Unknown slug returns error message in HTML."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -417,9 +411,7 @@ async def test_channels_fragment_clear_unknown_slug(
     assert "Unknown channel" in resp.text
 
 
-async def test_channels_fragment_toggle(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_toggle(fake_data_dir: Path, admin_password: str) -> None:
     """Channel toggle fragment returns HTML."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -433,9 +425,7 @@ async def test_channels_fragment_toggle(
     assert resp.status_code == 200
 
 
-async def test_channels_fragment_toggle_unknown_slug(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_toggle_unknown_slug(fake_data_dir: Path, admin_password: str) -> None:
     """Toggle with unknown slug returns error in HTML."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -450,9 +440,7 @@ async def test_channels_fragment_toggle_unknown_slug(
     assert "Unknown channel" in resp.text
 
 
-async def test_provider_cancel_returns_provider_card(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_provider_cancel_returns_provider_card(fake_data_dir: Path, admin_password: str) -> None:
     """Cancel returns provider card HTML."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -463,9 +451,7 @@ async def test_provider_cancel_returns_provider_card(
     assert resp.status_code == 200
 
 
-async def test_channels_fragment_save_no_gateway(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_save_no_gateway(fake_data_dir: Path, admin_password: str) -> None:
     """channels_fragment_save works when no gateway is set (covers the gateway-None branch)."""
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
@@ -480,9 +466,7 @@ async def test_channels_fragment_save_no_gateway(
     assert "Channels saved." in resp.text
 
 
-async def test_channels_fragment_clear_no_gateway(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_clear_no_gateway(fake_data_dir: Path, admin_password: str) -> None:
     """channels_fragment_clear works when no gateway is set."""
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
@@ -497,9 +481,7 @@ async def test_channels_fragment_clear_no_gateway(
     assert "Discord cleared." in resp.text
 
 
-async def test_channels_fragment_toggle_no_gateway(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_fragment_toggle_no_gateway(fake_data_dir: Path, admin_password: str) -> None:
     """channels_fragment_toggle works when no gateway is set."""
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
@@ -513,9 +495,7 @@ async def test_channels_fragment_toggle_no_gateway(
     assert resp.status_code == 200
 
 
-async def test_provider_fragment_save_no_gateway(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_provider_fragment_save_no_gateway(fake_data_dir: Path, admin_password: str) -> None:
     """provider_fragment_save works when no gateway is set."""
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
@@ -530,9 +510,7 @@ async def test_provider_fragment_save_no_gateway(
     assert "Provider saved." in resp.text
 
 
-async def test_htmx_provider_fragment_save_error_path(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_htmx_provider_fragment_save_error_path(fake_data_dir: Path, admin_password: str) -> None:
     """provider_fragment_save with invalid provider returns error HTML."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -547,9 +525,7 @@ async def test_htmx_provider_fragment_save_error_path(
     assert "error" in resp.text.lower() or "invalid" in resp.text.lower() or "Provider" in resp.text
 
 
-async def test_htmx_channels_fragment_save_error_on_newline(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_htmx_channels_fragment_save_error_on_newline(fake_data_dir: Path, admin_password: str) -> None:
     """channels_fragment_save with invalid value returns error HTML."""
     app = _build_app_with_gateway(fake_data_dir)
     transport = httpx.ASGITransport(app=app)
@@ -569,9 +545,7 @@ async def test_htmx_channels_fragment_save_error_on_newline(
 # ---------------------------------------------------------------------------
 
 
-async def test_copilot_oauth_start_returns_device_flow(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_copilot_oauth_start_returns_device_flow(fake_data_dir: Path, admin_password: str) -> None:
     """Copilot OAuth start returns device flow card (mocked)."""
     from unittest.mock import patch
 
@@ -600,15 +574,15 @@ async def test_copilot_oauth_start_returns_device_flow(
         }
 
     with patch.object(_htmx_settings, "start_device_flow", _mock_start):
-        async with httpx.AsyncClient(transport=transport, base_url="http://test", cookies=saved_cookies) as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=saved_cookies
+        ) as client:
             resp = await client.post("/admin/_partial/provider/copilot/start")
     assert resp.status_code == 200
     assert "ABCD-EFGH" in resp.text
 
 
-async def test_copilot_oauth_poll_pending(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_copilot_oauth_poll_pending(fake_data_dir: Path, admin_password: str) -> None:
     """Poll with pending status returns device flow card."""
     from unittest.mock import patch
 
@@ -629,7 +603,9 @@ async def test_copilot_oauth_poll_pending(
         return {"status": "pending", "poll_interval": 8}
 
     with patch.object(_htmx_settings, "poll_device_flow", _mock_poll):
-        async with httpx.AsyncClient(transport=transport, base_url="http://test", cookies=saved_cookies) as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=saved_cookies
+        ) as client:
             resp = await client.post(
                 "/admin/_partial/provider/copilot/poll",
                 data={"device_code": "dev123", "user_code": "ABCD-EFGH", "interval": "8"},
@@ -637,9 +613,7 @@ async def test_copilot_oauth_poll_pending(
     assert resp.status_code == 200
 
 
-async def test_copilot_oauth_poll_missing_device_code(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_copilot_oauth_poll_missing_device_code(fake_data_dir: Path, admin_password: str) -> None:
     """Poll with no device_code returns error card."""
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
@@ -651,9 +625,7 @@ async def test_copilot_oauth_poll_missing_device_code(
     assert "Missing device_code" in resp.text
 
 
-async def test_copilot_oauth_poll_expired(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_copilot_oauth_poll_expired(fake_data_dir: Path, admin_password: str) -> None:
     """Poll with expired token returns error card."""
     from unittest.mock import patch
 
@@ -674,7 +646,9 @@ async def test_copilot_oauth_poll_expired(
         return {"status": "expired", "message": "Device code expired.", "poll_interval": 0}
 
     with patch.object(_htmx_settings, "poll_device_flow", _mock_poll):
-        async with httpx.AsyncClient(transport=transport, base_url="http://test", cookies=saved_cookies) as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=saved_cookies
+        ) as client:
             resp = await client.post(
                 "/admin/_partial/provider/copilot/poll",
                 data={"device_code": "dev123", "interval": "8"},
@@ -682,9 +656,7 @@ async def test_copilot_oauth_poll_expired(
     assert resp.status_code == 200
 
 
-async def test_copilot_oauth_poll_success(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_copilot_oauth_poll_success(fake_data_dir: Path, admin_password: str) -> None:
     """Poll with success status saves token and returns provider card."""
     from unittest.mock import patch
 
@@ -705,7 +677,9 @@ async def test_copilot_oauth_poll_success(
         return {"status": "success", "token": "gho_test_token_abc", "poll_interval": 0}
 
     with patch.object(_htmx_settings, "poll_device_flow", _mock_poll_success):
-        async with httpx.AsyncClient(transport=transport, base_url="http://test", cookies=saved_cookies) as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=saved_cookies
+        ) as client:
             resp = await client.post(
                 "/admin/_partial/provider/copilot/poll",
                 data={"device_code": "dev123", "interval": "8"},

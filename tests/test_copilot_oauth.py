@@ -34,13 +34,15 @@ def _make_mock_client(response_json: dict | None = None, status: int = 200, cont
 
 
 async def test_start_device_flow_success() -> None:
-    mock_client = _make_mock_client({
-        "device_code": "dev123",
-        "user_code": "ABCD-EFGH",
-        "verification_uri": "https://github.com/login/device",
-        "expires_in": 900,
-        "interval": 5,
-    })
+    mock_client = _make_mock_client(
+        {
+            "device_code": "dev123",
+            "user_code": "ABCD-EFGH",
+            "verification_uri": "https://github.com/login/device",
+            "expires_in": 900,
+            "interval": 5,
+        }
+    )
     with patch("hermes_station.admin.copilot_oauth.httpx.AsyncClient", return_value=mock_client):
         result = await start_device_flow()
     assert result["device_code"] == "dev123"
@@ -96,7 +98,9 @@ async def test_poll_device_flow_access_denied() -> None:
 
 
 async def test_poll_device_flow_unknown_error() -> None:
-    mock_client = _make_mock_client({"error": "some_weird_error", "error_description": "Something went wrong"})
+    mock_client = _make_mock_client(
+        {"error": "some_weird_error", "error_description": "Something went wrong"}
+    )
     with patch("hermes_station.admin.copilot_oauth.httpx.AsyncClient", return_value=mock_client):
         result = await poll_device_flow("dev123")
     assert result["status"] == "error"

@@ -438,11 +438,7 @@ def test_delegation_providers_from_routes_list() -> None:
 
 
 def test_delegation_providers_from_fallback_list() -> None:
-    config = {
-        "delegation": {
-            "fallback": [{"provider": "openrouter"}]
-        }
-    }
+    config = {"delegation": {"fallback": [{"provider": "openrouter"}]}}
     result = _delegation_providers(config)
     assert "openrouter" in result
 
@@ -569,22 +565,27 @@ def test_capability_row_as_dict_omits_empty_fields() -> None:
 
 
 def test_readiness_any_intended_not_ready() -> None:
-    rd = Readiness(readiness={
-        "cap_a": CapabilityRow(intended=True, ready=False),
-        "cap_b": CapabilityRow(intended=False, ready=False),
-    })
+    rd = Readiness(
+        readiness={
+            "cap_a": CapabilityRow(intended=True, ready=False),
+            "cap_b": CapabilityRow(intended=False, ready=False),
+        }
+    )
     assert rd.any_intended_not_ready() is True
 
 
 def test_readiness_any_intended_not_ready_false() -> None:
-    rd = Readiness(readiness={
-        "cap_a": CapabilityRow(intended=True, ready=True),
-    })
+    rd = Readiness(
+        readiness={
+            "cap_a": CapabilityRow(intended=True, ready=True),
+        }
+    )
     assert rd.any_intended_not_ready() is False
 
 
 def test_readiness_delegation_provider_already_ready_not_downgraded(tmp_path: Path) -> None:
     """If a delegation provider row is already ready, it should not be downgraded."""
+
     class _FakePaths:
         hermes_home = tmp_path
 
@@ -602,6 +603,7 @@ def test_readiness_delegation_provider_already_ready_not_downgraded(tmp_path: Pa
 
 def test_validate_readiness_none_config_and_env(tmp_path: Path) -> None:
     """None config and env_values are handled gracefully."""
+
     class _FakePaths:
         hermes_home = tmp_path
 
@@ -620,6 +622,7 @@ def test_check_provider_empty_string(tmp_path: Path) -> None:
 
 def test_check_github_via_integrations_key(tmp_path: Path) -> None:
     """GitHub intended via `integrations` key in config."""
+
     class _FakePaths:
         hermes_home = tmp_path
 
@@ -631,6 +634,7 @@ def test_check_github_via_integrations_key(tmp_path: Path) -> None:
 
 def test_check_github_via_github_key(tmp_path: Path) -> None:
     """GitHub intended via top-level `github` key in config."""
+
     class _FakePaths:
         hermes_home = tmp_path
 
