@@ -3,10 +3,13 @@
 # (run `dx-verify.sh` first).
 set -euo pipefail
 
-# Authenticate to grab a cookie
-COOKIE=$(curl -sS -c - -d "password=verify" http://127.0.0.1:8788/admin/login \
-         | awk '/admin_session/ {print $6"="$7}')
-[ -z "$COOKIE" ] && { echo "auth failed"; exit 1; }
+# Authenticate to grab a cookie. Real cookie name is `hermes_station_admin`
+# (Netscape jar format: tab-separated; field 6 = name, field 7 = value).
+JAR=$(mktemp)
+trap 'rm -f "$JAR"' EXIT
+curl -sS -c "$JAR" -d "password=verify" http://127.0.0.1:8788/admin/login -o /dev/null
+COOKIE=$(awk -F'\t' '/hermes_station_admin/ {print $6"="$7}' "$JAR")
+[ -z "$COOKIE" ] && { echo "auth failed (no hermes_station_admin cookie in $JAR)"; exit 1; }
 
 mkdir -p docs/screenshots
 uvx --from playwright playwright install chromium >/dev/null
