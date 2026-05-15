@@ -37,8 +37,22 @@ Repository = "https://github.com/roryford/hermes-station"
 hermes = [
     "hermes-agent[messaging] @ git+https://github.com/NousResearch/hermes-agent.git@498bfc7bc12a937621b4215312049b1000726df3",  # v2026.5.7
 ]
+# Mirrors [dependency-groups].dev below — kept here so `uv pip install ".[dev]"` in the
+# Dockerfile test stage keeps working. [dependency-groups] is what `uv sync` uses on a
+# fresh clone (uv auto-includes the "dev" group without any --extra flags).
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "types-PyYAML>=6.0",
+]
 
 [dependency-groups]
+# uv auto-includes this group on `uv sync` — no --extra or --group flag needed
+# on a fresh clone. The [project.optional-dependencies].dev above mirrors this
+# for Dockerfile compat (`uv pip install ".[dev]"`).
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
