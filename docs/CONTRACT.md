@@ -1,14 +1,14 @@
 # hermes-station data contract
 
-> **Purpose:** The compatibility contract that hermes-station honors for an existing `/data` volume from `hermes-all-in-one` to swap in cleanly with no migration.
+> **Purpose:** The compatibility contract that hermes-station honors for existing Hermes `/data` volumes, ensuring they mount cleanly with no migration.
 >
-> **Provenance:** Drafted from observed behavior of the `hermes-all-in-one` baseline image, built and probed locally on 2026-05-11 against Apple `container` 0.12.3. The compat test (`tests/test_compat.py`) is the executable form of this document — whenever this doc and the test disagree, the test wins and the doc gets updated.
+> **Provenance:** Derived from the Hermes data contract. The compat test (`tests/test_compat.py`) is the executable form of this document — whenever this doc and the test disagree, the test wins and the doc gets updated.
 
 ---
 
 ## 1. Runtime contract
 
-Held invariant across hermes-all-in-one and hermes-station.
+Held invariant across Hermes deployments.
 
 | Property | Value | Source |
 |---|---|---|
@@ -309,7 +309,7 @@ If all four pass for both fixtures (when realistic is present), the new image is
 
 ## Appendix A — Observed environment (probe run 2026-05-11)
 
-Built with `container build` on Apple `container` 0.12.3 against the current `hermes-all-in-one` `main` branch (commit `8daca1254`).
+Built with `container build` on Apple `container` 0.12.3 against a Hermes deployment image (commit `8daca1254`).
 
 Container env at runtime:
 ```

@@ -1,6 +1,6 @@
 """Channel catalog + .env channel save helper.
 
-Ported from hermes-all-in-one's `control_plane/config.py`. Slugs are part of
+Channel catalog matching the Hermes data contract. Slugs are part of
 the data contract (CONTRACT.md §7) — they must not be renamed.
 """
 

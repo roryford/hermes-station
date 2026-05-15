@@ -41,7 +41,7 @@ def test_env_file_format_roundtrip(tmp_path: Path) -> None:
 
 
 def test_env_file_reader_tolerates_legacy_format(tmp_path: Path) -> None:
-    """Accept blank lines, comments, and surrounding quotes — hermes-all-in-one's reader behavior."""
+    """Accept blank lines, comments, and surrounding quotes — legacy .env format compatibility."""
     path = tmp_path / ".env"
     path.write_text(
         "# legacy comment\n"

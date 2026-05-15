@@ -2,7 +2,7 @@
 
 The gateway is an async-native coroutine (`gateway.run.start_gateway`), so we
 run it as a supervised `asyncio.Task` in the same event loop as uvicorn. This
-eliminates the subprocess + threading pattern from hermes-all-in-one.
+runs the gateway as a supervised asyncio task in the same event loop as uvicorn.
 
 **Signal handling gotcha:** `gateway.run.start_gateway` registers its own
 SIGINT/SIGTERM/SIGUSR1 handlers via `loop.add_signal_handler`, which would
@@ -14,7 +14,7 @@ lands.
 
 **Health:** read from `$HERMES_HOME/gateway_state.json` which the gateway
 writes itself. `gateway_state == "running"` is the real health signal,
-unlike hermes-all-in-one's "process alive for ≥3s" heuristic.
+not a simple liveness heuristic.
 """
 
 from __future__ import annotations

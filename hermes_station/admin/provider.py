@@ -1,7 +1,6 @@
 """Provider catalog + provider setup helper.
 
-Ported from hermes-all-in-one's `control_plane/config.py` and extended for the
-providers supported by the pinned `hermes-agent`. The catalog IDs
+Provider catalog matching the Hermes data contract. The catalog IDs
 (`openrouter`, `anthropic`, `openai`, `copilot`, `custom`) are part of the
 data contract (CONTRACT.md §6) — they must not be renamed.
 """

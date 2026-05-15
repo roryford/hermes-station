@@ -2,7 +2,7 @@
 
 This module is the single source of truth for the data contract documented in
 `docs/CONTRACT.md`. The byte-level formats for `.env` and `config.yaml` are
-chosen so that an existing /data volume from hermes-all-in-one mounts unchanged.
+chosen to keep existing /data volumes mountable without migration.
 """
 
 from __future__ import annotations
@@ -17,11 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Paths(BaseSettings):
-    """Filesystem paths under the /data volume.
-
-    All defaults match the hermes-all-in-one contract. Each may be overridden
-    by the same env var name that hermes-all-in-one honors.
-    """
+    """Filesystem paths under the /data volume. Defaults follow the Hermes data contract."""
 
     model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
 
@@ -70,7 +66,7 @@ class AdminSettings(BaseSettings):
 
     @property
     def effective_admin_password(self) -> str:
-        """Admin password falls back to the WebUI password if unset — same as hermes-all-in-one."""
+        """Admin password falls back to the WebUI password if unset."""
         return self.admin_password or self.webui_password
 
 
@@ -78,7 +74,7 @@ def load_env_file(path: Path) -> dict[str, str]:
     """Read `$HERMES_HOME/.env` per CONTRACT.md §4.1.
 
     Skips blank lines and lines starting with `#`. Strips surrounding quotes
-    from values. Same behavior as hermes-all-in-one so existing files load cleanly.
+    from values. Existing `.env` files load cleanly.
     """
     if not path.exists():
         return {}

@@ -14,9 +14,9 @@ A single Railway-deployable container that runs:
 
 Everything writes to `/data` (single Railway volume) and shares one Hermes identity across WebUI, Telegram, Discord, Slack, and other channels. See `docs/CONTRACT.md` §3 for the full filesystem layout.
 
-## Drop-in compatibility
+## Volume compatibility
 
-`hermes-station` is engineered to accept an existing `/data` volume from `hermes-all-in-one` unchanged. The CI compat test (`tests/test_compat.py`) boots the container against a fixture `/data` snapshot and asserts the contract holds. If that test is green for a given upstream version combo, the image is a verified drop-in.
+hermes-station is engineered to accept an existing Hermes `/data` volume unchanged. The CI compat test (`tests/test_compat.py`) boots the container against a fixture `/data` snapshot and asserts the contract holds. If that test is green for a given upstream version combo, the image is a verified drop-in.
 
 ## Upstream tracking
 

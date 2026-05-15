@@ -8,7 +8,7 @@ A skeleton `/data` directory representing the state right after a hermes-station
 
 A **sanitized snapshot of a real Railway `/data` volume**, used to verify the contract against real-world state (long-running sessions, populated memories, gateway state, etc.). This is not committed — populate it locally by:
 
-1. Snapshot your live Railway volume: `railway run --service hermes-all-in-one tar -czf /tmp/data.tgz -C / data` (or scp from your running container)
+1. Snapshot your live Railway volume: `railway run --service hermes-station tar -czf /tmp/data.tgz -C / data` (or scp from your running container)
 2. Extract into `tests/fixtures/data-realistic/`
 3. **Sanitize** before running tests:
    - `.hermes/.env` — replace real keys with `<PLACEHOLDER>` values
