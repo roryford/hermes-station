@@ -10,8 +10,7 @@ RUNTIME=$(command -v container || command -v docker)
 # 1. Lint + typecheck + unit tests
 uv run ruff check .
 uv run ruff format --check .
-# mypy intentionally skipped: 54 pre-existing errors (mostly pydantic-settings call-arg
-# false-positives) on main. Re-enable once those are addressed in a dedicated cleanup PR.
+uv run mypy hermes_station --ignore-missing-imports
 uv run pytest -q
 
 # 2. Build for the host arch — Apple `container` lacks qemu so it can only run native.

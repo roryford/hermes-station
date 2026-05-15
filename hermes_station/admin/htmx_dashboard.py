@@ -88,7 +88,9 @@ async def _gather_status(request: Request) -> dict[str, Any]:
     channels = channel_status(env_values)
     pending_count = len(get_pending(paths.pairing_dir))
 
-    memory_raw = config.get("memory") if isinstance(config.get("memory"), dict) else {}
+    memory_raw = config.get("memory") or {}
+    if not isinstance(memory_raw, dict):
+        memory_raw = {}
     memory_provider = (memory_raw.get("provider") or "").strip()
     memory_block = {
         "provider": memory_provider or "built-in only",

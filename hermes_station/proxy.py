@@ -25,6 +25,7 @@ import logging
 from collections.abc import AsyncIterator
 
 import httpx
+from starlette.datastructures import Headers as StarletteHeaders
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
@@ -59,10 +60,12 @@ _STRIP_FROM_CLIENT = frozenset(
 )
 
 
-def _filter_request_headers(headers: "dict[str, str] | httpx.Headers") -> dict[str, str]:
+def _filter_request_headers(
+    headers: "dict[str, str] | httpx.Headers | StarletteHeaders",
+) -> dict[str, str]:
     out: dict[str, str] = {}
-    items = headers.items() if hasattr(headers, "items") else headers
-    for key, value in items:
+    # All three header types expose .items() yielding (str, str) pairs.
+    for key, value in headers.items():
         lower = key.lower()
         if lower in _HOP_BY_HOP or lower == "host" or lower in _STRIP_FROM_CLIENT:
             continue

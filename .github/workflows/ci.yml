@@ -33,11 +33,6 @@ jobs:
         run: .venv/bin/ruff format --check hermes_station tests
 
       - name: mypy
-        # Allowed to fail: 53 pre-existing errors — mostly pydantic-settings
-        # call-arg false-positives (mypy can't see env-derived defaults via
-        # SettingsConfigDict). Tracked as a dedicated cleanup; not a regression
-        # gate for ongoing work. dx-verify.sh skips it for the same reason.
-        continue-on-error: true
         run: |
           uv pip install mypy
           .venv/bin/mypy hermes_station --ignore-missing-imports

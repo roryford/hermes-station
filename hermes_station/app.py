@@ -19,7 +19,7 @@ import httpx
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
 from hermes_station.admin.htmx_logs import routes as logs_routes
@@ -63,8 +63,8 @@ class _SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
-        async def send_with_security_headers(message: object) -> None:
-            if isinstance(message, dict) and message.get("type") == "http.response.start":
+        async def send_with_security_headers(message: Message) -> None:
+            if message.get("type") == "http.response.start":
                 from starlette.datastructures import MutableHeaders
 
                 headers = MutableHeaders(scope=message)

@@ -99,16 +99,15 @@ async def admin_login(request: Request) -> Response:
     password = str(form.get("password") or "")
     if not verify_password(password):
         _login_attempts[client_ip].append(now)
-        response = _templates.TemplateResponse(
+        return _templates.TemplateResponse(
             request,
             "login.html",
             {"auth_enabled": admin_auth_enabled(), "error": "Invalid password."},
             status_code=401,
         )
-        return response
-    response = RedirectResponse(url="/admin", status_code=302)
-    issue_session_cookie(response, request)
-    return response
+    redirect = RedirectResponse(url="/admin", status_code=302)
+    issue_session_cookie(redirect, request)
+    return redirect
 
 
 async def admin_logout(request: Request) -> Response:

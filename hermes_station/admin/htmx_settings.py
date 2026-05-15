@@ -297,7 +297,7 @@ async def copilot_oauth_poll(request: Request) -> Response:
     form = await request.form()
     device_code = str(form.get("device_code") or "").strip()
     try:
-        interval = max(5, min(int(form.get("interval") or 8), 60))
+        interval = max(5, min(int(str(form.get("interval") or 8)), 60))
     except (ValueError, TypeError):
         interval = 8
     user_code = str(form.get("user_code") or "").strip()

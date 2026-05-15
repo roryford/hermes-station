@@ -100,6 +100,16 @@ class Readiness:
         return any(row.intended and not row.ready for row in self.readiness.values())
 
 
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    """Narrow ``Any`` (typically from ``yaml.safe_load`` / ``dict.get``) to a dict.
+
+    Replaces the ``X if isinstance(X, dict) else {}`` idiom, which mypy
+    couldn't narrow because it called ``.get`` twice and the second call's
+    return type was unconstrained.
+    """
+    return value if isinstance(value, dict) else {}
+
+
 def _has_value(env_values: dict[str, str], key: str) -> bool:
     """True iff *key* is set (in .env values or os.environ) to a non-placeholder."""
     raw = (env_values.get(key) or os.environ.get(key) or "").strip()
@@ -137,7 +147,7 @@ def _channel_intended(config: dict[str, Any], slug: str) -> bool:
     config.yaml may contain a `messaging.<slug>` block or a `channels` list.
     On a default install neither is present — we treat that as not-intended.
     """
-    messaging = config.get("messaging") if isinstance(config.get("messaging"), dict) else {}
+    messaging = _dict_or_empty(config.get("messaging"))
     if messaging and isinstance(messaging.get(slug), dict):
         block = messaging[slug]
         if block.get("enabled") is False:
@@ -191,7 +201,7 @@ def _check_provider(provider: str, env_values: dict[str, str], *, intended: bool
 
 
 def _check_web_search(config: dict[str, Any], env_values: dict[str, str]) -> CapabilityRow:
-    web = config.get("web") if isinstance(config.get("web"), dict) else {}
+    web = _dict_or_empty(config.get("web"))
     backend = str(web.get("search_backend") or "").strip().lower()
     if not backend:
         return CapabilityRow(intended=False, ready=False)
@@ -401,7 +411,7 @@ def validate_readiness(
             )
 
     # Primary model provider.
-    model = config.get("model") if isinstance(config.get("model"), dict) else {}
+    model = _dict_or_empty(config.get("model"))
     provider = str(model.get("provider") or "").strip().lower()
     if provider:
         rows[f"provider:{provider}"] = _check_provider(provider, env_values, intended=True)
