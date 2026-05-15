@@ -171,15 +171,12 @@ def test_jsonformatter_nonserializable_extra():
 
 def test_attach_stdout_json_handler_idempotent():
     root = logging.getLogger()
-    before = len(root.handlers)
     attach_stdout_json_handler()
     after_first = len(root.handlers)
     attach_stdout_json_handler()
     after_second = len(root.handlers)
-    # First call added at most one handler (may remove existing default
-    # StreamHandlers); second call adds nothing.
+    # Second call must not add or remove handlers — idempotency is the invariant.
     assert after_second == after_first
-    assert after_first >= before  # may be equal if a default was replaced
     assert logs_mod._stdout_json_handler is not None
 
 

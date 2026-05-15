@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import stat
 from pathlib import Path
 
 import pytest
@@ -447,23 +446,23 @@ def test_dir_writable_returns_true_for_writable_dir(tmp_path: Path) -> None:
     assert _dir_writable(tmp_path / "subdir") is True
 
 
-def test_dir_writable_returns_false_for_non_writable(tmp_path: Path) -> None:
-    d = tmp_path / "readonly"
-    d.mkdir()
-    try:
-        d.chmod(stat.S_IRUSR | stat.S_IXUSR)
-        assert _dir_writable(d / "probe") is False
-    finally:
-        d.chmod(stat.S_IRWXU)  # restore so pytest can clean up
+def test_dir_writable_returns_false_for_non_writable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(*_a: object, **_kw: object) -> None:
+        raise PermissionError("mocked: not writable")
+
+    monkeypatch.setattr(Path, "write_text", _raise)
+    assert _dir_writable(tmp_path / "probe") is False
 
 
-def test_read_image_revision_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_image_revision_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("hermes_station.readiness._BUILD_REVISION_FILE", tmp_path / "no-such-file")
     monkeypatch.setenv("HERMES_STATION_REVISION", "abc123")
     result = _read_image_revision()
     assert result == "abc123"
 
 
-def test_read_image_revision_returns_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_image_revision_returns_none_when_unset(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("hermes_station.readiness._BUILD_REVISION_FILE", tmp_path / "no-such-file")
     monkeypatch.delenv("HERMES_STATION_REVISION", raising=False)
     result = _read_image_revision()
     assert result is None

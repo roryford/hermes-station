@@ -451,19 +451,18 @@ def test_gateway_snapshot_running_no_tz_updated_at(tmp_path: Path) -> None:
     assert snap["connection"] == "connected"
 
 
-def test_gateway_read_state_fallback_on_oserror(tmp_path: Path) -> None:
-    """read_state returns unknown dict when file exists but can't be read."""
-    import stat
-
+def test_gateway_read_state_fallback_on_oserror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """read_state returns unknown dict when the state file can't be read."""
     state_file = tmp_path / "gateway_state.json"
     state_file.write_text('{"gateway_state": "running"}')
-    try:
-        state_file.chmod(0o000)
-        gw = Gateway(hermes_home=tmp_path)
-        result = gw.read_state()
-        assert result.get("gateway_state") == "unknown"
-    finally:
-        state_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    def _raise(*_a: object, **_kw: object) -> None:
+        raise OSError("mocked: permission denied")
+
+    monkeypatch.setattr(Path, "read_text", _raise)
+    gw = Gateway(hermes_home=tmp_path)
+    result = gw.read_state()
+    assert result.get("gateway_state") == "unknown"
 
 
 # ---------------------------------------------------------------------------
