@@ -37,29 +37,26 @@ def test_should_autostart_forced_off() -> None:
     assert should_autostart(mode="off", config={}, env_values={}) is False
 
 
-def test_should_autostart_auto_requires_provider_and_channel(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_should_autostart_auto_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """auto mode starts when a provider is configured with credentials.
+    Channel is not required — the WebUI is always available.
+    """
     # Ensure no credentials leak in from other tests via os.environ.
-    # Provider keys:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("COPILOT_GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
-    # All CHANNEL_ENV_KEYS (from hermes_station.admin.channels):
-    from hermes_station.admin.channels import CHANNEL_ENV_KEYS
-
-    for key in CHANNEL_ENV_KEYS:
-        monkeypatch.delenv(key, raising=False)
-    # No provider configured
+    # No provider configured — False regardless of channels
     assert should_autostart(mode="auto", config={}, env_values={"TELEGRAM_BOT_TOKEN": "abc"}) is False
-    # Provider set, but env var missing
+    # Provider set in config, but no API key in env — False
     config = {"model": {"provider": "anthropic", "default": "claude-sonnet-4.6"}}
-    assert should_autostart(mode="auto", config=config, env_values={"TELEGRAM_BOT_TOKEN": "abc"}) is False
-    # Provider configured with key but no channel
+    assert should_autostart(mode="auto", config=config, env_values={}) is False
+    # Provider configured with key, no channel — True (channel no longer required)
     env = {"ANTHROPIC_API_KEY": "sk-ant-xxx"}
-    assert should_autostart(mode="auto", config=config, env_values=env) is False
-    # Provider configured AND channel configured
+    assert should_autostart(mode="auto", config=config, env_values=env) is True
+    # Provider configured AND channel configured — still True (regression guard)
     env = {"ANTHROPIC_API_KEY": "sk-ant-xxx", "TELEGRAM_BOT_TOKEN": "12345:abc"}
     assert should_autostart(mode="auto", config=config, env_values=env) is True
 
@@ -70,8 +67,7 @@ def test_should_autostart_auto_picks_up_env_var_provider_key(
     """Provider key in os.environ counts, not just .env (CONTRACT.md §2.1 Option C)."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-railway")
     config = {"model": {"provider": "anthropic"}}
-    env = {"TELEGRAM_BOT_TOKEN": "12345:abc"}
-    assert should_autostart(mode="auto", config=config, env_values=env) is True
+    assert should_autostart(mode="auto", config=config, env_values={}) is True
 
 
 def test_should_autostart_unknown_provider_returns_false() -> None:
@@ -81,7 +77,7 @@ def test_should_autostart_unknown_provider_returns_false() -> None:
 
 def test_should_autostart_copilot_accepts_github_token_aliases() -> None:
     config = {"model": {"provider": "copilot", "default": "gpt-4.1"}}
-    env = {"GITHUB_TOKEN": "gho-test-token", "TELEGRAM_BOT_TOKEN": "12345:abc"}
+    env = {"GITHUB_TOKEN": "gho-test-token"}
     assert should_autostart(mode="auto", config=config, env_values=env) is True
 
 

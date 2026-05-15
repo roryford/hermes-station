@@ -61,10 +61,8 @@ hermes-station has no external service dependencies beyond the LLM provider you 
 
 ### Setup after deploy
 
-1. Set `HERMES_ADMIN_PASSWORD` and `HERMES_WEBUI_PASSWORD` in Railway variables
-2. Open `/admin` on your deployed URL
-3. Select a provider and paste your API key — OpenRouter gives access to all major models with one key
-4. Optionally connect a channel (Telegram is the fastest to set up — just paste a bot token)
-5. The agent starts automatically once a provider and at least one channel are configured
+1. Open your Railway URL (the `*.up.railway.app` address shown in the Railway dashboard) — the **FIRST RUN wizard** launches automatically on first visit and walks you through choosing a provider and model.
+2. If you set `OPENROUTER_API_KEY` (or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) during deploy, the wizard's system check will confirm it is configured — you can skip the provider step and start chatting immediately.
+3. Open `/admin` to connect Telegram or Discord, toggle MCP servers, start/stop the gateway, and view live logs.
 
-> **Auto-seed:** if you set `OPENROUTER_API_KEY` (or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) during deploy, the provider is already configured — skip step 3. See [`docs/configuration.md`](configuration.md#provider-auto-seed) for the full precedence and default-model table.
+The gateway starts automatically once a provider is configured. See [`docs/configuration.md`](configuration.md#provider-auto-seed) for the full provider auto-seed precedence and default-model table.

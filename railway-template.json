@@ -40,7 +40,12 @@
         },
         "OPENROUTER_API_KEY": {
           "isOptional": true,
-          "description": "Optional: when set, the first-boot seeder configures OpenRouter as the provider so the agent works immediately. Skip to configure the provider via /admin after deploy.",
+          "description": "Optional: when set, the first-boot seeder configures OpenRouter as the provider so the agent works immediately. Skip to configure the provider via the FIRST RUN wizard or /admin after deploy.",
+          "defaultValue": ""
+        },
+        "HERMES_GATEWAY_AUTOSTART": {
+          "isOptional": true,
+          "description": "When to start the gateway. 'auto' (default): start when a provider is configured. 'true'/'1': always start. 'false'/'0': manual start only via /admin.",
           "defaultValue": ""
         }
       },

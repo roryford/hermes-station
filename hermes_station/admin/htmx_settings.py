@@ -61,6 +61,7 @@ def _provider_context(paths: Paths) -> dict[str, Any]:
         {
             "id": pid,
             "label": meta["label"],
+            "default_model": meta.get("default_model", ""),
             "requires_base_url": meta.get("requires_base_url", False),
             "credential_label": meta.get("credential_label", "API key"),
             "credential_placeholder": meta.get("credential_placeholder", "Leave blank to keep existing key"),

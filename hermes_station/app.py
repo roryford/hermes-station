@@ -196,7 +196,7 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
                     row.notes = "; ".join(drift_msgs)
         if should_autostart(mode=settings.gateway_autostart, config=config, env_values=env_values):
             logger.info(
-                "autostarting gateway (mode=%s, provider configured + channel present)",
+                "autostarting gateway (mode=%s, provider configured)",
                 settings.gateway_autostart,
             )
             await gateway.start()

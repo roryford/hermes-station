@@ -312,3 +312,24 @@ async def test_pairing_approve_endpoint(fake_data_dir: Path, admin_password: str
         approved_resp = await client.get("/admin/api/pairing/approved")
         approved = approved_resp.json()["approved"]
         assert any(entry["user_id"] == "42" for entry in approved)
+
+
+# ─────────────────────────────────────────────── login page no-password message
+
+
+async def test_login_page_no_password_says_locked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When no admin password is set, login page must say 'locked', not 'disabled'."""
+    monkeypatch.delenv("HERMES_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
+
+    from hermes_station.app import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/admin/login")
+
+    assert resp.status_code == 200
+    body = resp.text
+    assert "locked" in body.lower(), "login page should say 'locked' when no password is set"
+    assert "disabled" not in body.lower(), "login page must not say 'disabled' (implies open access)"

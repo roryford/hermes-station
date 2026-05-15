@@ -45,6 +45,10 @@
         if (credentialHint && option.dataset.credentialHint) {
             credentialHint.textContent = option.dataset.credentialHint;
         }
+        const modelInput = scope.querySelector('input[name="model"]');
+        if (modelInput && option.dataset.defaultModel) {
+            modelInput.placeholder = option.dataset.defaultModel;
+        }
     }
     document.addEventListener("DOMContentLoaded", () => syncBaseUrlVisibility(document));
     document.addEventListener("change", (event) => {

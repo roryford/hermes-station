@@ -34,7 +34,13 @@ See `renovate.json5` for the schedule and `.github/workflows/ci.yml` for the gat
 ## Local development
 
 ```bash
-# Build
+# Bootstrap (installs app + dev deps; run once after cloning)
+uv sync
+
+# Run unit tests
+uv run pytest -q
+
+# Build image
 docker build -t hermes-station:local .
 # (or `container build` — Apple's container CLI is a drop-in)
 
@@ -45,15 +51,15 @@ docker run --rm -d --name hermes-station -p 8787:8787 \
   -v /tmp/hermes-station-data:/data \
   hermes-station:local
 
-# Smoke
-curl http://127.0.0.1:8787/health
+# Smoke — status: "ok" on first boot is expected (agent is ready, no provider yet)
+curl http://127.0.0.1:8787/health | jq .status
 ```
 
 Apple `container` and `docker` are both supported (commands are compatible enough for the build/run flow used here).
 
 ## Running it yourself
 
-hermes-station is **warn-and-continue on first boot**: the container starts on an empty `/data` with zero secrets, `/health` reports `degraded`, and the admin UI walks you through configuration. Nothing is required to get a running process.
+hermes-station is **warn-and-continue on first boot**: the container starts on an empty `/data` with zero secrets, `/health` reports `ok` (all intended capabilities are ready; the gateway is idle pending a provider key), and the FIRST RUN wizard in the WebUI walks you through configuration. `status: "ok"` on first boot is not a crash — it means nothing is misconfigured yet. Nothing is required to get a running process.
 
 ### What you can configure
 
@@ -73,12 +79,12 @@ Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no
 
 ```json
 {
-  "status": "degraded",
+  "status": "ok",
   "components": {
     "control_plane": {"state": "ready"},
     "webui":         {"state": "ready", "pid": 42},
-    "gateway":       {"state": "stopped"},
-    "scheduler":     {"jobs": null, "last_run_at": null},
+    "gateway":       {"state": "unknown", "platform": null, "connection": "not_configured"},
+    "scheduler":     {"state": "unknown", "enabled": false, "job_count": null, "last_run_at": null, "failed_jobs": null},
     "storage":       {"data_writable": true, "config_readable": true},
     "memory":        {"provider": "holographic", "db_ok": true}
   },
@@ -108,7 +114,7 @@ Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no
 }
 ```
 
-`status: "degraded"` here is operational (the gateway is stopped pending a provider) — no readiness rows are `intended: true && ready: false`. Visit `/admin` to add a provider key, or set `OPENROUTER_API_KEY` (etc.) at boot to skip the manual step.
+`status: "ok"` here is correct — no readiness row is `intended: true && ready: false`. The gateway is idle pending a provider key; that is not a misconfiguration. Visit `/admin` to add a provider key, or set `OPENROUTER_API_KEY` (etc.) at boot to skip the manual step.
 
 Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.provider: openrouter` to `config.yaml` on first start, so a `provider:openrouter` readiness row appears and `status` flips to `ok`:
 
@@ -118,8 +124,8 @@ Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.p
   "components": {
     "control_plane": {"state": "ready"},
     "webui":         {"state": "ready", "pid": 42},
-    "gateway":       {"state": "running"},
-    "scheduler":     {"jobs": null, "last_run_at": null},
+    "gateway":       {"state": "running", "platform": null, "connection": "connected"},
+    "scheduler":     {"state": "unknown", "enabled": false, "job_count": null, "last_run_at": null, "failed_jobs": null},
     "storage":       {"data_writable": true, "config_readable": true},
     "memory":        {"provider": "holographic", "db_ok": true}
   },

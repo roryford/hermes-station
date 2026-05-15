@@ -3,9 +3,15 @@ set -euo pipefail
 
 WANT_SCREENSHOTS="${1:-}"  # pass --screenshots to opt in [DX-driven]
 
+# Preflight: require uv and a container runtime.
+command -v uv >/dev/null || { echo "uv not found — install from https://docs.astral.sh/uv/"; exit 1; }
+
 # Prefer Apple `container` per CLAUDE memory; fall back to docker. [DX]
 RUNTIME=$(command -v container || command -v docker)
-[ -z "$RUNTIME" ] && { echo "no container runtime found"; exit 1; }
+[ -z "$RUNTIME" ] && { echo "no container runtime found (install Docker or Apple container)"; exit 1; }
+
+# Ensure dev deps are installed before running anything.
+uv sync --quiet
 
 # 1. Lint + typecheck + unit tests
 uv run ruff check .
@@ -52,6 +58,8 @@ jq -e '.versions.image_revision != null and .versions.image_revision != ""' /tmp
 jq -e '.readiness."provider:openrouter".intended == true'  /tmp/hs-health.json
 jq -e '.readiness."provider:openrouter".ready == true'     /tmp/hs-health.json
 jq -e '.status == "ok"'                                    /tmp/hs-health.json
+# Gateway must autostart when provider is configured (no channel required)
+jq -e '.components.gateway.state == "running"'             /tmp/hs-health.json
 
 # 6. Container-toolbelt tests — run inside the test image where the binaries exist
 "$RUNTIME" run --rm hermes-station:dx-test \
@@ -60,7 +68,8 @@ jq -e '.status == "ok"'                                    /tmp/hs-health.json
 # 7. E2e + smoke — point at the already-running container
 HERMES_STATION_E2E_URL=http://127.0.0.1:8788 \
   HERMES_STATION_E2E_PASSWORD="$E2E_PW" \
-  uv run pytest tests/test_e2e_admin.py tests/test_login_smoke.py -q --no-cov
+  HERMES_STATION_E2E_ADMIN_PASSWORD="$E2E_PW" \
+  uv run pytest tests/test_e2e_admin.py tests/test_login_smoke.py tests/test_e2e_dx.py -q --no-cov
 
 # 8. Screenshots — opt-in to keep core verify lean [DX-driven]
 if [ "$WANT_SCREENSHOTS" = "--screenshots" ]; then

@@ -259,7 +259,7 @@ def should_autostart(*, mode: str, config: dict[str, Any], env_values: dict[str,
     Returns True iff:
       - mode is truthy (1/true/on/yes), OR
       - mode is "auto" AND a valid provider is configured AND the provider's
-        API key is set AND at least one channel has its primary key set.
+        API key is set (channel not required — the WebUI is always available).
     """
     normalized = (mode or "auto").strip().lower()
     if normalized in {"1", "true", "on", "yes"}:
@@ -267,7 +267,6 @@ def should_autostart(*, mode: str, config: dict[str, Any], env_values: dict[str,
     if normalized in {"0", "false", "off", "no"}:
         return False
 
-    from hermes_station.admin.channels import CHANNEL_ENV_KEYS
     from hermes_station.admin.provider import PROVIDER_CATALOG, provider_has_credentials
 
     provider = ((config.get("model") or {}).get("provider") or "").strip().lower()
@@ -276,6 +275,4 @@ def should_autostart(*, mode: str, config: dict[str, Any], env_values: dict[str,
     provider_meta = PROVIDER_CATALOG.get(provider)
     if not provider_meta:
         return False
-    if not provider_has_credentials(provider, env_values):
-        return False
-    return any(env_values.get(k) or os.environ.get(k) for k in CHANNEL_ENV_KEYS)
+    return provider_has_credentials(provider, env_values)

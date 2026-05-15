@@ -265,11 +265,11 @@ Adding a channel slug is a contract extension, not a break — old deploys see "
 
 Controlled by `HERMES_GATEWAY_AUTOSTART`:
 
-- `auto` (default): start gateway when **both** a valid provider AND at least one configured channel are present.
+- `auto` (default): start gateway when a valid provider is configured and has credentials (channel not required — the WebUI is always available).
 - `1`/`true`/`on`: force autostart whenever config is sufficient.
 - `0`/`false`/`off`: never autostart; admin must press Start.
 
-Source: `should_autostart()` in `hermes_station/gateway.py:266`. hermes-station may refactor the implementation but must preserve these three modes and the "auto" semantics, because users have set `HERMES_GATEWAY_AUTOSTART` values in Railway that we don't want to break.
+Source: `should_autostart()` in `hermes_station/gateway.py:256`. hermes-station may refactor the implementation but must preserve these three modes and their semantics.
 
 ---
 

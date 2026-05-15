@@ -6,6 +6,16 @@
      hx-trigger="every 5s"
      hx-swap="outerHTML">
 
+    {% if provider.configured and not gateway.running %}
+    <div class="alert warning" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+        <span>Agent configured but not running.</span>
+        <button type="button" class="btn small"
+                hx-post="/admin/api/gateway/start"
+                hx-target="#status-panel"
+                hx-swap="outerHTML">Start gateway</button>
+    </div>
+    {% endif %}
+
     <section class="card">
         <div class="card-header">
             <h2>Supervisors</h2>
@@ -87,7 +97,7 @@
                         {% endif %}
                     </dl>
                 {% else %}
-                    <p class="muted">No provider configured. <a href="/admin/settings">Set one up</a>.</p>
+                    <p class="muted">No provider configured. <a href="/admin/settings#provider-card">Set one up</a>.</p>
                 {% endif %}
             </div>
             <div>

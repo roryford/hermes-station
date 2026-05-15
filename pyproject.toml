@@ -37,6 +37,8 @@ Repository = "https://github.com/roryford/hermes-station"
 hermes = [
     "hermes-agent[messaging] @ git+https://github.com/NousResearch/hermes-agent.git@498bfc7bc12a937621b4215312049b1000726df3",  # v2026.5.7
 ]
+
+[dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",

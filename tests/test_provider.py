@@ -83,3 +83,23 @@ def test_provider_status_returns_dict(fake_data_dir: Path) -> None:
     assert isinstance(result, dict)
     assert "provider" in result
     assert "ready" in result
+
+
+# ─────────────────────────────────────────────── provider context default_model
+
+
+def test_provider_context_includes_default_model(fake_data_dir: Path) -> None:
+    """Every entry in the provider catalog context must expose default_model."""
+    from hermes_station.admin.htmx_settings import _provider_context
+    from hermes_station.admin.provider import PROVIDER_CATALOG
+    from hermes_station.config import Paths
+
+    ctx = _provider_context(Paths())
+    catalog = ctx["provider_catalog"]
+    for entry in catalog:
+        assert "default_model" in entry, f"provider '{entry['id']}' missing default_model"
+        expected = PROVIDER_CATALOG[entry["id"]].get("default_model", "")
+        assert entry["default_model"] == expected, (
+            f"provider '{entry['id']}' default_model mismatch: "
+            f"got {entry['default_model']!r}, expected {expected!r}"
+        )
