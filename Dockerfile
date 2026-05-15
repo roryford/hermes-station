@@ -76,15 +76,15 @@ COPY pyproject.toml README.md LICENSE ./
 COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 
 # Single resolve covering hermes-station's deps, the `hermes` extra (pulls
-# hermes-agent), and hermes-webui's runtime requirements. The BuildKit cache
-# mount keeps the uv wheel cache around between builds without bloating the
-# image; the layer itself caches as long as pyproject.toml, __init__.py, and
-# HERMES_WEBUI_VERSION are unchanged.
+# hermes-agent), and hermes-webui's runtime requirements. The Docker layer
+# cache handles reuse — layer is reused as long as pyproject.toml,
+# __init__.py, and HERMES_WEBUI_VERSION are unchanged.
 #
-# No explicit id= — Railway auto-generates a per-service cache key prefix,
-# BuildKit uses the target path as the implicit key on GHA and local Docker.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
+# No BuildKit cache mount: Railway's metal builder requires
+# id=s/<service-id>-<path>, which is service-specific and cannot be
+# interpolated from ARG/env vars. Dropping the mount keeps this Dockerfile
+# portable across forks and fresh Railway services.
+RUN uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
 # Pre-cache the curated stdio MCP servers so first-toggle isn't a 30s npm/uv
