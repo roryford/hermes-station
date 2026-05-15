@@ -75,6 +75,8 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          ignore-unfixed: true   # suppress CVEs with no fix available in the package ecosystem
+          trivyignores: .trivyignore  # accepted risks with confirmed no-fix-available
           exit-code: "0"  # warn only; don't fail the build on first scan
 
       - name: upload Trivy SARIF

@@ -1,0 +1,39 @@
+# .trivyignore — accepted risks with no fix available
+#
+# Each entry is reviewed and documented. Re-evaluate when:
+# - upstream releases a patched binary (yq, gh)
+# - Debian bookworm security team backports a fix
+#
+# Format: CVE-ID [expiry-date] # comment
+
+# ── Go stdlib CVEs in yq and gh ──────────────────────────────────────────────
+# yq v4.53.2 is the current latest; gh is from Debian apt.
+# Both are affected by Go stdlib CVEs that require the upstream maintainer to
+# rebuild with a patched Go toolchain. No fix is available in either binary
+# as of 2026-05-16. Re-check when yq > v4.53.2 or gh > 2.72.0 ships.
+CVE-2026-33811
+CVE-2026-33814
+CVE-2026-39820
+CVE-2026-39836
+CVE-2026-42499
+
+# ── Long-standing Debian bookworm CVEs with no backport ──────────────────────
+# These have been open in Debian bookworm for 2+ years with no security
+# backport scheduled. The packages are required runtime deps (ffmpeg, tesseract,
+# poppler-utils). Removing them would break core Hermes Agent capabilities.
+
+# libaom3 — AV1 codec used by ffmpeg; no Debian bookworm fix for either CVE
+CVE-2023-39616
+CVE-2023-6879
+
+# libmfx1 — Intel Media SDK acceleration for ffmpeg; no Debian bookworm fix
+CVE-2023-45221
+
+# zlib1g — compression library; no Debian bookworm fix for this variant
+CVE-2023-45853
+
+# libharfbuzz0b — text shaping; no Debian bookworm fix
+CVE-2023-25193
+
+# libldap-2.5-0 — LDAP client library; no Debian bookworm fix
+CVE-2023-2953
