@@ -14,11 +14,6 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-
-[project.urls]
-Repository = "https://github.com/roryford/hermes-station"
-"Bug Tracker" = "https://github.com/roryford/hermes-station/issues"
-
 dependencies = [
     "starlette>=0.40",
     "uvicorn[standard]>=0.30",
@@ -30,6 +25,10 @@ dependencies = [
     "itsdangerous>=2.2",
     "httpx>=0.27",
 ]
+
+[project.urls]
+Repository = "https://github.com/roryford/hermes-station"
+"Bug Tracker" = "https://github.com/roryford/hermes-station/issues"
 
 [project.optional-dependencies]
 # Pinned upstream — tracked by Renovate's pep621 manager.
