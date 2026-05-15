@@ -81,9 +81,9 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 # image; the layer itself caches as long as pyproject.toml, __init__.py, and
 # HERMES_WEBUI_VERSION are unchanged.
 #
-# Plain opaque cache key — works identically on GHA, local Docker, and Railway
-# without needing a service-specific UUID prefix.
-RUN --mount=type=cache,target=/root/.cache/uv,id=hermes-station-uv-cache \
+# No explicit id= — target path is the implicit key, which satisfies Railway
+# Metal builder's cacheKey prefix requirement and works on GHA + local Docker.
+RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
