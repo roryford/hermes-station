@@ -71,7 +71,9 @@ jobs:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_SERVICE_ID: a74d9666-4e53-494f-9dc9-f73b608836f4
       RAILWAY_ENVIRONMENT_ID: ddbd4898-55eb-4e67-b993-b170644b0931
-      IMAGE: ghcr.io/roryford/hermes-station:${{ github.ref_name }}
+      # semver strips the v-prefix so the versioned tag is e.g. 0.1.3 not v0.1.3.
+      # Use :latest which always points at the most-recently published release.
+      IMAGE: ghcr.io/roryford/hermes-station:latest
     steps:
       - name: point service at new image
         run: |
