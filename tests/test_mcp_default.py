@@ -287,3 +287,50 @@ async def test_toggle_endpoint_rejects_unknown_server(fake_data_dir: Path, admin
         # Error detail is logged server-side; the UI shows a generic alert only.
         assert "unknown MCP server" not in response.text
         assert "error" in response.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# mcp helper unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_default_config_empty(fake_data_dir: Path) -> None:
+    """mcp config helper returns something meaningful on empty config."""
+    result = mcp_status({}, {})
+    assert isinstance(result, list)
+
+
+def test_mcp_is_enabled_various_values() -> None:
+    from hermes_station.admin.mcp import _is_enabled
+
+    assert _is_enabled(True) is True
+    assert _is_enabled(False) is False
+    assert _is_enabled(None) is True  # default True
+    assert _is_enabled("true") is True
+    assert _is_enabled("false") is False
+    assert _is_enabled("1") is True
+    assert _is_enabled("0") is False
+
+
+def test_mcp_status_with_enabled_server(fake_data_dir: Path) -> None:
+    if not MCP_SERVER_CATALOG:
+        pytest.skip("No MCP servers in catalog")
+
+    first_name = MCP_SERVER_CATALOG[0]["name"]
+    config = {"mcp_servers": {first_name: {"enabled": True}}}
+    result = mcp_status(config, {})
+    assert any(s["name"] == first_name and s["enabled"] is True for s in result)
+
+
+def test_mcp_status_with_needs_satisfied(fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """mcp_status needs_satisfied is True when required env var is present."""
+    server_with_needs = next((e for e in MCP_SERVER_CATALOG if e.get("needs")), None)
+    if not server_with_needs:
+        pytest.skip("No MCP server with needs in catalog")
+
+    needed_key = server_with_needs["needs"][0]
+    monkeypatch.setenv(needed_key, "test-value")
+
+    result = mcp_status({}, {})
+    entry = next(s for s in result if s["name"] == server_with_needs["name"])
+    assert entry["needs_satisfied"] is True

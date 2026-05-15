@@ -345,6 +345,180 @@ def test_scheduler_block_tolerates_malformed_json(tmp_path: Path) -> None:
     assert block["job_count"] is None
 
 
+# ---------------------------------------------------------------------------
+# health.py pure helper unit tests (from test_coverage_boost.py)
+# ---------------------------------------------------------------------------
+
+
+def test_storage_block_writable_path(tmp_path: Path) -> None:
+    from hermes_station.health import _storage_block
+
+    class FakePaths:
+        home = tmp_path
+        config_path = tmp_path / "config.yaml"
+
+    block = _storage_block(FakePaths())
+    assert block["data_writable"] is True
+    assert block["config_readable"] is True
+
+
+def test_storage_block_reads_existing_config(tmp_path: Path) -> None:
+    from hermes_station.health import _storage_block
+
+    config = tmp_path / "config.yaml"
+    config.write_text("model:\n  provider: anthropic\n")
+
+    class FakePaths:
+        home = tmp_path
+        config_path = config
+
+    block = _storage_block(FakePaths())
+    assert block["config_readable"] is True
+
+
+def test_memory_block_with_holographic_ready(tmp_path: Path) -> None:
+    from hermes_station.health import _memory_block
+
+    class FakeRow:
+        ready = True
+
+    class FakeReadiness:
+        readiness = {"memory:holographic": FakeRow()}
+
+    block = _memory_block(FakeReadiness(), None)
+    assert block["provider"] == "holographic"
+    assert block["db_ok"] is True
+
+
+def test_memory_block_no_memory_row(tmp_path: Path) -> None:
+    """No memory:* row → falls back to builtin."""
+    from hermes_station.health import _memory_block
+
+    class FakeReadiness:
+        readiness = {}
+
+    block = _memory_block(FakeReadiness(), None)
+    assert block["provider"] == "builtin"
+    assert block["db_ok"] is True
+
+
+def test_memory_block_readiness_none() -> None:
+    from hermes_station.health import _memory_block
+
+    block = _memory_block(None, None)
+    assert block["provider"] == "none"
+    assert block["db_ok"] is True
+
+
+def test_readiness_to_payload_with_dict_readiness() -> None:
+    from hermes_station.health import _readiness_to_payload
+
+    payload = {"cap_a": {"intended": True, "ready": False}}
+    result = _readiness_to_payload(payload)
+    assert result == payload
+
+
+def test_readiness_to_payload_with_none() -> None:
+    from hermes_station.health import _readiness_to_payload
+
+    assert _readiness_to_payload(None) == {}
+
+
+def test_readiness_to_payload_with_unknown_type() -> None:
+    from hermes_station.health import _readiness_to_payload
+
+    assert _readiness_to_payload("not a readiness") == {}
+
+
+def test_versions_payload_none() -> None:
+    from hermes_station.health import _versions_payload
+
+    assert _versions_payload(None) == {}
+
+
+def test_gateway_snapshot_health_no_gateway() -> None:
+    from hermes_station.health import _gateway_snapshot
+
+    class FakeState:
+        gateway = None
+
+    snap = _gateway_snapshot(FakeState())
+    assert snap["state"] == "disabled"
+    assert snap["connection"] == "not_configured"
+
+
+def test_gateway_snapshot_health_with_gateway(tmp_path: Path) -> None:
+    from hermes_station.gateway import Gateway
+    from hermes_station.health import _gateway_snapshot
+
+    gw = Gateway(hermes_home=tmp_path)
+
+    class FakeState:
+        gateway = gw
+
+    snap = _gateway_snapshot(FakeState())
+    assert "state" in snap
+    assert "connection" in snap
+
+
+def test_webui_snapshot_none() -> None:
+    from hermes_station.health import _webui_snapshot
+
+    class FakeState:
+        webui = None
+
+    snap = _webui_snapshot(FakeState())
+    assert snap["state"] == "disabled"
+    assert snap["pid"] is None
+
+
+def test_compose_status_down_when_storage_not_writable() -> None:
+    from hermes_station.health import _compose_status
+
+    status = _compose_status(
+        storage={"data_writable": False},
+        readiness=None,
+        webui={"state": "ready"},
+    )
+    assert status == "down"
+
+
+def test_compose_status_degraded_dict_readiness() -> None:
+    from hermes_station.health import _compose_status
+
+    readiness = {
+        "readiness": {"provider:anthropic": {"intended": True, "ready": False}}
+    }
+    status = _compose_status(
+        storage={"data_writable": True},
+        readiness=readiness,
+        webui={"state": "ready"},
+    )
+    assert status == "degraded"
+
+
+def test_compose_status_degraded_when_webui_not_ready() -> None:
+    from hermes_station.health import _compose_status
+
+    status = _compose_status(
+        storage={"data_writable": True},
+        readiness=None,
+        webui={"state": "down"},
+    )
+    assert status == "degraded"
+
+
+def test_compose_status_ok() -> None:
+    from hermes_station.health import _compose_status
+
+    status = _compose_status(
+        storage={"data_writable": True},
+        readiness=None,
+        webui={"state": "ready"},
+    )
+    assert status == "ok"
+
+
 def test_scheduler_job_count_in_health_payload(fake_data_dir: Path) -> None:
     """job_count is exposed in the /health response under components.scheduler."""
     import json
