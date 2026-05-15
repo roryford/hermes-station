@@ -25,9 +25,7 @@
     "1f4a5bb9-033d-42b4-8c2e-f15464ce97c8": {
       "name": "hermes-station",
       "source": {
-        "repo": "roryford/hermes-station",
-        "branch": null,
-        "rootDirectory": null
+        "image": "ghcr.io/roryford/hermes-station:latest"
       },
       "variables": {
         "HERMES_ADMIN_PASSWORD": {
@@ -44,11 +42,6 @@
           "isOptional": true,
           "description": "Optional: when set, the first-boot seeder configures OpenRouter as the provider so the agent works immediately. Skip to configure the provider via /admin after deploy.",
           "defaultValue": ""
-        },
-        "IMAGE_REVISION": {
-          "isOptional": true,
-          "description": "Threaded into the Docker build as --build-arg so /health.versions.image_revision shows the deployed git SHA. Reference variable populated automatically by Railway.",
-          "defaultValue": "${{RAILWAY_GIT_COMMIT_SHA}}"
         }
       },
       "volumeMounts": {
