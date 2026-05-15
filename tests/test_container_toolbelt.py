@@ -84,9 +84,9 @@ def test_toolbelt_binary_on_path_and_runnable(binary: str, args: list[str]) -> N
     assert output, f"{binary} produced no version output"
 
 
-def test_node_is_v20_lts() -> None:
-    """Pin guard: NodeSource repo is `node_20.x`, so node --version must
-    be v20.x. If this fails after a Dockerfile bump, that bump was unintended."""
+def test_node_is_v24() -> None:
+    """Pin guard: NodeSource repo is `node_24.x`, so node --version must
+    be v24.x. If this fails after a Dockerfile bump, that bump was unintended."""
     path = shutil.which("node")
     if path is None:
         if REQUIRE:
@@ -97,8 +97,8 @@ def test_node_is_v20_lts() -> None:
     )
     assert proc.returncode == 0
     version = proc.stdout.strip()
-    if not version.startswith("v20."):
-        msg = f"expected Node 20.x LTS, got {version!r}"
+    if not version.startswith("v24."):
+        msg = f"expected Node 24.x, got {version!r}"
         # On a dev laptop, the host's nodejs version is irrelevant — only the
         # container build matters. Fail only when REQUIRE is set (CI / in-image).
         if REQUIRE:
