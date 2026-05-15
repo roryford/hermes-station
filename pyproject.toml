@@ -70,6 +70,9 @@ exclude = ["tests/fixtures"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--cov=hermes_station --cov-report=term-missing --cov-fail-under=85"
+markers = [
+    "manual: opt-in tests that should be run by hand (e.g. bit-rot sentinels for hardcoded model identifiers)",
+]
 
 [tool.coverage.run]
 branch = true

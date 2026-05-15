@@ -131,9 +131,7 @@ def test_seed_provider_roundtrips_through_extract_model_config(tmp_path: Path) -
     assert config["model"]["name"] == DEFAULT_MODELS_BY_PROVIDER["openai"]
 
 
-def test_seed_provider_logs_diagnostic_on_skip(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_seed_provider_logs_diagnostic_on_skip(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     cfg = tmp_path / "config.yaml"
 
     # Path 1: pre-configured provider.
@@ -208,9 +206,7 @@ def test_detect_provider_drift_emits_no_warning_when_no_alternative() -> None:
 # -- Integration: seeded provider shows up in /health readiness -------------
 
 
-def test_seeded_provider_appears_in_readiness(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_seeded_provider_appears_in_readiness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """C2: seed → load → validate_readiness shows the provider as ready.
 
     In-process equivalent of the lifespan handoff. The full lifespan is

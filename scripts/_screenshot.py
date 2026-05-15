@@ -78,9 +78,7 @@ def main(argv: list[str]) -> int:
 
                 size = out_path.stat().st_size if out_path.exists() else 0
                 if size < MIN_PNG_BYTES:
-                    failures.append(
-                        f"{out_path}: {size} bytes (< {MIN_PNG_BYTES} floor)"
-                    )
+                    failures.append(f"{out_path}: {size} bytes (< {MIN_PNG_BYTES} floor)")
         finally:
             browser.close()
 
