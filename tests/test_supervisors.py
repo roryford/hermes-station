@@ -578,7 +578,9 @@ def test_webui_build_env_no_admin_password_set(tmp_path: Path, monkeypatch: pyte
     assert "HERMES_WEBUI_PASSWORD" not in env
 
 
-def test_webui_build_env_honours_explicit_webui_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_webui_build_env_honours_explicit_webui_password(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """HERMES_WEBUI_PASSWORD from env is used as-is; HERMES_ADMIN_PASSWORD is not substituted."""
     monkeypatch.setenv("HERMES_ADMIN_PASSWORD", "admin-pw")
     monkeypatch.setenv("HERMES_WEBUI_PASSWORD", "webui-pw")
