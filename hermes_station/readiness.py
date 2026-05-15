@@ -1,13 +1,19 @@
-"""Boot-time readiness validator.
+"""Boot-time capability validation.
 
 Reconciles *intended* capability (from config.yaml) against *actual* readiness
-(env vars present, paths writable, etc.) and produces a structured report
-consumed by `/health`.
+(env vars present, paths writable, etc.) and produces a structured report that
+is cached on ``app.state.readiness`` at startup and consumed by ``/health``.
+
+**Semantics**: this is a *boot-time snapshot*, not a live end-to-end health
+check.  It answers "was the operator's intended configuration satisfiable at
+start-up?" — not "is the downstream service reachable right now?"  Capabilities
+like provider credentials and channel tokens are validated once at boot; the
+cached result is served until the process restarts.
 
 Default posture is warn-and-continue: missing secrets do NOT block startup;
-they just flip a capability to `ready=false` with a short reason, which causes
-`/health` to report `status: "degraded"`. The image must stay shareable, so we
-never abort on missing credentials.
+they just flip a capability to ``ready=false`` with a short reason, which causes
+``/health`` to report ``status: "degraded"``.  The image must stay shareable, so
+we never abort on missing credentials.
 """
 
 from __future__ import annotations
@@ -177,19 +183,7 @@ def _check_web_search(config: dict[str, Any], env_values: dict[str, str]) -> Cap
 
 
 def _check_image_gen(config: dict[str, Any], env_values: dict[str, str]) -> CapabilityRow:
-    toolsets = config.get("toolsets")
-    enabled_in_toolsets = False
-    if isinstance(toolsets, list):
-        enabled_in_toolsets = any(str(t).lower() == "image_gen" for t in toolsets)
-    elif isinstance(toolsets, dict):
-        block = toolsets.get("image_gen")
-        if block is True:
-            enabled_in_toolsets = True
-        elif isinstance(block, dict) and block.get("enabled", True):
-            enabled_in_toolsets = True
-    has_fal_block = isinstance(config.get("fal"), dict)
-    intended = enabled_in_toolsets or has_fal_block
-    if not intended:
+    if not _image_gen_intended(config):
         return CapabilityRow(intended=False, ready=False)
     ok = _has_value(env_values, "FAL_KEY")
     return CapabilityRow(intended=True, ready=ok, reason="" if ok else "missing FAL_KEY")
@@ -289,19 +283,41 @@ def _read_hermes_station_version() -> str:
         return "0.0.0"
 
 
-def _enabled_toolsets(config: dict[str, Any]) -> list[str]:
+def _image_gen_intended(config: dict[str, Any]) -> bool:
+    """True iff image_gen is intended — mirrors _check_image_gen's intent logic."""
     toolsets = config.get("toolsets")
     if isinstance(toolsets, list):
-        return [str(t) for t in toolsets]
-    if isinstance(toolsets, dict):
-        out: list[str] = []
+        if any(str(t).lower() == "image_gen" for t in toolsets):
+            return True
+    elif isinstance(toolsets, dict):
+        block = toolsets.get("image_gen")
+        if block is True:
+            return True
+        if isinstance(block, dict) and block.get("enabled", True):
+            return True
+    # fal: block present is also an intent signal (same as _check_image_gen).
+    return isinstance(config.get("fal"), dict)
+
+
+def _enabled_toolsets(config: dict[str, Any]) -> list[str]:
+    toolsets = config.get("toolsets")
+    out: list[str] = []
+    if isinstance(toolsets, list):
+        out = [str(t) for t in toolsets]
+    elif isinstance(toolsets, dict):
         for name, val in toolsets.items():
             if val is True:
                 out.append(str(name))
             elif isinstance(val, dict) and val.get("enabled", True):
                 out.append(str(name))
-        return out
-    return []
+    # Sync image_gen with the same intent signal used by _check_image_gen so
+    # summary.toolsets and readiness.image_gen.intended always agree.
+    if _image_gen_intended(config):
+        if "image_gen" not in out:
+            out.append("image_gen")
+    else:
+        out = [t for t in out if t != "image_gen"]
+    return out
 
 
 def _configured_platforms(config: dict[str, Any]) -> list[str]:

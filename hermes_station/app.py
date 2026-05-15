@@ -29,6 +29,7 @@ from hermes_station.config import (
     Paths,
     load_env_file,
     load_yaml_config,
+    normalize_config,
     seed_default_mcp_servers,
     seed_default_memory_provider,
     seed_env_file_to_os,
@@ -96,7 +97,15 @@ class _BodySizeLimitMiddleware:
 def _ensure_env_passthrough(paths: Paths, config: dict, keys: list[str]) -> None:
     """Add missing keys to terminal.env_passthrough and persist if changed."""
     terminal = config.setdefault("terminal", {})
-    passthrough: list = terminal.setdefault("env_passthrough", [])
+    passthrough = terminal.setdefault("env_passthrough", [])
+    if not isinstance(passthrough, list):
+        # normalize_config should have fixed this already; warn loudly if not.
+        logger.warning(
+            "terminal.env_passthrough is %s, expected list — replacing with empty list",
+            type(passthrough).__name__,
+        )
+        passthrough = []
+        terminal["env_passthrough"] = passthrough
     additions = [k for k in keys if k not in passthrough]
     if additions:
         passthrough.extend(additions)
@@ -135,6 +144,11 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         if added_mcp:
             logger.info("seeded default MCP servers (disabled): %s", ", ".join(added_mcp))
         config = load_yaml_config(paths.config_path)
+        config, norm_changes = normalize_config(config)
+        if norm_changes:
+            write_yaml_config(paths.config_path, config)
+            for change in norm_changes:
+                logger.warning("config normalized on load: %s", change)
         _ensure_env_passthrough(paths, config, ["GITHUB_TOKEN", "GH_TOKEN"])
         env_values = load_env_file(paths.env_path)
         # CONTRACT.md §2.1: .env values take precedence over process env.

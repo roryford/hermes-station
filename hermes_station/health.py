@@ -82,18 +82,39 @@ def _memory_block(readiness: Any, paths: Any) -> dict[str, Any]:
 
 def _scheduler_block(paths: Any) -> dict[str, Any]:
     """Best-effort: scheduler is hermes-agent's responsibility. We surface
-    whatever state file it leaves under $HERMES_HOME without doing work in
-    the request path.
+    state from two files it maintains under $HERMES_HOME:
+
+    * ``cron/jobs.json`` — authoritative job definitions hermes-agent actually
+      uses at runtime.  Present iff the scheduler has been configured.
+    * ``scheduler_state.json`` — runtime state written after each scheduler
+      loop tick (last_run_at, failed_jobs).
+
+    Both files are read without doing work in the request path.
     """
+    import json
+
     hermes_home: Path = getattr(paths, "hermes_home", Path("/data/.hermes"))
-    state_file = Path(hermes_home) / "scheduler_state.json"
+
+    # cron/jobs.json is the source of truth for what jobs are scheduled.
+    job_count: int | None = None
+    try:
+        cron_jobs_file = Path(hermes_home) / "cron" / "jobs.json"
+        if cron_jobs_file.exists():
+            data = json.loads(cron_jobs_file.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                job_count = len(data)
+            elif isinstance(data, dict):
+                job_count = len(data)
+    except (OSError, ValueError):
+        pass
+
+    # scheduler_state.json carries runtime metrics written by the scheduler loop.
     last_run_at: str | None = None
     failed_jobs: int | None = None
     state = "unknown"
     try:
+        state_file = Path(hermes_home) / "scheduler_state.json"
         if state_file.exists():
-            import json
-
             data = json.loads(state_file.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 last_run_at = data.get("last_run_at")
@@ -103,10 +124,16 @@ def _scheduler_block(paths: Any) -> dict[str, Any]:
                 state = "ready"
     except (OSError, ValueError):
         pass
+
+    # cron/jobs.json present → scheduler has jobs even if state file is absent/stale.
+    if job_count is not None and state == "unknown":
+        state = "configured"
+
     return {
         "state": state,
         "last_run_at": last_run_at,
         "failed_jobs": failed_jobs,
+        "job_count": job_count,
     }
 
 
