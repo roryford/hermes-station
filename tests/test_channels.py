@@ -5,15 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
-import pytest
 
 
 # ─────────────────────────────────────────────────────────── API channel routes
 
 
-async def test_api_channels_get_returns_list(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_api_channels_get_returns_list(fake_data_dir: Path, admin_password: str) -> None:
     """Channels GET returns a list of channels."""
     from hermes_station.app import create_app
     from hermes_station.admin import routes
@@ -56,9 +53,7 @@ async def test_api_channels_save_requires_auth(fake_data_dir: Path, admin_passwo
     assert resp.status_code == 401
 
 
-async def test_channels_save_rejects_invalid_values(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_channels_save_rejects_invalid_values(fake_data_dir: Path, admin_password: str) -> None:
     """Keys with newlines in values should cause 400."""
     from hermes_station.app import create_app
     from hermes_station.admin import routes

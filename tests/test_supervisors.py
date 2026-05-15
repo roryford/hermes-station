@@ -7,12 +7,13 @@ tests cover the pure-function pieces that don't need a real subprocess.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from hermes_station.gateway import Gateway, should_autostart
-import httpx
 from starlette.applications import Starlette
 from starlette.routing import Route
 
@@ -307,9 +308,6 @@ def test_gateway_handles_malformed_state_file(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-import json
-
-
 def test_gateway_snapshot_unknown_state(tmp_path: Path) -> None:
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
@@ -325,11 +323,15 @@ def test_gateway_snapshot_running_state_connected(tmp_path: Path) -> None:
 
     state_file = tmp_path / "gateway_state.json"
     now_iso = datetime.now(timezone.utc).isoformat()
-    state_file.write_text(json.dumps({
-        "gateway_state": "running",
-        "platform": "telegram",
-        "updated_at": now_iso,
-    }))
+    state_file.write_text(
+        json.dumps(
+            {
+                "gateway_state": "running",
+                "platform": "telegram",
+                "updated_at": now_iso,
+            }
+        )
+    )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
     assert snap["state"] == "running"
@@ -339,10 +341,14 @@ def test_gateway_snapshot_running_state_connected(tmp_path: Path) -> None:
 
 def test_gateway_snapshot_token_invalid(tmp_path: Path) -> None:
     state_file = tmp_path / "gateway_state.json"
-    state_file.write_text(json.dumps({
-        "gateway_state": "startup_failed",
-        "last_error": "unauthorized: token invalid",
-    }))
+    state_file.write_text(
+        json.dumps(
+            {
+                "gateway_state": "startup_failed",
+                "last_error": "unauthorized: token invalid",
+            }
+        )
+    )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
     assert snap["connection"] == "token_invalid"
@@ -360,11 +366,15 @@ def test_gateway_snapshot_stopped_state(tmp_path: Path) -> None:
 def test_gateway_snapshot_failure_signals_passthrough(tmp_path: Path) -> None:
     """Failure signal keys should pass through to the snapshot dict."""
     state_file = tmp_path / "gateway_state.json"
-    state_file.write_text(json.dumps({
-        "gateway_state": "startup_failed",
-        "last_auth_failure_at": "2026-01-01T00:00:00Z",
-        "last_crash_at": "2026-01-01T00:01:00Z",
-    }))
+    state_file.write_text(
+        json.dumps(
+            {
+                "gateway_state": "startup_failed",
+                "last_auth_failure_at": "2026-01-01T00:00:00Z",
+                "last_crash_at": "2026-01-01T00:01:00Z",
+            }
+        )
+    )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
     assert snap.get("last_auth_failure_at") == "2026-01-01T00:00:00Z"
@@ -377,10 +387,14 @@ def test_gateway_snapshot_running_stale_updated_at(tmp_path: Path) -> None:
 
     state_file = tmp_path / "gateway_state.json"
     old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
-    state_file.write_text(json.dumps({
-        "gateway_state": "running",
-        "updated_at": old_ts,
-    }))
+    state_file.write_text(
+        json.dumps(
+            {
+                "gateway_state": "running",
+                "updated_at": old_ts,
+            }
+        )
+    )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
     assert snap["connection"] == "disconnected"
@@ -389,10 +403,14 @@ def test_gateway_snapshot_running_stale_updated_at(tmp_path: Path) -> None:
 def test_gateway_snapshot_running_bad_updated_at(tmp_path: Path) -> None:
     """Malformed updated_at → disconnected."""
     state_file = tmp_path / "gateway_state.json"
-    state_file.write_text(json.dumps({
-        "gateway_state": "running",
-        "updated_at": "not-a-timestamp",
-    }))
+    state_file.write_text(
+        json.dumps(
+            {
+                "gateway_state": "running",
+                "updated_at": "not-a-timestamp",
+            }
+        )
+    )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
     assert snap["connection"] == "disconnected"
@@ -401,10 +419,14 @@ def test_gateway_snapshot_running_bad_updated_at(tmp_path: Path) -> None:
 def test_gateway_snapshot_platform_keys(tmp_path: Path) -> None:
     """active_platform / primary_platform should also be picked up."""
     state_file = tmp_path / "gateway_state.json"
-    state_file.write_text(json.dumps({
-        "gateway_state": "unknown",
-        "active_platform": "discord",
-    }))
+    state_file.write_text(
+        json.dumps(
+            {
+                "gateway_state": "unknown",
+                "active_platform": "discord",
+            }
+        )
+    )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
     assert snap["platform"] == "discord"
@@ -416,10 +438,14 @@ def test_gateway_snapshot_running_no_tz_updated_at(tmp_path: Path) -> None:
 
     state_file = tmp_path / "gateway_state.json"
     naive_now = datetime.utcnow().isoformat()  # no tzinfo
-    state_file.write_text(json.dumps({
-        "gateway_state": "running",
-        "updated_at": naive_now,
-    }))
+    state_file.write_text(
+        json.dumps(
+            {
+                "gateway_state": "running",
+                "updated_at": naive_now,
+            }
+        )
+    )
     gw = Gateway(hermes_home=tmp_path)
     snap = gw.snapshot()
     assert snap["connection"] == "connected"
@@ -448,7 +474,6 @@ def test_gateway_read_state_fallback_on_oserror(tmp_path: Path) -> None:
 def test_webui_snapshot_starting_state(tmp_path: Path) -> None:
     """Snapshot returns 'starting' when process running but not yet healthy."""
     from unittest.mock import MagicMock
-    from datetime import datetime, timezone
 
     proc = WebUIProcess(
         webui_src=tmp_path,

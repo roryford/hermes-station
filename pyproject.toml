@@ -62,6 +62,7 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+exclude = ["tests/fixtures"]
 
 [tool.pytest.ini_options]
 # tests/test_login_smoke.py needs a running container and auto-skips when
