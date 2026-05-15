@@ -33,7 +33,7 @@ def test_seed_provider_from_env_openrouter(tmp_path: Path) -> None:
     assert result == "openrouter"
     on_disk = load_yaml_config(cfg)
     assert on_disk["model"]["provider"] == "openrouter"
-    assert on_disk["model"]["name"] == DEFAULT_MODELS_BY_PROVIDER["openrouter"]
+    assert on_disk["model"]["default"] == DEFAULT_MODELS_BY_PROVIDER["openrouter"]
 
 
 def test_seed_provider_from_env_anthropic(tmp_path: Path) -> None:
@@ -42,7 +42,7 @@ def test_seed_provider_from_env_anthropic(tmp_path: Path) -> None:
     assert result == "anthropic"
     on_disk = load_yaml_config(cfg)
     assert on_disk["model"]["provider"] == "anthropic"
-    assert on_disk["model"]["name"] == DEFAULT_MODELS_BY_PROVIDER["anthropic"]
+    assert on_disk["model"]["default"] == DEFAULT_MODELS_BY_PROVIDER["anthropic"]
 
 
 def test_seed_provider_from_env_openai(tmp_path: Path) -> None:
@@ -51,7 +51,7 @@ def test_seed_provider_from_env_openai(tmp_path: Path) -> None:
     assert result == "openai"
     on_disk = load_yaml_config(cfg)
     assert on_disk["model"]["provider"] == "openai"
-    assert on_disk["model"]["name"] == DEFAULT_MODELS_BY_PROVIDER["openai"]
+    assert on_disk["model"]["default"] == DEFAULT_MODELS_BY_PROVIDER["openai"]
 
 
 # -- Seeder: no-clobber ------------------------------------------------------
@@ -125,10 +125,10 @@ def test_seed_provider_roundtrips_through_extract_model_config(tmp_path: Path) -
     config = load_yaml_config(cfg)
     model = extract_model_config(config)
     assert model.provider == "openai"
-    # `extract_model_config` reads `default`, not `name` — the seeder writes
-    # `name` (the runtime-facing key); `default` is a separate hermes-agent
-    # concept. The roundtrip we care about is provider survival.
-    assert config["model"]["name"] == DEFAULT_MODELS_BY_PROVIDER["openai"]
+    # `extract_model_config` reads `default` — the seeder writes there too,
+    # so both the provider and the chosen model survive the roundtrip and
+    # silence the readiness probe's "model.default not set" warning.
+    assert model.default == DEFAULT_MODELS_BY_PROVIDER["openai"]
 
 
 def test_seed_provider_logs_diagnostic_on_skip(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -201,6 +201,18 @@ def test_detect_provider_drift_emits_no_warning_when_no_alternative() -> None:
     config = {"model": {"provider": "openrouter", "name": "x"}}
     env: dict[str, str] = {}  # no provider keys at all → nothing actionable
     assert detect_provider_drift(config, env) == []
+
+
+def test_capability_row_surfaces_notes_in_as_dict() -> None:
+    """Drift messages attached as `notes` reach /health via as_dict()."""
+    from hermes_station.readiness import CapabilityRow
+
+    row = CapabilityRow(intended=True, ready=False, notes="key gone — open /admin/settings")
+    out = row.as_dict()
+    assert out["notes"] == "key gone — open /admin/settings"
+    # And empty notes are omitted (no clutter on the happy path).
+    happy = CapabilityRow(intended=True, ready=True).as_dict()
+    assert "notes" not in happy
 
 
 # -- Integration: seeded provider shows up in /health readiness -------------

@@ -180,8 +180,20 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         except Exception:  # noqa: BLE001
             logger.exception("readiness validation raised; continuing")
             app.state.readiness = None
-        for drift_msg in detect_provider_drift(config, dict(os.environ)):
+        drift_msgs = detect_provider_drift(config, dict(os.environ))
+        for drift_msg in drift_msgs:
             logger.warning("%s", drift_msg)
+        # Surface drift in the configured provider's readiness row so /health
+        # callers see it without scraping logs. Drift is always tied to the
+        # one configured provider, so we attach to provider:<name>.
+        if drift_msgs and app.state.readiness is not None:
+            model_block = config.get("model")
+            if isinstance(model_block, dict):
+                provider = str(model_block.get("provider") or "").strip().lower()
+                row_key = f"provider:{provider}" if provider else ""
+                row = app.state.readiness.readiness.get(row_key) if row_key else None
+                if row is not None:
+                    row.notes = "; ".join(drift_msgs)
         if should_autostart(mode=settings.gateway_autostart, config=config, env_values=env_values):
             logger.info(
                 "autostarting gateway (mode=%s, provider configured + channel present)",

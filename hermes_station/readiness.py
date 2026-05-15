@@ -68,6 +68,7 @@ class CapabilityRow:
     ready: bool
     reason: str = ""
     source: str = ""  # "env_file" | "process_env" | "absent" | "" (non-credential caps)
+    notes: str = ""  # operator-actionable hint (e.g. provider drift) — surfaced in /health
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"intended": self.intended, "ready": self.ready}
@@ -75,6 +76,8 @@ class CapabilityRow:
             out["reason"] = self.reason
         if self.source:
             out["source"] = self.source
+        if self.notes:
+            out["notes"] = self.notes
         return out
 
 

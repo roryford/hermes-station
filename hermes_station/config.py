@@ -242,9 +242,12 @@ def seed_provider_from_env(path: Path, env: Mapping[str, str]) -> str | None:
     """First-boot seed: pick a model provider from env vars and write to config.yaml.
 
     Walks ``PROVIDER_ENV_KEYS`` in order; the first env var with a non-empty,
-    non-whitespace value wins. Writes ``model: {provider, name}`` to
+    non-whitespace value wins. Writes ``model: {provider, default}`` to
     ``config.yaml`` using the corresponding default from
-    ``DEFAULT_MODELS_BY_PROVIDER``.
+    ``DEFAULT_MODELS_BY_PROVIDER``. The field is named ``default`` (not
+    ``name``) because that's what ``extract_model_config`` reads — writing
+    ``name`` made the field a no-op and triggered a runtime warning from
+    the readiness probe.
 
     No-clobber per CONTRACT.md §3.3 is **absolute**: if any ``model:`` block
     already exists in config.yaml (even a partial one like
@@ -298,7 +301,7 @@ def seed_provider_from_env(path: Path, env: Mapping[str, str]) -> str | None:
 
     provider_name, env_key = chosen
     default_model = DEFAULT_MODELS_BY_PROVIDER[provider_name]
-    config["model"] = {"provider": provider_name, "name": default_model}
+    config["model"] = {"provider": provider_name, "default": default_model}
     write_yaml_config(path, config)
     logger.info(
         "seed_provider_from_env: seeded provider=%s model=%s from %s (other provider keys present: %s)",
