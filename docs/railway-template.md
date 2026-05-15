@@ -1,8 +1,12 @@
-----
-
 # Deploy and Host Hermes Agent
 
+> Template config is source-controlled at [`/railway-template.json`](../railway-template.json) in this repo — edit there and re-publish via the Railway dashboard's import flow when changing the template.
+
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) is an open-source AI assistant you run on your own infrastructure. hermes-station packages it into a single Railway-deployable container with a browser-based setup wizard — no config files to edit, no SSH required.
+
+![Admin dashboard](screenshots/admin-dashboard.png)
+
+![Admin settings](screenshots/admin-settings.png)
 
 ## About Hosting
 
@@ -63,4 +67,4 @@ hermes-station has no external service dependencies beyond the LLM provider you 
 4. Optionally connect a channel (Telegram is the fastest to set up — just paste a bot token)
 5. The agent starts automatically once a provider and at least one channel are configured
 
-----
+> **Auto-seed:** if you set `OPENROUTER_API_KEY` (or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) during deploy, the provider is already configured — skip step 3. See [`docs/configuration.md`](configuration.md#provider-auto-seed) for the full precedence and default-model table.
