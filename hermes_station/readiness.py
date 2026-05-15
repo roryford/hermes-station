@@ -67,11 +67,14 @@ class CapabilityRow:
     intended: bool
     ready: bool
     reason: str = ""
+    source: str = ""  # "env_file" | "process_env" | "absent" | "" (non-credential caps)
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"intended": self.intended, "ready": self.ready}
         if self.reason:
             out["reason"] = self.reason
+        if self.source:
+            out["source"] = self.source
         return out
 
 
@@ -105,6 +108,24 @@ def _first_present(env_values: dict[str, str], keys: tuple[str, ...]) -> str:
         if _has_value(env_values, k):
             return k
     return ""
+
+
+def _credential_source(env_values: dict[str, str], *keys: str) -> str:
+    """Return where the first non-placeholder credential was found.
+
+    Returns ``"env_file"`` if found in the .env dict, ``"process_env"`` if found
+    only in os.environ, or ``"absent"`` if none of the keys have a usable value.
+    Checking .env first matters for the OpenRouter case where the same key may
+    exist in both process env (Railway-injected) and .env (user-overridden).
+    """
+    for key in keys:
+        raw = (env_values.get(key) or "").strip()
+        if raw and raw.lower() not in _PLACEHOLDER_TOKENS:
+            return "env_file"
+        raw = (os.environ.get(key) or "").strip()
+        if raw and raw.lower() not in _PLACEHOLDER_TOKENS:
+            return "process_env"
+    return "absent"
 
 
 def _channel_intended(config: dict[str, Any], slug: str) -> bool:
@@ -162,10 +183,10 @@ def _check_provider(
             reason=f"unknown provider {provider!r}",
         )
     names = provider_env_var_names(provider)
-    # Use _has_value so placeholder tokens (e.g. "changeme") aren't accepted.
-    ok = any(_has_value(env_values, n) for n in names)
+    source = _credential_source(env_values, *names)
+    ok = source != "absent"
     reason = "" if ok else f"missing {' or '.join(names) if names else 'credential'}"
-    return CapabilityRow(intended=intended, ready=ok, reason=reason)
+    return CapabilityRow(intended=intended, ready=ok, reason=reason, source=source)
 
 
 def _check_web_search(config: dict[str, Any], env_values: dict[str, str]) -> CapabilityRow:
@@ -178,15 +199,17 @@ def _check_web_search(config: dict[str, Any], env_values: dict[str, str]) -> Cap
         return CapabilityRow(
             intended=True, ready=False, reason=f"unknown web search backend {backend!r}"
         )
-    ok = _has_value(env_values, key)
-    return CapabilityRow(intended=True, ready=ok, reason="" if ok else f"missing {key}")
+    source = _credential_source(env_values, key)
+    ok = source != "absent"
+    return CapabilityRow(intended=True, ready=ok, reason="" if ok else f"missing {key}", source=source)
 
 
 def _check_image_gen(config: dict[str, Any], env_values: dict[str, str]) -> CapabilityRow:
     if not _image_gen_intended(config):
         return CapabilityRow(intended=False, ready=False)
-    ok = _has_value(env_values, "FAL_KEY")
-    return CapabilityRow(intended=True, ready=ok, reason="" if ok else "missing FAL_KEY")
+    source = _credential_source(env_values, "FAL_KEY")
+    ok = source != "absent"
+    return CapabilityRow(intended=True, ready=ok, reason="" if ok else "missing FAL_KEY", source=source)
 
 
 def _check_github(config: dict[str, Any], env_values: dict[str, str]) -> CapabilityRow:
@@ -204,9 +227,11 @@ def _check_github(config: dict[str, Any], env_values: dict[str, str]) -> Capabil
                 break
     if not intended:
         return CapabilityRow(intended=False, ready=False)
-    ok = _has_value(env_values, "GITHUB_TOKEN") or _has_value(env_values, "GH_TOKEN")
+    source = _credential_source(env_values, "GITHUB_TOKEN", "GH_TOKEN")
+    ok = source != "absent"
     return CapabilityRow(
-        intended=True, ready=ok, reason="" if ok else "missing GITHUB_TOKEN or GH_TOKEN"
+        intended=True, ready=ok, reason="" if ok else "missing GITHUB_TOKEN or GH_TOKEN",
+        source=source,
     )
 
 
@@ -356,14 +381,19 @@ def validate_readiness(
         slug = entry["slug"]
         intended = _channel_intended(config, slug)
         primary = entry["primary_key"]
-        ok = _has_value(env_values, primary)
+        source = _credential_source(env_values, primary)
+        ok = source != "absent"
         reason = "" if ok else f"missing {primary}"
         # Only record discord under its bare name (spec); other channels
         # use a "channel:<slug>" namespace to avoid noisy keys.
         key = "discord" if slug == "discord" else f"channel:{slug}"
         if intended or slug == "discord":
-            rows[key] = CapabilityRow(intended=intended, ready=ok if intended else False,
-                                       reason=reason if intended and not ok else "")
+            rows[key] = CapabilityRow(
+                intended=intended,
+                ready=ok if intended else False,
+                reason=reason if intended and not ok else "",
+                source=source if intended else "",
+            )
 
     # Primary model provider.
     model = config.get("model") if isinstance(config.get("model"), dict) else {}
@@ -377,6 +407,16 @@ def validate_readiness(
         # Don't downgrade a ready row if already added.
         if key not in rows or not rows[key].ready:
             rows[key] = _check_provider(dp, env_values, intended=True)
+
+    # Warn when a provider is configured but model.default is absent — auxiliary
+    # tasks inside hermes-agent may silently fall back to the agent's own default
+    # model, which differs per provider and may not be what the operator intends.
+    if provider and not str(model.get("default") or "").strip():
+        logger.warning(
+            "model.default not set for provider %r; auxiliary tasks may silently use agent default model",
+            provider,
+            extra={"component": "readiness", "capability": "model_default", "provider": provider},
+        )
 
     rows["web_search"] = _check_web_search(config, env_values)
     rows["image_gen"] = _check_image_gen(config, env_values)

@@ -122,13 +122,20 @@ class Gateway:
         elif state in {"unknown", "stopped"}:
             connection = "not_configured"
 
-        return {
+        result: dict[str, Any] = {
             "state": state,
             "platform": platform_value,
             "connection": connection,
             "is_running": self.is_running(),
             "is_healthy": self.is_healthy(),
         }
+        # Passthrough compact failure signals if hermes-agent wrote them.
+        # These are best-effort: absent keys are simply omitted.
+        for sig_key in ("last_auth_failure_at", "last_crash_at", "last_error_at"):
+            val = raw.get(sig_key)
+            if val is not None:
+                result[sig_key] = val
+        return result
 
     async def start(self) -> None:
         if self.is_running() or (self._supervisor_task and not self._supervisor_task.done()):

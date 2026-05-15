@@ -186,6 +186,50 @@ async def test_webui_snapshot_disabled(tmp_path: Path) -> None:
 # Scheduler block unit tests
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Gateway failure signal passthrough tests
+# ---------------------------------------------------------------------------
+
+async def test_gateway_snapshot_no_failure_signals_when_absent(tmp_path: Path) -> None:
+    """Failure signal keys must be absent (not None) when not in state file."""
+    import json
+
+    from hermes_station.gateway import Gateway
+
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text(json.dumps({"gateway_state": "running"}))
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert "last_auth_failure_at" not in snap
+    assert "last_crash_at" not in snap
+    assert "last_error_at" not in snap
+
+
+async def test_gateway_snapshot_passes_through_failure_signals(tmp_path: Path) -> None:
+    """Known failure signal keys are forwarded verbatim from gateway_state.json."""
+    import json
+
+    from hermes_station.gateway import Gateway
+
+    state_file = tmp_path / "gateway_state.json"
+    state_file.write_text(
+        json.dumps({
+            "gateway_state": "startup_failed",
+            "last_auth_failure_at": "2026-05-15T09:00:00+00:00",
+            "last_crash_at": "2026-05-15T08:55:00+00:00",
+        })
+    )
+    gw = Gateway(hermes_home=tmp_path)
+    snap = gw.snapshot()
+    assert snap["last_auth_failure_at"] == "2026-05-15T09:00:00+00:00"
+    assert snap["last_crash_at"] == "2026-05-15T08:55:00+00:00"
+    assert "last_error_at" not in snap  # not in file → not in snapshot
+
+
+# ---------------------------------------------------------------------------
+# Scheduler block unit tests
+# ---------------------------------------------------------------------------
+
 def test_scheduler_block_unknown_when_no_files(tmp_path: Path) -> None:
     from hermes_station.health import _scheduler_block
 
@@ -194,6 +238,7 @@ def test_scheduler_block_unknown_when_no_files(tmp_path: Path) -> None:
 
     block = _scheduler_block(FakePaths())
     assert block["state"] == "unknown"
+    assert block["enabled"] is False
     assert block["last_run_at"] is None
     assert block["failed_jobs"] is None
     assert block["job_count"] is None
@@ -216,6 +261,7 @@ def test_scheduler_block_configured_from_cron_jobs_list(tmp_path: Path) -> None:
 
     block = _scheduler_block(FakePaths())
     assert block["state"] == "configured"
+    assert block["enabled"] is True
     assert block["job_count"] == 3
     assert block["last_run_at"] is None
 
@@ -253,6 +299,7 @@ def test_scheduler_block_ready_from_state_file(tmp_path: Path) -> None:
 
     block = _scheduler_block(FakePaths())
     assert block["state"] == "ready"
+    assert block["enabled"] is False  # no cron/jobs.json → unknown if jobs exist
     assert block["last_run_at"] == "2026-05-15T10:00:00+00:00"
     assert block["failed_jobs"] == 0
     assert block["job_count"] is None
@@ -276,6 +323,7 @@ def test_scheduler_block_ready_with_both_files(tmp_path: Path) -> None:
 
     block = _scheduler_block(FakePaths())
     assert block["state"] == "ready"
+    assert block["enabled"] is True
     assert block["job_count"] == 1
     assert block["failed_jobs"] == 1
 

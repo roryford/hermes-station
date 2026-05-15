@@ -131,6 +131,7 @@ def _scheduler_block(paths: Any) -> dict[str, Any]:
 
     return {
         "state": state,
+        "enabled": job_count is not None,
         "last_run_at": last_run_at,
         "failed_jobs": failed_jobs,
         "job_count": job_count,
@@ -164,11 +165,16 @@ def _gateway_snapshot(app_state: Any) -> dict[str, Any]:
             "connection": "not_configured",
         }
     snap = gw.snapshot()
-    return {
+    result: dict[str, Any] = {
         "state": snap.get("state", "unknown"),
         "platform": snap.get("platform"),
         "connection": snap.get("connection", "unknown"),
     }
+    # Compact failure signals: only present when hermes-agent wrote them.
+    for sig_key in ("last_auth_failure_at", "last_crash_at", "last_error_at"):
+        if sig_key in snap:
+            result[sig_key] = snap[sig_key]
+    return result
 
 
 def _webui_snapshot(app_state: Any) -> dict[str, Any]:
