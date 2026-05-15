@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "Railway template configuration as code for hermes-station.",
+    "",
+    "SCHEMA STATUS: best-effort. Railway's authoritative template-config JSON",
+    "schema is not publicly documented at the field level, and we don't have an",
+    "existing dashboard export to seed this from. The structure below reflects",
+    "what the DX plan calls for (single service, Dockerfile builder, /data",
+    "volume, service domain on port 8787, IMAGE_REVISION reference variable,",
+    "and three env-var declarations with the OPENROUTER_API_KEY demoted to",
+    "optional). Field names follow Railway's documented conventions",
+    "(serviceDomain, targetPort, healthcheckPath, builder=DOCKERFILE,",
+    "dockerfilePath, variables.* with required/description/default/value).",
+    "",
+    "INTENDED USE: this file is meant to be re-exported / round-tripped through",
+    "Railway's dashboard 'Export Project Config' (or `railway template export`)",
+    "once an authoritative version is available. Treat the current contents as",
+    "documentation of intent rather than a guaranteed-importable artifact.",
+    "",
+    "KNOWN UNKNOWNS:",
+    "  - Exact top-level wrapper Railway expects (e.g. {\"services\": [...]} vs",
+    "    {\"version\": N, \"services\": {...}}). Using a flat services-array form.",
+    "  - Whether 'source' should be a string repo URL or an object. Using object.",
+    "  - Whether reference vars use ${{ }} or $$ delimiter inside template JSON.",
+    "    Using ${{ }} per Railway's variable-reference docs.",
+    "  - Whether volumes live at services[].volumes or top-level.",
+    "    Placing inline on the service for clarity."
+  ],
+  "name": "hermes-station",
+  "description": "Self-hosted Hermes WebUI + agent + admin in one container.",
+  "services": [
+    {
+      "name": "hermes-station",
+      "source": {
+        "repo": "roryford/hermes-station"
+      },
+      "builder": "DOCKERFILE",
+      "dockerfilePath": "Dockerfile",
+      "healthcheckPath": "/health",
+      "volumes": [
+        {
+          "mountPath": "/data"
+        }
+      ],
+      "domains": [
+        {
+          "serviceDomain": true,
+          "targetPort": 8787
+        }
+      ],
+      "variables": {
+        "IMAGE_REVISION": {
+          "default": "${{RAILWAY_GIT_COMMIT_SHA}}",
+          "description": "Git SHA of the deployed commit; threaded into the build as --build-arg and surfaced on /health.versions.image_revision."
+        },
+        "HERMES_ADMIN_PASSWORD": {
+          "required": true,
+          "description": "Password for the /admin dashboard. Choose a strong value; rotate by redeploying."
+        },
+        "HERMES_WEBUI_PASSWORD": {
+          "required": true,
+          "description": "Password for the WebUI (end-user chat) login."
+        },
+        "OPENROUTER_API_KEY": {
+          "required": false,
+          "description": "Optional — auto-seeds provider on first boot. Skip to configure via /admin after deploy."
+        }
+      }
+    }
+  ]
+}

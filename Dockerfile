@@ -4,12 +4,12 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file gnupg \
-    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
          -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
          > /etc/apt/sources.list.d/github-cli.list \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
          | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
     && chmod go+r /usr/share/keyrings/nodesource.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
@@ -49,7 +49,7 @@ RUN set -eux; \
       arm64) yq_arch=arm64; yq_sha="$YQ_SHA256_ARM64" ;; \
       *) echo "unsupported arch for yq: $arch" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${yq_arch}"; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${yq_arch}"; \
     echo "${yq_sha}  /tmp/yq" | sha256sum -c -; \
     install -m 0755 /tmp/yq /usr/local/bin/yq; \
     rm /tmp/yq
@@ -141,3 +141,12 @@ EXPOSE 8787
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "-m", "hermes_station"]
+
+# --- version metadata (kept at bottom so revision changes don't bust deps cache) ---
+ARG RAILWAY_GIT_COMMIT_SHA=
+ARG IMAGE_REVISION=${RAILWAY_GIT_COMMIT_SHA:-dev}
+ENV HERMES_WEBUI_VERSION=${HERMES_WEBUI_VERSION}
+RUN echo "${IMAGE_REVISION}" > /etc/hermes-station-build
+LABEL org.opencontainers.image.source="https://github.com/roryford/hermes-station"
+LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
+LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
