@@ -18,6 +18,7 @@ import httpx
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
 from hermes_station.admin.htmx_logs import routes as logs_routes
@@ -42,6 +43,55 @@ from hermes_station.webui import WebUIProcess
 
 logger = logging.getLogger("hermes_station.app")
 
+_MAX_BODY_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
+class _SecurityHeadersMiddleware:
+    """Inject security response headers on every HTTP response."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_security_headers(message: object) -> None:
+            if isinstance(message, dict) and message.get("type") == "http.response.start":
+                from starlette.datastructures import MutableHeaders
+                headers = MutableHeaders(scope=message)
+                headers.setdefault("X-Frame-Options", "DENY")
+                headers.setdefault("X-Content-Type-Options", "nosniff")
+                headers.setdefault("Referrer-Policy", "no-referrer")
+                headers.setdefault("X-XSS-Protection", "0")
+            await send(message)
+
+        await self.app(scope, receive, send_with_security_headers)
+
+
+class _BodySizeLimitMiddleware:
+    """Reject requests with Content-Length exceeding the limit."""
+
+    def __init__(self, app: ASGIApp, max_bytes: int = _MAX_BODY_BYTES) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            headers = dict(scope.get("headers", []))
+            cl_raw = headers.get(b"content-length")
+            if cl_raw is not None:
+                try:
+                    if int(cl_raw) > self.max_bytes:
+                        from starlette.responses import Response
+                        resp = Response("Request body too large", status_code=413)
+                        await resp(scope, receive, send)
+                        return
+                except (ValueError, TypeError):
+                    pass
+        await self.app(scope, receive, send)
+
 
 def _ensure_env_passthrough(paths: Paths, config: dict, keys: list[str]) -> None:
     """Add missing keys to terminal.env_passthrough and persist if changed."""
@@ -59,7 +109,7 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     paths.ensure()
 
     app.state.proxy_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10.0, read=None, write=None, pool=10.0)
+        timeout=httpx.Timeout(connect=10.0, read=300.0, write=None, pool=10.0)
     )
 
     webui: WebUIProcess = app.state.webui
@@ -67,6 +117,11 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
 
     try:
         settings = AdminSettings()
+        if not settings.admin_password and settings.webui_password:
+            logger.warning(
+                "HERMES_ADMIN_PASSWORD is unset — falling back to HERMES_WEBUI_PASSWORD "
+                "for admin auth. Set HERMES_ADMIN_PASSWORD to use a dedicated credential."
+            )
         # First-boot only: default-enable the holographic memory provider so
         # fresh deployments have semantic memory active out of the box. No-op
         # on subsequent boots (respects any existing `memory.provider` value,
@@ -175,6 +230,8 @@ def create_app() -> Starlette:
     # Filled in by lifespan after config load. Set a default so /health
     # responds gracefully if a probe lands before lifespan completes.
     app.state.readiness = None
+    app.add_middleware(_SecurityHeadersMiddleware)
+    app.add_middleware(_BodySizeLimitMiddleware)
     return app
 
 

@@ -19,9 +19,21 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
+import re as _re
+
 import httpx
 
 from hermes_station.logs import WEBUI_LOGS
+
+_SECRET_PATTERN = _re.compile(
+    r'(?i)(password|token|api_key|secret|credential|auth)[^\S\r\n]*[=:]\s*\S+',
+    _re.IGNORECASE,
+)
+
+
+def _redact_secrets(line: str) -> str:
+    """Replace secret values in log lines with ***."""
+    return _SECRET_PATTERN.sub(r'\1=***', line)
 
 logger = logging.getLogger("hermes_station.webui")
 
@@ -254,12 +266,13 @@ class WebUIProcess:
             async for raw in self.process.stdout:
                 line = raw.decode("utf-8", errors="replace").rstrip()
                 if line:
+                    safe = _redact_secrets(line)
                     # Route through the structured logger so each subprocess
                     # stdout line becomes one JSON record with component=webui
                     # on our stdout, while still landing in the admin Logs
                     # ring buffer in plain text.
-                    logger.info(line, extra={"event": "webui_stdout"})
-                    WEBUI_LOGS.append(line)
+                    logger.info(safe, extra={"event": "webui_stdout"})
+                    WEBUI_LOGS.append(safe)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
