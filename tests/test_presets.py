@@ -231,7 +231,5 @@ async def test_apply_preset_unauthenticated_redirects(fake_data_dir: Path, admin
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/admin/_partial/presets/chat_only/apply", follow_redirects=False
-        )
+        response = await client.post("/admin/_partial/presets/chat_only/apply", follow_redirects=False)
         assert response.status_code in (302, 303)
