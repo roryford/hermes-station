@@ -1,0 +1,49 @@
+<div id="smoketest-panel">
+    <div class="row" style="margin-bottom:1rem;align-items:center;gap:1rem;">
+        <button type="button" class="btn"
+                hx-post="/admin/_partial/smoketest/run"
+                hx-target="#smoketest-panel"
+                hx-swap="outerHTML">
+            Run again
+        </button>
+        <span class="muted" style="font-size:0.85rem;">
+            {% set passed = results | selectattr('status', 'equalto', 'pass') | list | length %}
+            {% set failed = results | selectattr('status', 'equalto', 'fail') | list | length %}
+            {% set skipped = results | selectattr('status', 'equalto', 'skip') | list | length %}
+            {{ passed }} passed · {{ failed }} failed · {{ skipped }} skipped
+        </span>
+    </div>
+
+    <section class="card">
+        <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+            <thead>
+                <tr style="text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Test</th>
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Status</th>
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Detail</th>
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Fix</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <td style="padding:0.5rem;"><strong>{{ r.label }}</strong></td>
+                    <td style="padding:0.5rem;">
+                        {% if r.status == 'pass' %}
+                            <span class="badge success">pass</span>
+                        {% elif r.status == 'fail' %}
+                            <span class="badge danger">fail</span>
+                        {% else %}
+                            <span class="badge muted">skip</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:0.5rem;color:var(--text-dim);font-size:0.85rem;">{{ r.detail }}</td>
+                    <td style="padding:0.5rem;font-size:0.85rem;">
+                        {% if r.fix %}<span style="color:#e8b84b;">→ {{ r.fix }}</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
