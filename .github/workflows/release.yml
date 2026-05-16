@@ -42,8 +42,6 @@ jobs:
     name: build + push image to GHCR
     runs-on: ubuntu-latest
     needs: release
-    outputs:
-      image: ${{ steps.meta.outputs.tags && 'ghcr.io/roryford/hermes-station:latest' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -78,70 +76,3 @@ jobs:
           no-cache: true
           provenance: false
           sbom: false
-
-  deploy:
-    name: update Railway romantic-adventure → new image
-    runs-on: ubuntu-latest
-    needs: publish
-    env:
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
-      RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
-    steps:
-      - name: wait for GHCR manifest to propagate
-        # GHCR has a brief eventual-consistency window after `docker push`
-        # returns — Railway's pull can hit a 404 for ~5-20s while CDN edges
-        # catch up. v0.2.0 lost that race: CREATE_CONTAINER errored in 3s
-        # with "Failed to create deployment." Poll until the manifest is
-        # globally visible before triggering the deploy.
-        env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          IMAGE="ghcr.io/roryford/hermes-station:${VERSION}"
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-          for i in $(seq 1 60); do
-            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
-              echo "manifest available after ${i}s"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "ERROR: manifest for $IMAGE did not appear within 60s" >&2
-          exit 1
-
-      - name: point service at new image
-        # Use the specific version tag (semver strips v-prefix: v0.1.3 → 0.1.3).
-        # Must run AFTER publish so Railway resolves the tag to the just-pushed digest,
-        # not a previously-pinned one. Never use :latest here — Railway pins the digest
-        # at serviceInstanceUpdate time and won't re-resolve on redeploy.
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          curl -fsSL https://backboard.railway.com/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"query\": \"mutation Update(\$svc: String!, \$env: String!, \$in: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$svc, environmentId: \$env, input: \$in) }\",
-              \"variables\": {
-                \"svc\": \"$RAILWAY_SERVICE_ID\",
-                \"env\": \"$RAILWAY_ENVIRONMENT_ID\",
-                \"in\": { \"source\": { \"image\": \"ghcr.io/roryford/hermes-station:$VERSION\" } }
-              }
-            }"
-
-      - name: deploy from new image source
-        # serviceInstanceDeploy deploys using the CURRENT service config (image source
-        # just set above). serviceInstanceRedeploy reuses the last deployment's config
-        # and would ignore the source change.
-        run: |
-          curl -fsSL https://backboard.railway.com/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"query\": \"mutation Deploy(\$svc: String!, \$env: String!) { serviceInstanceDeploy(serviceId: \$svc, environmentId: \$env, latestCommit: false) }\",
-              \"variables\": {
-                \"svc\": \"$RAILWAY_SERVICE_ID\",
-                \"env\": \"$RAILWAY_ENVIRONMENT_ID\"
-              }
-            }"
