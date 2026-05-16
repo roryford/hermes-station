@@ -72,9 +72,7 @@ def test_all_browser_entries_have_required_fields() -> None:
         assert "group" in entry, f"{key}: missing 'group' field"
         assert "hint" in entry, f"{key}: missing 'hint' field"
         assert entry.get("in_process") is True, f"{key}: in_process must be True"
-        assert isinstance(entry.get("url"), str) and entry["url"], (
-            f"{key}: url must be a non-empty string"
-        )
+        assert isinstance(entry.get("url"), str) and entry["url"], f"{key}: url must be a non-empty string"
 
 
 def test_browser_group_in_catalog_groups() -> None:
@@ -186,9 +184,7 @@ def _build_app(gateway: Any | None = None) -> Starlette:
     base_routes: list[Route] = list(htmx_dashboard_routes())
     base_routes.extend(htmx_settings_routes())
     base_routes.extend(
-        route
-        for route in admin_routes()
-        if not (isinstance(route, Route) and route.path == "/admin")
+        route for route in admin_routes() if not (isinstance(route, Route) and route.path == "/admin")
     )
     app = Starlette(routes=base_routes)
     app.state.paths = Paths()
@@ -198,9 +194,7 @@ def _build_app(gateway: Any | None = None) -> Starlette:
 
 
 async def _login(client: httpx.AsyncClient, password: str) -> None:
-    response = await client.post(
-        "/admin/login", data={"password": password}, follow_redirects=False
-    )
+    response = await client.post("/admin/login", data={"password": password}, follow_redirects=False)
     assert response.status_code == 302, response.text
 
 
@@ -370,9 +364,7 @@ async def test_dx_journey_disable_browser_backend(fake_data_dir: Path, admin_pas
 
 
 @pytest.mark.asyncio
-async def test_dx_journey_playwright_mcp_railway_service(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_dx_journey_playwright_mcp_railway_service(fake_data_dir: Path, admin_password: str) -> None:
     """
     Journey: Playwright MCP as separate Railway service.
     Step 1: playwright-mcp seeded in config.yaml with enabled: false on first boot.
@@ -391,9 +383,7 @@ async def test_dx_journey_playwright_mcp_railway_service(
     assert config["mcp_servers"]["playwright-mcp"]["enabled"] is False
 
     # Step 2: Developer manually updates the URL in config.yaml (simulated here)
-    config["mcp_servers"]["playwright-mcp"]["url"] = (
-        "http://playwright-mcp.railway.internal:8931/mcp"
-    )
+    config["mcp_servers"]["playwright-mcp"]["url"] = "http://playwright-mcp.railway.internal:8931/mcp"
     write_yaml_config(config_path, config)
 
     # Step 3: Developer enables via toggle
@@ -403,19 +393,14 @@ async def test_dx_journey_playwright_mcp_railway_service(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         await _login(client, admin_password)
-        r = await client.post(
-            "/admin/_partial/mcp/toggle", data={"name": "playwright-mcp"}
-        )
+        r = await client.post("/admin/_partial/mcp/toggle", data={"name": "playwright-mcp"})
         assert r.status_code == 200
 
     # Verify enabled=True persisted
     config = load_yaml_config(config_path)
     assert config["mcp_servers"]["playwright-mcp"]["enabled"] is True
     # Verify url was preserved
-    assert (
-        config["mcp_servers"]["playwright-mcp"]["url"]
-        == "http://playwright-mcp.railway.internal:8931/mcp"
-    )
+    assert config["mcp_servers"]["playwright-mcp"]["url"] == "http://playwright-mcp.railway.internal:8931/mcp"
     assert gateway.restart_count == 1
 
 

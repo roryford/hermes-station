@@ -102,6 +102,7 @@ class _BodySizeLimitMiddleware:
             try:
                 if int(cl_raw) > self.max_bytes:
                     from starlette.responses import Response
+
                     resp = Response("Request body too large", status_code=413)
                     await resp(scope, receive, send)
                     return
@@ -125,6 +126,7 @@ class _BodySizeLimitMiddleware:
         except ValueError as exc:
             if "Request body exceeds" in str(exc):
                 from starlette.responses import Response
+
                 resp = Response("Request body too large", status_code=413)
                 await resp(scope, receive, send)
             else:

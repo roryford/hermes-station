@@ -40,8 +40,7 @@ def test_no_unqualified_data_hermes_path() -> None:
                     offenders.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()!r}")
                 idx = pos + 1
     assert not offenders, (
-        f"Found {len(offenders)} occurrence(s) of bare '{bad}' (should be '{good}'):\n"
-        + "\n".join(offenders)
+        f"Found {len(offenders)} occurrence(s) of bare '{bad}' (should be '{good}'):\n" + "\n".join(offenders)
     )
 
 
@@ -51,9 +50,7 @@ def test_config_example_yaml_is_valid() -> None:
     assert example.exists(), "docs/config.example.yaml not found"
     parsed = yaml.safe_load(example.read_text())
     # A valid minimal config is either None (all-commented) or a dict.
-    assert parsed is None or isinstance(parsed, dict), (
-        f"Expected dict or None, got {type(parsed)}"
-    )
+    assert parsed is None or isinstance(parsed, dict), f"Expected dict or None, got {type(parsed)}"
 
 
 def test_config_example_yaml_keys_are_known() -> None:

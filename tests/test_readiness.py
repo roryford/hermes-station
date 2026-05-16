@@ -313,7 +313,9 @@ def test_summary_includes_platforms_and_toolsets(fake_paths: Paths) -> None:
     ],
     ids=["list", "dict-bool", "dict-block", "fal-block"],
 )
-def test_image_gen_intended_all_config_shapes(fake_paths: Paths, config: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_image_gen_intended_all_config_shapes(
+    fake_paths: Paths, config: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.delenv("FAL_KEY", raising=False)
     rd = validate_readiness(fake_paths, config, {})
     assert rd.readiness["image_gen"].intended is True, f"intended=False for config {config}"
