@@ -117,7 +117,7 @@ class WebUIProcess:
 
     async def stop(self) -> None:
         self._stopping.set()
-        if self._supervisor_task:
+        if self._supervisor_task and not self._supervisor_task.done():
             self._supervisor_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._supervisor_task
@@ -297,7 +297,12 @@ class WebUIProcess:
             await asyncio.sleep(backoff)
             if self._stopping.is_set():
                 return
-            await self._spawn()
+            try:
+                await self._spawn()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("hermes-webui respawn failed: %s; retrying in %.1fs", exc, backoff)
+                backoff = min(backoff * 2, self.BACKOFF_MAX_SECONDS)
+                continue
             if await self.wait_ready(timeout=self.STARTUP_GRACE_SECONDS):
                 self._last_healthy_at = datetime.now(timezone.utc)
                 self._last_unhealthy_reason = None

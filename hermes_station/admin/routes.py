@@ -88,7 +88,8 @@ async def admin_login_page(request: Request) -> Response:
 async def admin_login(request: Request) -> Response:
     _prune_login_attempts()
     # Rate-limit by client IP to slow brute-force attacks.
-    client_ip = request.client.host if request.client else "unknown"
+    xff = request.headers.get("x-forwarded-for", "")
+    client_ip = xff.split(",")[0].strip() or (request.client.host if request.client else "unknown")
     now = time.time()
     recent = [t for t in _login_attempts[client_ip] if now - t < _LOGIN_WINDOW_SECONDS]
     if len(recent) >= _LOGIN_MAX_ATTEMPTS:
