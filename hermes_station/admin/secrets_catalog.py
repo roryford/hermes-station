@@ -287,19 +287,28 @@ def secret_status(
     rows: list[dict[str, Any]] = []
     for key, entry in _ordered_keys_for_render(KNOWN_SECRETS, custom_keys + extras):
         state = _resolve_state(key, env_values, environ, disabled)
-        is_catalog = entry is not None
-        rows.append(
-            {
+        if entry is not None:
+            row = {
                 "key": key,
-                "label": entry["label"] if is_catalog else key,
-                "group": entry["group"] if is_catalog else "custom",
-                "url": entry.get("url", "") if is_catalog else "",
-                "hint": entry.get("hint", "") if is_catalog else "",
-                "in_process": entry.get("in_process", False) if is_catalog else False,
-                "is_custom": not is_catalog,
-                **state,
+                "label": entry["label"],
+                "group": entry["group"],
+                "url": entry.get("url", ""),
+                "hint": entry.get("hint", ""),
+                "in_process": entry.get("in_process", False),
+                "is_custom": False,
             }
-        )
+        else:
+            row = {
+                "key": key,
+                "label": key,
+                "group": "custom",
+                "url": "",
+                "hint": "",
+                "in_process": False,
+                "is_custom": True,
+            }
+        row.update(state)
+        rows.append(row)
 
     groups: list[dict[str, Any]] = []
     for group in (*CATALOG_GROUPS, "custom"):
