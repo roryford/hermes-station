@@ -556,6 +556,7 @@ def test_webui_build_env_forwards_provider_secret(tmp_path: Path, monkeypatch: p
     """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
     monkeypatch.setenv("HERMES_ADMIN_PASSWORD", "my-password")
+    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
 
     proc = WebUIProcess(
         webui_src=tmp_path,

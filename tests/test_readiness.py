@@ -65,7 +65,8 @@ def test_provider_ready_when_key_present(fake_paths: Paths) -> None:
     assert not row.reason
 
 
-def test_discord_intended_via_messaging_block(fake_paths: Paths) -> None:
+def test_discord_intended_via_messaging_block(fake_paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
     config = {"messaging": {"discord": {"enabled": True}}}
     rd = validate_readiness(fake_paths, config, {})
     row = rd.readiness["discord"]
@@ -99,7 +100,8 @@ def test_web_search_ready_for_brave(fake_paths: Paths) -> None:
     assert row.ready is True
 
 
-def test_image_gen_intended_via_toolsets_list(fake_paths: Paths) -> None:
+def test_image_gen_intended_via_toolsets_list(fake_paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FAL_KEY", raising=False)
     config = {"toolsets": ["image_gen"]}
     rd = validate_readiness(fake_paths, config, {})
     row = rd.readiness["image_gen"]
@@ -114,7 +116,9 @@ def test_image_gen_ready(fake_paths: Paths) -> None:
     assert rd.readiness["image_gen"].ready is True
 
 
-def test_github_intended_via_mcp_server(fake_paths: Paths) -> None:
+def test_github_intended_via_mcp_server(fake_paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
     config = {"mcp_servers": {"github": {"enabled": True}}}
     rd = validate_readiness(fake_paths, config, {})
     row = rd.readiness["github"]
@@ -309,7 +313,8 @@ def test_summary_includes_platforms_and_toolsets(fake_paths: Paths) -> None:
     ],
     ids=["list", "dict-bool", "dict-block", "fal-block"],
 )
-def test_image_gen_intended_all_config_shapes(fake_paths: Paths, config: dict) -> None:
+def test_image_gen_intended_all_config_shapes(fake_paths: Paths, config: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FAL_KEY", raising=False)
     rd = validate_readiness(fake_paths, config, {})
     assert rd.readiness["image_gen"].intended is True, f"intended=False for config {config}"
     assert rd.readiness["image_gen"].ready is False
