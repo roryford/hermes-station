@@ -15,6 +15,7 @@ Pairings page. The summary card here links to both.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
@@ -97,6 +98,19 @@ async def _gather_status(request: Request) -> dict[str, Any]:
         "configured": bool(memory_provider),
     }
 
+    stages = _build_stages(
+        webui_running=webui_running,
+        admin_password=settings.admin_password,
+        webui_password=settings.webui_password,
+        provider_configured=bool(model.provider),
+        gateway_state=gateway_state,
+    )
+    warnings = _build_guardrail_warnings(
+        admin_password=settings.admin_password,
+        webui_password=settings.webui_password,
+        data_dir=paths.home,
+    )
+
     return {
         "paths": {
             "hermes_home": str(paths.hermes_home),
@@ -113,7 +127,85 @@ async def _gather_status(request: Request) -> dict[str, Any]:
         "channels": channels,
         "channel_catalog": CHANNEL_CATALOG,
         "pending_pairings": pending_count,
+        "stages": stages,
+        "warnings": warnings,
     }
+
+
+def _build_stages(
+    *,
+    webui_running: bool,
+    admin_password: str,
+    webui_password: str,
+    provider_configured: bool,
+    gateway_state: str,
+) -> list[dict[str, Any]]:
+    secured = bool(admin_password and webui_password)
+    connected = gateway_state == "running"
+    useful = webui_running and provider_configured
+
+    def _hint_secured() -> str:
+        if secured:
+            return ""
+        missing = []
+        if not webui_password:
+            missing.append("HERMES_WEBUI_PASSWORD")
+        if not admin_password:
+            missing.append("HERMES_ADMIN_PASSWORD")
+        return f"Set {' and '.join(missing)}"
+
+    def _hint_connected() -> str:
+        if connected:
+            return ""
+        if not provider_configured:
+            return "Configure a provider in Settings first"
+        return "Start the gateway in the Supervisors section"
+
+    return [
+        {
+            "label": "Running",
+            "ok": webui_running,
+            "hint": "" if webui_running else "WebUI process is stopped — click Start in Supervisors",
+        },
+        {"label": "Secured", "ok": secured, "hint": _hint_secured()},
+        {
+            "label": "Configured",
+            "ok": provider_configured,
+            "hint": "" if provider_configured else "Add a provider key in Settings",
+        },
+        {"label": "Connected", "ok": connected, "hint": _hint_connected()},
+        {"label": "Useful", "ok": useful, "hint": "" if useful else "Complete the steps above"},
+    ]
+
+
+def _build_guardrail_warnings(
+    *,
+    admin_password: str,
+    webui_password: str,
+    data_dir: "Path",
+) -> list[str]:
+    import os as _os
+
+    out: list[str] = []
+    if not webui_password:
+        out.append(
+            "WebUI has no password — anyone who can reach this host can use the chat. "
+            "Set HERMES_WEBUI_PASSWORD."
+        )
+    if not admin_password:
+        out.append("Admin has no password — this control plane is unprotected. Set HERMES_ADMIN_PASSWORD.")
+    try:
+        data_dev = _os.stat(str(data_dir)).st_dev
+        root_dev = _os.stat("/").st_dev
+        if data_dev == root_dev:
+            out.append(
+                "No persistent volume detected — /data appears to be on the root filesystem. "
+                "Data (config, sessions, memory) will be lost on container restart. "
+                "Attach a Railway volume mounted at /data."
+            )
+    except OSError:
+        pass
+    return out
 
 
 def _supervisor_badge(*, running: bool, healthy: bool) -> dict[str, str]:

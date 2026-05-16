@@ -220,9 +220,19 @@ def provider_status(config: dict[str, Any], env_values: dict[str, str]) -> dict[
     model = extract_model_config(config)
     provider = model.provider.lower()
     ready = bool(provider and provider_has_credentials(provider, env_values))
+    source = ""
+    if provider:
+        for name in provider_env_var_names(provider):
+            if (env_values.get(name) or "").strip():
+                source = "file"
+                break
+            if (os.environ.get(name) or "").strip():
+                source = "env"
+                break
     return {
         "provider": model.provider,
         "default": model.default,
         "base_url": model.base_url,
         "ready": ready,
+        "source": source,
     }

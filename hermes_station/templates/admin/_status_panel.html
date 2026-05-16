@@ -6,6 +6,27 @@
      hx-trigger="every 5s"
      hx-swap="outerHTML">
 
+    {# Guardrail warnings #}
+    {% for warning in warnings %}
+    <div class="alert error">⚠ {{ warning }}</div>
+    {% endfor %}
+
+    {# Deployment status stages #}
+    <section class="card">
+        <div class="card-header">
+            <h2>Deployment status</h2>
+        </div>
+        <dl class="kv">
+            {% for stage in stages %}
+            <dt>{{ stage.label }}</dt>
+            <dd>
+                <span class="badge {{ 'success' if stage.ok else 'muted' }}">{{ 'ok' if stage.ok else 'pending' }}</span>
+                {% if stage.hint %}<span class="muted" style="font-size:0.85rem;margin-left:0.5rem;">— {{ stage.hint }}</span>{% endif %}
+            </dd>
+            {% endfor %}
+        </dl>
+    </section>
+
     {% if provider.configured and not gateway.running %}
     <div class="alert warning" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
         <span>Agent configured but not running.</span>
