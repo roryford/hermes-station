@@ -193,7 +193,7 @@ def _explain_setup(status: dict[str, Any]) -> list[str]:
     hs_ver = versions.get("hermes_station") or "unknown"
     sentences.append(f"You are running hermes-station {hs_ver}.")
 
-    # Auth / passwords
+    # Auth / passwords — "Secured" label must stay in sync with _build_stages
     stages = status.get("stages") or []
     secured = next((s["ok"] for s in stages if s["label"] == "Secured"), False)
     if secured:
@@ -232,7 +232,7 @@ def _explain_setup(status: dict[str, Any]) -> list[str]:
     else:
         sentences.append("No messaging channels are active.")
 
-    # Volume
+    # Volume — absence of the warning string implies volume is attached
     warnings_list = status.get("warnings") or []
     if any("persistent volume" in w.lower() for w in warnings_list):
         sentences.append("No persistent volume detected — data will be lost on restart.")
