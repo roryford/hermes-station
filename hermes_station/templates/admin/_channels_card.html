@@ -26,6 +26,9 @@
                         {% else %}
                             <span class="badge muted">Disabled</span>
                         {% endif %}
+                        {% if channel.setup_url %}
+                            <a href="{{ channel.setup_url }}" target="_blank" rel="noopener" class="btn small ghost">{{ channel.setup_link_label or 'Setup guide' }} ↗</a>
+                        {% endif %}
                         {% if channel.disable_key %}
                             <button
                                 type="button"
@@ -46,6 +49,16 @@
                             hx-confirm="Clear all {{ channel.label }} keys?"
                         >Clear</button>
                     </div>
+                    {% if channel.setup_steps %}
+                    <details style="margin-bottom:0.75rem;">
+                        <summary class="muted" style="cursor:pointer;font-size:0.85rem;">How to set up {{ channel.label }}</summary>
+                        <ol style="margin:0.5rem 0 0 0;padding-left:1.25rem;font-size:0.85rem;line-height:1.7;">
+                            {% for step in channel.setup_steps %}
+                            <li>{{ step }}</li>
+                            {% endfor %}
+                        </ol>
+                    </details>
+                    {% endif %}
                     <div class="field">
                         <label for="ch-{{ channel.slug }}-primary">{{ channel.primary_key }}</label>
                         <input
@@ -55,6 +68,9 @@
                             placeholder="{{ channel.primary_value or 'not set' }}"
                             autocomplete="off"
                         >
+                        {% if channel.token_format and not channel.primary_value %}
+                            <div class="field-hint">Format: <code>{{ channel.token_format }}</code></div>
+                        {% endif %}
                     </div>
                     {% if channel.secondary_key %}
                         <div class="field">

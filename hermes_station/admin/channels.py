@@ -13,14 +13,23 @@ from hermes_station.config import load_env_file, write_env_file
 from hermes_station.secrets import mask
 
 
-CHANNEL_CATALOG: list[dict[str, str]] = [
+CHANNEL_CATALOG: list[dict[str, Any]] = [
     {
         "slug": "telegram",
         "label": "Telegram",
         "primary_key": "TELEGRAM_BOT_TOKEN",
         "secondary_key": "TELEGRAM_ALLOWED_USERS",
         "disable_key": "TELEGRAM_DISABLED",
-        "hint": "Bot token, plus optional allowlist or home channel settings in .env.",
+        "hint": "Bot token from @BotFather. Optionally restrict to specific user IDs via TELEGRAM_ALLOWED_USERS.",
+        "setup_url": "https://t.me/BotFather",
+        "setup_link_label": "Open @BotFather",
+        "setup_steps": [
+            "Open @BotFather in Telegram (t.me/BotFather).",
+            "Send /newbot and follow the prompts to name your bot.",
+            "Copy the token BotFather sends you.",
+            "Paste it in the field below and save.",
+        ],
+        "token_format": "123456789:ABC-DEF1234ghIklzyx57W2v1u123ew11",
     },
     {
         "slug": "discord",
@@ -28,7 +37,17 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "primary_key": "DISCORD_BOT_TOKEN",
         "secondary_key": "DISCORD_ALLOWED_USERS",
         "disable_key": "DISCORD_DISABLED",
-        "hint": "Bot token, plus optional allowlist.",
+        "hint": "Bot token from the Discord Developer Portal. Requires Message Content Intent.",
+        "setup_url": "https://discord.com/developers/applications",
+        "setup_link_label": "Discord Developer Portal",
+        "setup_steps": [
+            "Go to discord.com/developers/applications and create a New Application.",
+            "Open the Bot tab → Add Bot → copy the token.",
+            "Under Privileged Gateway Intents, enable Message Content Intent.",
+            "Use OAuth2 → URL Generator (scopes: bot) to invite the bot to your server.",
+            "Paste the token below and save.",
+        ],
+        "token_format": "MTxxxxxxxxxxxxxxxxxxxxxxxx.Gyyyyy.zzzzz…",
     },
     {
         "slug": "slack",
@@ -36,7 +55,17 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "primary_key": "SLACK_BOT_TOKEN",
         "secondary_key": "SLACK_APP_TOKEN",
         "disable_key": "SLACK_DISABLED",
-        "hint": "Bot token and optional app token.",
+        "hint": "Bot OAuth token (xoxb-…) and optionally an App-level token (xapp-…) for Socket Mode.",
+        "setup_url": "https://api.slack.com/apps",
+        "setup_link_label": "Slack App Directory",
+        "setup_steps": [
+            "Go to api.slack.com/apps → Create New App → From scratch.",
+            "Under OAuth & Permissions, add bot token scopes (app_mentions:read, chat:write).",
+            "Install the app to your workspace.",
+            "Copy the Bot User OAuth Token (starts with xoxb-) into the first field.",
+            "For Socket Mode, also generate an App-Level Token (starts with xapp-) and paste it in the second field.",
+        ],
+        "token_format": "xoxb-…",
     },
     {
         "slug": "whatsapp",
@@ -44,7 +73,15 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "primary_key": "WHATSAPP_ENABLED",
         "secondary_key": "",
         "disable_key": "",
-        "hint": "Set to 1/true when WhatsApp is configured externally.",
+        "hint": "Set to 1 or true when WhatsApp is configured externally via the Hermes WhatsApp bridge.",
+        "setup_url": "https://github.com/NousResearch/hermes-agent",
+        "setup_link_label": "Hermes docs",
+        "setup_steps": [
+            "WhatsApp integration requires the Hermes WhatsApp bridge to be set up separately.",
+            "See the Hermes documentation for bridge setup instructions.",
+            "Once the bridge is running, set WHATSAPP_ENABLED=1 here.",
+        ],
+        "token_format": "1",
     },
     {
         "slug": "email",
@@ -52,7 +89,16 @@ CHANNEL_CATALOG: list[dict[str, str]] = [
         "primary_key": "EMAIL_ADDRESS",
         "secondary_key": "EMAIL_PASSWORD",
         "disable_key": "EMAIL_DISABLED",
-        "hint": "Mailbox address and password/app password.",
+        "hint": "IMAP/SMTP mailbox address and app password (not your account password).",
+        "setup_url": "https://myaccount.google.com/apppasswords",
+        "setup_link_label": "Gmail app passwords",
+        "setup_steps": [
+            "Create a dedicated email address for your bot (recommended).",
+            "For Gmail: go to myaccount.google.com/apppasswords and generate an app password.",
+            "For other providers: enable IMAP and use your account password or an app-specific password.",
+            "Paste the address in the first field and the password in the second.",
+        ],
+        "token_format": "you@example.com",
     },
 ]
 
@@ -95,6 +141,10 @@ def channel_status(env_values: dict[str, str]) -> list[dict[str, Any]]:
                 "primary_value": mask(primary),
                 "secondary_value": mask(secondary),
                 "hint": entry["hint"],
+                "setup_url": entry.get("setup_url", ""),
+                "setup_link_label": entry.get("setup_link_label", ""),
+                "setup_steps": list(entry.get("setup_steps", [])),
+                "token_format": entry.get("token_format", ""),
             }
         )
     return out
