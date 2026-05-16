@@ -22,7 +22,7 @@ from starlette.routing import Route
 
 from hermes_station.admin.htmx_dashboard import routes as htmx_dashboard_routes
 from hermes_station.admin.htmx_settings import routes as htmx_settings_routes
-from hermes_station.admin.mcp import mcp_status, toggle_mcp_server
+from hermes_station.admin.mcp import mcp_status
 from hermes_station.admin.routes import admin_routes
 from hermes_station.admin.secrets_catalog import CATALOG_GROUPS, KNOWN_SECRETS
 from hermes_station.config import (
