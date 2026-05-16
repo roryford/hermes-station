@@ -430,10 +430,10 @@ def test_gateway_snapshot_platform_keys(tmp_path: Path) -> None:
 
 def test_gateway_snapshot_running_no_tz_updated_at(tmp_path: Path) -> None:
     """updated_at without timezone info should be treated as UTC."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     state_file = tmp_path / "gateway_state.json"
-    naive_now = datetime.utcnow().isoformat()  # no tzinfo
+    naive_now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()  # no tzinfo
     state_file.write_text(
         json.dumps(
             {

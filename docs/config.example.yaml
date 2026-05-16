@@ -39,10 +39,47 @@ memory:
 # --- MCP servers -------------------------------------------------------------
 # Curated entries land here disabled; flip `enabled: true` once you've
 # supplied any keys they need. The admin UI manages this list for you.
+#
+# Stdio servers (command/args) run inside the container via npx or uvx.
+# The URL-based entry (playwright-mcp) connects to an external service you
+# deploy separately — fill in the URL before enabling.
 mcp_servers:
+  filesystem:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem@2025.8.21"
+      - /data/workspace
+    enabled: false
+    # Scoped to /data/workspace — the model cannot read/write outside it.
+
+  fetch:
+    command: uvx
+    args:
+      - --from
+      - mcp-server-fetch==2025.4.7
+      - mcp-server-fetch
+    enabled: false
+    # Generic HTTP(S) fetcher with HTML→Markdown conversion. No API key needed.
+
   github:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-github@2025.4.8"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
     enabled: false
     # Needs GITHUB_TOKEN or GH_TOKEN in the environment when enabled.
+    # Issues, PRs, search, and file reads via the GitHub REST API.
+
+  playwright-mcp:
+    url: ""
+    enabled: false
+    # Browser automation via Playwright MCP.
+    # Requires a separate Railway service running mcr.microsoft.com/playwright/mcp
+    # (2 GB RAM, port 8931). Deploy it first, then set:
+    #   url: http://<service>.railway.internal:8931/mcp
 
 # --- Terminal passthrough ----------------------------------------------------
 # Env vars hermes-station forwards into terminal subprocesses (gh CLI, etc.).

@@ -99,10 +99,10 @@ Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no
     "memory:holographic": {"intended": true,  "ready": true}
   },
   "versions": {
-    "hermes_station": "0.1.x",
+    "hermes_station": "0.2.x",
     "hermes_agent":   "0.x.y",
     "hermes_webui":   "v0.51.x",
-    "python":         "3.12.x",
+    "python":         "3.13.x",
     "image_revision": "dev"
   },
   "boot_at": "2026-05-15T12:34:56+00:00",
@@ -110,14 +110,14 @@ Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no
     "image_revision": "dev",
     "hermes_agent":   "0.x.y",
     "hermes_webui":   "v0.51.x",
-    "python":         "3.12.x",
+    "python":         "3.13.x",
     "platforms":      [],
     "toolsets":       []
   }
 }
 ```
 
-`status: "ok"` here is correct — no readiness row is `intended: true && ready: false`. The gateway is idle pending a provider key; that is not a misconfiguration.
+`status: "ok"` here is correct — no readiness row is `intended: true && ready: false`. `gateway.state: "unknown"` is normal on a fresh boot with no provider configured; the gateway hasn't been asked to start yet. Visit `/admin` to add a provider key and the gateway will start automatically.
 
 Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.provider: openrouter` to `config.yaml` on first start, so a `provider:openrouter` readiness row appears and `status` flips to `ok`:
 
@@ -141,10 +141,10 @@ Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.p
     "memory:holographic":  {"intended": true,  "ready": true}
   },
   "versions": {
-    "hermes_station": "0.1.x",
+    "hermes_station": "0.2.x",
     "hermes_agent":   "0.x.y",
     "hermes_webui":   "v0.51.x",
-    "python":         "3.12.x",
+    "python":         "3.13.x",
     "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd"
   },
   "boot_at": "2026-05-15T12:34:56+00:00",
@@ -152,7 +152,7 @@ Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.p
     "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd",
     "hermes_agent":   "0.x.y",
     "hermes_webui":   "v0.51.x",
-    "python":         "3.12.x",
+    "python":         "3.13.x",
     "platforms":      [],
     "toolsets":       []
   }
