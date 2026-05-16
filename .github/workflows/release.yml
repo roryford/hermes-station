@@ -85,8 +85,8 @@ jobs:
     needs: publish
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      RAILWAY_SERVICE_ID: f442e62d-b3df-423e-b193-eb8816534c9d
-      RAILWAY_ENVIRONMENT_ID: c466490e-745c-4016-8180-66db7cc60997
+      RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
     steps:
       - name: wait for GHCR manifest to propagate
         # GHCR has a brief eventual-consistency window after `docker push`
