@@ -85,7 +85,7 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 # id=s/<service-id>-<path>, which is service-specific and cannot be
 # interpolated from ARG/env vars. Dropping the mount keeps this Dockerfile
 # portable across forks and fresh Railway services.
-RUN uv pip install --system ".[hermes]" -r /opt/hermes-webui/requirements.txt \
+RUN uv pip install --system --compile-bytecode ".[hermes]" -r /opt/hermes-webui/requirements.txt \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
 # Pre-cache the curated stdio MCP servers so first-toggle isn't a 30s npm/uv
@@ -164,7 +164,7 @@ COPY tests/ /app/tests/
 # Install pinned dev deps from the lockfile — faster than resolution and
 # deterministic. uv export reads uv.lock directly, no network needed.
 RUN uv export --only-group dev --frozen --no-hashes --no-header \
-    | uv pip install --system -r /dev/stdin
+    | uv pip install --system --compile-bytecode -r /dev/stdin
 CMD ["python", "-m", "pytest", "tests/", "-q", "--no-cov"]
 
 # --- default stage ---
