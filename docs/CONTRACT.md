@@ -19,7 +19,7 @@ Held invariant across Hermes deployments.
 | `$HOME` inside container | `/data` | `Dockerfile` ENV |
 | Restart policy | `ON_FAILURE`, 10 retries | `railway.toml` |
 
-**Signals:** the container must respond to `SIGTERM` with graceful shutdown of all child workloads (WebUI, gateway) before exit. Today this is hand-rolled in the subprocess managers; in hermes-station, in-process workloads make this automatic via the ASGI lifespan handler.
+**Signals:** the container must respond to `SIGTERM` with graceful shutdown of all child workloads (WebUI, gateway) before exit. Graceful shutdown is coordinated by the ASGI lifespan handler, which propagates `SIGTERM` to subprocess managers (`WebUIProcess`, `GatewayProcess`) so child processes exit cleanly before the parent returns.
 
 ---
 
@@ -50,12 +50,12 @@ These are not part of the user-facing contract (hermes-station may set them diff
 | `HERMES_HOME` | `/data/.hermes` | Root of agent state |
 | `HERMES_CONFIG_PATH` | `$HERMES_HOME/config.yaml` | Provider + model config |
 | `HERMES_WEBUI_STATE_DIR` | `/data/webui` | WebUI state (sessions, signing key) |
-| `HERMES_WEBUI_AGENT_DIR` | `/app/vendor/hermes-agent` | Path WebUI uses to find agent code (will change in hermes-station — pip install path) |
+| `HERMES_WEBUI_AGENT_DIR` | `<site-packages>` (set at runtime by `hermes_station/webui.py`) | Path WebUI uses to find agent code; not set in Dockerfile — `WebUIProcess` sets it dynamically via `sysconfig.get_paths()["purelib"]` |
 | `HERMES_WORKSPACE_DIR` | `/data/workspace` | User workspace dir |
 | `HOME` | `/data` | So `~` resolves on the volume |
 | `PYTHONUNBUFFERED` | `1` | Live log streaming |
-| `CONTROL_PLANE_INTERNAL_WEBUI_HOST` | `127.0.0.1` | _Implementation detail — eliminated in hermes-station (in-process mount)_ |
-| `CONTROL_PLANE_INTERNAL_WEBUI_PORT` | `8788` | _Implementation detail — eliminated in hermes-station_ |
+| `CONTROL_PLANE_INTERNAL_WEBUI_HOST` | `127.0.0.1` | _Implementation detail — internal loopback host for WebUI subprocess_ |
+| `CONTROL_PLANE_INTERNAL_WEBUI_PORT` | `8788` | _Implementation detail — internal port for WebUI subprocess (`WebUIProcess.INTERNAL_PORT`)_ |
 
 ---
 
@@ -120,11 +120,9 @@ On first boot with an empty `/data`, the container creates the directory skeleto
 
 On subsequent boots, existing files are **never** clobbered (`cp -rn` semantics for the seeded trees; explicit `[ -s ]` check for pairing files). hermes-station must preserve this no-clobber invariant.
 
-### 3.4 Skill bootstrap path (changes in hermes-station)
+### 3.4 Skill bootstrap path
 
-Today (upstream): the old image's `start.sh` did `cp -rn /app/vendor/hermes-agent/skills/. /data/.hermes/skills/` to seed skills on first boot, and the same for `optional-skills/`.
-
-In hermes-station: since `hermes-agent` is pip-installed (no `vendor/`), the source path becomes the installed package's data dir — `importlib.resources.files("hermes_agent") / "skills"` or equivalent. Functionally identical, but the implementation differs.
+Skills are seeded from the pip-installed `hermes-agent` package data directory on first boot using no-clobber semantics. The source path is resolved from the installed package — `importlib.resources.files("hermes_agent") / "skills"` or equivalent — and copied into `/data/.hermes/skills/` and `optional-skills/` only when those directories do not yet contain the target files. Existing user skill files are never overwritten.
 
 ### 3.5 The signing_key invariant
 
@@ -295,15 +293,16 @@ Source: `should_autostart()` in `hermes_station/gateway.py:256`. hermes-station 
 
 ## 9. Deliberately NOT part of the contract
 
-Things hermes-station may change freely:
+Things that are internal implementation details or may freely change:
 
-- The internal WebUI port `8788` — eliminated entirely (in-process mount).
-- The proxy at `/` → `127.0.0.1:8788` — eliminated.
-- `WebUIManager` / `GatewayManager` subprocess shape — replaced with in-process asyncio tasks.
+- The internal WebUI port `8788` (`WebUIProcess.INTERNAL_PORT`) — an internal constant, not a user-facing env var.
+- The proxy at `/` → `127.0.0.1:8788` — an internal routing detail of the control plane.
+- `WebUIProcess` / `GatewayProcess` subprocess management shape — internal implementation.
 - In-memory log `deque(maxlen=N)` — replaced with stdout streaming.
 - `patch-vendor-models.py` runtime patch (upstream only) — replaced with proper configuration injection.
-- `cp -rn` skill seeding mechanism — same behavior, different source path (pip package data).
-- Status cache (`_status_cache`, `STATUS_CACHE_TTL`) — likely eliminated (single-user product, no concurrency concern).
+- `vendor/hermes-agent/` path — hermes-agent is pip-installed; no `vendor/` directory exists.
+- `cp -rn` skill seeding source path — skills are now seeded from pip package data (same no-clobber behavior, different source).
+- Status cache (`_status_cache`, `STATUS_CACHE_TTL`) — eliminated (single-user product; status is computed on demand).
 - Container base image — may switch from `bookworm-slim` to `alpine` or distroless.
 - Inclusion of `nodejs`, `npm`, `gh` in the image — may be lazy-installed into `/data` on first need.
 
@@ -323,31 +322,6 @@ The CI compatibility test (`tests/test_compat.py`) is structured as:
 4. POST `/admin/api/provider/setup` with a new provider, restart container, assert it persisted to `config.yaml` in the same format.
 
 If all four pass for both fixtures (when realistic is present), the new image is a verified drop-in replacement.
-
----
-
-## Appendix A — Observed environment (probe run 2026-05-11)
-
-Built with `container build` on Apple `container` 0.12.3 against a Hermes deployment image (commit `8daca1254`).
-
-Container env at runtime:
-```
-CONTROL_PLANE_INTERNAL_WEBUI_HOST=127.0.0.1
-CONTROL_PLANE_INTERNAL_WEBUI_PORT=8788
-HERMES_ADMIN_PASSWORD=***
-HERMES_CONFIG_PATH=/data/.hermes/config.yaml
-HERMES_GATEWAY_AUTOSTART=auto
-HERMES_HOME=/data/.hermes
-HERMES_WEBUI_AGENT_DIR=/app/vendor/hermes-agent
-HERMES_WEBUI_PASSWORD=***
-HERMES_WEBUI_STATE_DIR=/data/webui
-HERMES_WORKSPACE_DIR=/data/workspace
-HOME=/data
-PORT=18999
-```
-
-`.signing_key` size on first boot: 32 bytes, mode 0600.
-`state.db` initial size: 102400 bytes (100 KB) — SQLite file with empty schema applied.
 
 ---
 
