@@ -6,6 +6,11 @@
         <h2>Provider</h2>
         {% if provider_status.ready %}
             <span class="badge success">Ready</span>
+            {% if provider_status.source == "env" %}
+                <span class="badge muted" title="Key from Railway or host environment variable">key: env</span>
+            {% elif provider_status.source == "file" %}
+                <span class="badge muted" title="Key saved in .env file via admin UI">key: .env file</span>
+            {% endif %}
         {% else %}
             <span class="badge muted">Not configured</span>
         {% endif %}
