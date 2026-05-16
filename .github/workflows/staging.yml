@@ -1,0 +1,71 @@
+name: staging
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write  # required for GHCR push
+
+jobs:
+  build-and-deploy:
+    name: build image + deploy to staging
+    runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_STAGING_SERVICE_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_STAGING_ENVIRONMENT_ID }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and push :staging
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          target: runtime
+          push: true
+          tags: ghcr.io/roryford/hermes-station:staging
+          build-args: |
+            IMAGE_REVISION=${{ github.sha }}
+          provenance: false
+          sbom: false
+
+      - name: wait for GHCR manifest to propagate
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGE="ghcr.io/roryford/hermes-station:staging"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for i in $(seq 1 60); do
+            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "manifest available after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "ERROR: manifest did not appear within 60s" >&2
+          exit 1
+
+      - name: deploy to staging
+        run: |
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"mutation Deploy(\$svc: String!, \$env: String!) { serviceInstanceDeploy(serviceId: \$svc, environmentId: \$env, latestCommit: false) }\",
+              \"variables\": {
+                \"svc\": \"$RAILWAY_SERVICE_ID\",
+                \"env\": \"$RAILWAY_ENVIRONMENT_ID\"
+              }
+            }"
