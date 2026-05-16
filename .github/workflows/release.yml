@@ -22,39 +22,13 @@ jobs:
         id: notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Notes assembly lives in scripts/generate-release-notes.sh so the
+        # same logic powers both CI and local backfills (gh release edit).
         run: |
-          # Find the previous semver tag for the changelog range. `sort -V`
-          # handles the v-prefix and zero-padded compares; head -1 picks the
-          # tag immediately preceding $GITHUB_REF_NAME.
-          PREV=$(git tag --list 'v*' --sort=-v:refname \
-            | grep -v "^${GITHUB_REF_NAME}$" | head -1)
-          echo "previous tag: $PREV"
-
-          # Step 1: structured changelog via GitHub's PR-aware generator.
-          # Categories + label filters live in .github/release.yml.
-          CATEGORIZED=$(gh api \
-            -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-            -f tag_name="${GITHUB_REF_NAME}" \
-            -f previous_tag_name="${PREV}" \
-            --jq .body)
-
-          # Step 2: highlight section — full PR body for any merged PR
-          # labeled `release-highlight`. Lets landmark features ship with
-          # their full "why" + test plan instead of just a title line.
-          HIGHLIGHTS=""
-          PRS=$(gh pr list --base main --state merged \
-            --label release-highlight --limit 50 \
-            --search "merged:>=$(git log -1 --format=%aI "$PREV")" \
-            --json number,title,body \
-            --jq '.[] | "### #\(.number) — \(.title)\n\n\(.body)\n"')
-          if [ -n "$PRS" ]; then
-            HIGHLIGHTS=$'\n## 🌟 Highlights\n\n'"$PRS"
-          fi
-
+          BODY=$(bash scripts/generate-release-notes.sh "${GITHUB_REF_NAME}")
           {
             echo "body<<RELEASE_NOTES_EOF"
-            echo "$CATEGORIZED"
-            echo "$HIGHLIGHTS"
+            echo "$BODY"
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -114,6 +88,29 @@ jobs:
       RAILWAY_SERVICE_ID: a74d9666-4e53-494f-9dc9-f73b608836f4
       RAILWAY_ENVIRONMENT_ID: ddbd4898-55eb-4e67-b993-b170644b0931
     steps:
+      - name: wait for GHCR manifest to propagate
+        # GHCR has a brief eventual-consistency window after `docker push`
+        # returns — Railway's pull can hit a 404 for ~5-20s while CDN edges
+        # catch up. v0.2.0 lost that race: CREATE_CONTAINER errored in 3s
+        # with "Failed to create deployment." Poll until the manifest is
+        # globally visible before triggering the deploy.
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IMAGE="ghcr.io/roryford/hermes-station:${VERSION}"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          for i in $(seq 1 60); do
+            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "manifest available after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "ERROR: manifest for $IMAGE did not appear within 60s" >&2
+          exit 1
+
       - name: point service at new image
         # Use the specific version tag (semver strips v-prefix: v0.1.3 → 0.1.3).
         # Must run AFTER publish so Railway resolves the tag to the just-pushed digest,
