@@ -33,7 +33,7 @@ from hermes_station.config import (
 
 
 CATALOG_NAMES = {entry["name"] for entry in MCP_SERVER_CATALOG}
-EXPECTED_NAMES = {"filesystem", "fetch", "github"}
+EXPECTED_NAMES = {"filesystem", "fetch", "github", "playwright-mcp"}
 
 
 # ---------------------------------------------------------------------------
@@ -45,11 +45,14 @@ def test_catalog_contains_the_three_curated_servers() -> None:
     assert CATALOG_NAMES == EXPECTED_NAMES
 
 
-def test_catalog_entries_are_stdio_only() -> None:
-    """Lite-tier policy: stdio only — no `url:` HTTP servers."""
+def test_catalog_entries_are_stdio_or_url_based() -> None:
+    """Each catalog entry is either stdio (has command) or URL-based (has url key)."""
     for entry in MCP_SERVER_CATALOG:
-        assert entry["command"], f"{entry['name']}: missing command (stdio required)"
-        assert "url" not in entry, f"{entry['name']}: HTTP servers go in full-tier"
+        is_url_based = "url" in entry
+        is_stdio = bool(entry.get("command"))
+        assert is_url_based or is_stdio, (
+            f"{entry['name']}: must have either 'command' (stdio) or 'url' (HTTP transport)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -66,10 +69,14 @@ def test_seed_writes_all_three_default_off_when_config_missing(tmp_path: Path) -
     assert set(added) == EXPECTED_NAMES
     config = load_yaml_config(config_path)
     servers = config["mcp_servers"]
+    url_based = {entry["name"] for entry in MCP_SERVER_CATALOG if "url" in entry}
     for name in EXPECTED_NAMES:
         assert servers[name]["enabled"] is False
-        assert "command" in servers[name]
-        assert "args" in servers[name]
+        if name in url_based:
+            assert "url" in servers[name]
+        else:
+            assert "command" in servers[name]
+            assert "args" in servers[name]
 
 
 def test_seed_preserves_existing_unrelated_keys(tmp_path: Path) -> None:
@@ -106,8 +113,8 @@ def test_seed_no_clobber_existing_server_entry(tmp_path: Path) -> None:
 
     added = seed_default_mcp_servers(config_path)
 
-    # filesystem was already there — only fetch + github were added.
-    assert set(added) == {"fetch", "github"}
+    # filesystem was already there — only the remaining catalog entries were added.
+    assert set(added) == EXPECTED_NAMES - {"filesystem"}
     config = load_yaml_config(config_path)
     fs = config["mcp_servers"]["filesystem"]
     assert fs["enabled"] is True

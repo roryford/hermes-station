@@ -4,7 +4,7 @@
 <section class="card" id="mcp-card">
     <div class="card-header">
         <h2>MCP servers</h2>
-        <span class="muted">stdio · default-off</span>
+        <span class="muted">default-off</span>
     </div>
 
     {% if alert %}
@@ -12,7 +12,7 @@
     {% endif %}
 
     <p class="muted" style="margin-top:0;">
-        Stdio MCP servers are spawned on-demand and exit when the conversation
+        MCP servers are spawned on-demand and exit when the conversation
         ends — near-zero idle RAM. Toggling triggers a gateway restart.
     </p>
 
@@ -37,7 +37,11 @@
                 </div>
                 <p style="margin:0.25rem 0 0.5rem 0;">{{ server.description }}</p>
                 <dl class="kv mono" style="font-size:0.8rem;">
-                    <dt>command</dt><dd>{{ server.command }} {{ server.args | join(' ') }}</dd>
+                    {% if server.is_url_based %}
+                        <dt>url</dt><dd>{{ server.url if server.url else "not set — edit config.yaml" }}</dd>
+                    {% else %}
+                        <dt>command</dt><dd>{{ server.command }} {{ server.args | join(' ') }}</dd>
+                    {% endif %}
                 </dl>
                 {% if server.needs %}
                     {% if server.needs_satisfied %}

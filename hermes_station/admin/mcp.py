@@ -67,17 +67,21 @@ def mcp_status(
         import os
 
         needs_satisfied = all((env_values.get(key) or os.environ.get(key) or "").strip() for key in needs)
+        # For URL-based entries, surface the live URL from config (so developer can see what's set)
+        url = cfg.get("url", entry.get("url", "")) if cfg else entry.get("url", "")
         out.append(
             {
                 "name": name,
                 "label": entry["label"],
                 "description": entry["description"],
-                "command": entry["command"],
-                "args": list(entry["args"]),
+                "command": entry.get("command", ""),
+                "args": list(entry.get("args", [])),
                 "enabled": enabled,
                 "configured": configured,
                 "needs": list(needs),
                 "needs_satisfied": needs_satisfied,
+                "url": url,
+                "is_url_based": "url" in entry,
             }
         )
     return out

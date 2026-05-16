@@ -433,6 +433,19 @@ MCP_SERVER_CATALOG: list[dict[str, Any]] = [
         "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"},
         "needs": ["GITHUB_TOKEN"],
     },
+    {
+        "name": "playwright-mcp",
+        "label": "Playwright Browser",
+        "description": (
+            "Browser automation via Playwright MCP. Requires a separate Railway service "
+            "running mcr.microsoft.com/playwright/mcp (2 GB RAM, port 8931). "
+            "After deploying, set the URL in config.yaml: "
+            "mcp_servers.playwright-mcp.url: http://<service>.railway.internal:8931/mcp"
+        ),
+        "url": "",
+        "env": {},
+        "needs": [],
+    },
 ]
 
 
@@ -440,8 +453,13 @@ def _server_seed_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Build the on-disk config dict for one catalog entry.
 
     Default-off (`enabled: false`) per the lite-tier policy — users opt in
-    explicitly from /admin. Stdio transport is implied by `command`/`args`.
+    explicitly from /admin. Entries with a `url` key use HTTP/SSE transport;
+    entries with `command`/`args` use stdio transport.
     """
+    if "url" in entry:
+        # URL-based MCP server (remote HTTP/SSE transport).
+        # Developer fills in the URL after deploying the external service.
+        return {"url": entry["url"], "enabled": False}
     seed: dict[str, Any] = {
         "command": entry["command"],
         "args": list(entry["args"]),
