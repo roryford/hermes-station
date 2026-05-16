@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<h1>Smoke tests</h1>
+<p class="muted" style="margin-top:0;">Verify that each capability is reachable and correctly configured. Tests make lightweight API calls; none send messages or cost credits.</p>
+
+<div id="smoketest-panel">
+    <button type="button" class="btn"
+            hx-post="/admin/_partial/smoketest/run"
+            hx-target="#smoketest-panel"
+            hx-swap="outerHTML"
+            hx-indicator="#smoketest-panel">
+        Run all tests
+    </button>
+</div>
+{% endblock %}
