@@ -1,0 +1,53 @@
+<div id="upgrade-table">
+    <section class="card">
+        <div class="card-header">
+            <h2>Latest versions</h2>
+            {% if cache_age_minutes is not none %}
+            <span class="muted" style="font-size:0.8rem;">checked {{ cache_age_minutes }}m ago</span>
+            {% endif %}
+            <button type="button" class="btn small ghost"
+                    hx-post="/admin/_partial/upgrade/check"
+                    hx-target="#upgrade-table"
+                    hx-swap="outerHTML">
+                Refresh
+            </button>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+            <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1);text-align:left;">
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Component</th>
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Running</th>
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Latest</th>
+                    <th style="padding:0.4rem 0.5rem;color:var(--text-dim);font-weight:normal;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <td style="padding:0.5rem;"><strong>{{ row.label }}</strong></td>
+                    <td style="padding:0.5rem;"><code>{{ row.current }}</code></td>
+                    <td style="padding:0.5rem;">
+                        <a href="{{ row.release_url }}" target="_blank" rel="noopener">
+                            <code>{{ row.latest }}</code>
+                        </a>
+                    </td>
+                    <td style="padding:0.5rem;">
+                        {% if row.status == 'ok' %}
+                            <span class="badge success">up to date</span>
+                        {% elif row.status == 'update_available' %}
+                            <span class="badge warning">update available</span>
+                        {% else %}
+                            <span class="badge muted">unknown</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if rows | selectattr('status', 'equalto', 'update_available') | list %}
+        <p class="muted" style="font-size:0.85rem;margin-top:0.75rem;margin-bottom:0;">
+            Updates are available. Renovate opens weekly bump PRs — check the repo for a pending PR, review the diff, and merge to deploy.
+        </p>
+        {% endif %}
+    </section>
+</div>
