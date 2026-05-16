@@ -21,7 +21,7 @@ from hermes_station.config import Paths, load_env_file, load_yaml_config
 _TIMEOUT = 6.0  # seconds per HTTP test
 
 
-def _pick_env_key(env: dict[str, str], names: list[str]) -> str:
+def _pick_env_key(env: dict[str, str], names: list[str] | tuple[str, ...]) -> str:
     """Return the first non-empty value found in env or os.environ for any of names."""
     for n in names:
         v = (env.get(n) or os.environ.get(n) or "").strip()
@@ -38,7 +38,7 @@ def _probe_storage(home: str) -> None:
 
 async def _test_storage(paths: Paths) -> dict[str, Any]:
     try:
-        await asyncio.to_thread(_probe_storage, paths.home)
+        await asyncio.to_thread(_probe_storage, str(paths.home))
         return {
             "name": "storage",
             "label": "Storage",
