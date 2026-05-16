@@ -170,7 +170,7 @@ hermes-station is engineered to accept an existing Hermes `/data` volume unchang
 - **Single-operator deploy** — not a multi-tenant SaaS control plane. One identity, one `/data` volume, one operator.
 - **Readiness is a boot-time snapshot** — the `/health/ready` check reflects state at startup, not live probes against upstream APIs.
 - **Fast-moving upstreams** — hermes-agent ships weekly; hermes-webui ships several releases per day. Pin versions are tracked by Renovate; don't run `:latest` in production without reviewing the bump PR.
-- **Image is intentionally not minimal** — includes Node.js, npm, and the `gh` CLI to support MCP servers. The image is larger than a stripped runtime.
+- **Image is intentionally not minimal** — includes Node.js, npm, and the `gh` CLI to support MCP server subprocesses, plus the Python `mcp` package (client-side) so hermes-agent can open `ClientSession` / `StdioServerParameters` connections to those servers. The image is larger than a stripped runtime.
 
 ## Support posture
 

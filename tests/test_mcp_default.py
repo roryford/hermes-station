@@ -37,6 +37,34 @@ EXPECTED_NAMES = {"filesystem", "fetch", "github", "playwright-mcp"}
 
 
 # ---------------------------------------------------------------------------
+# Regression: Python mcp package must be importable (was missing from image)
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_client_imports_are_available() -> None:
+    """Regression: mcp package must be installed as a runtime dep.
+
+    hermes-agent's mcp_tool.py imports ClientSession and StdioServerParameters
+    from the Python `mcp` package. When the package is absent the import fails
+    silently and later surfaces as a misleading NameError at call time.
+    """
+    from mcp import ClientSession, StdioServerParameters  # noqa: F401
+
+
+def test_github_catalog_env_maps_token_to_personal_access_token() -> None:
+    """The GitHub MCP server entry must map GITHUB_PERSONAL_ACCESS_TOKEN from
+    GITHUB_TOKEN so the Railway-injected token reaches the npx subprocess."""
+    github = next(e for e in MCP_SERVER_CATALOG if e["name"] == "github")
+    env = github.get("env", {})
+    assert "GITHUB_PERSONAL_ACCESS_TOKEN" in env, (
+        "GitHub catalog entry must expose GITHUB_PERSONAL_ACCESS_TOKEN to the MCP subprocess"
+    )
+    assert "${GITHUB_TOKEN}" in env["GITHUB_PERSONAL_ACCESS_TOKEN"], (
+        "GITHUB_PERSONAL_ACCESS_TOKEN must be sourced from GITHUB_TOKEN"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Catalog sanity
 # ---------------------------------------------------------------------------
 

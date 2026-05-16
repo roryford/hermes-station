@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "itsdangerous>=2.2",
     "httpx>=0.27",
+    "mcp>=1.27",
 ]
 
 [project.urls]
@@ -35,7 +36,7 @@ Repository = "https://github.com/roryford/hermes-station"
 # hermes-webui is pinned in the Dockerfile (regex manager) because it has no pyproject.toml upstream.
 # Kept as an extra so local dev / lint / unit-test cycles don't pull the full agent dep tree.
 hermes = [
-    "hermes-agent[messaging] @ git+https://github.com/NousResearch/hermes-agent.git@498bfc7bc12a937621b4215312049b1000726df3",  # v2026.5.7
+    "hermes-agent[messaging] @ git+https://github.com/NousResearch/hermes-agent.git@a91a57fa5a13d516c38b07a141a9ce8a3daabeb0",  # v2026.5.16
 ]
 # Mirrors [dependency-groups].dev below — kept here so `uv pip install ".[dev]"` in the
 # Dockerfile test stage keeps working. [dependency-groups] is what `uv sync` uses on a

@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<h1>Presets</h1>
+<p class="muted" style="margin-top:0;">One-click starting points for common use cases. Applying a preset enables the relevant tools — you still need to supply any API keys or tokens it requires.</p>
+<div class="grid">
+    {% for preset in presets %}
+    <div id="preset-{{ preset.id }}" class="card">
+        <div class="card-header">
+            <h2 style="text-transform:none;letter-spacing:0;font-size:1rem;">{{ preset.label }}</h2>
+        </div>
+        <p class="muted" style="margin-top:0;font-size:0.9rem;">{{ preset.description }}</p>
+        <div class="row" style="margin-bottom:0.75rem;flex-wrap:wrap;">
+            {% for tag in preset.tags %}
+                <span class="badge muted">{{ tag }}</span>
+            {% endfor %}
+        </div>
+        <form hx-post="/admin/_partial/presets/{{ preset.id }}/apply"
+              hx-target="#preset-{{ preset.id }}"
+              hx-swap="outerHTML">
+            <button type="submit" class="btn small">Apply</button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
