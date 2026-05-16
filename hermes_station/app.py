@@ -84,27 +84,51 @@ class _SecurityHeadersMiddleware:
 
 
 class _BodySizeLimitMiddleware:
-    """Reject requests with Content-Length exceeding the limit."""
+    """Reject requests whose body exceeds the limit, regardless of encoding."""
 
     def __init__(self, app: ASGIApp, max_bytes: int = _MAX_BODY_BYTES) -> None:
         self.app = app
         self.max_bytes = max_bytes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http":
-            headers = dict(scope.get("headers", []))
-            cl_raw = headers.get(b"content-length")
-            if cl_raw is not None:
-                try:
-                    if int(cl_raw) > self.max_bytes:
-                        from starlette.responses import Response
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-                        resp = Response("Request body too large", status_code=413)
-                        await resp(scope, receive, send)
-                        return
-                except (ValueError, TypeError):
-                    pass
-        await self.app(scope, receive, send)
+        # Fast-path: reject on Content-Length alone before reading a byte.
+        headers = dict(scope.get("headers", []))
+        cl_raw = headers.get(b"content-length")
+        if cl_raw is not None:
+            try:
+                if int(cl_raw) > self.max_bytes:
+                    from starlette.responses import Response
+                    resp = Response("Request body too large", status_code=413)
+                    await resp(scope, receive, send)
+                    return
+            except (ValueError, TypeError):
+                pass
+
+        # Slow-path: count bytes as they arrive (covers chunked encoding).
+        total = 0
+
+        async def counted_receive() -> Message:
+            nonlocal total
+            message = await receive()
+            if message.get("type") == "http.request":
+                total += len(message.get("body", b""))
+                if total > self.max_bytes:
+                    raise ValueError(f"Request body exceeds {self.max_bytes} bytes")
+            return message
+
+        try:
+            await self.app(scope, counted_receive, send)
+        except ValueError as exc:
+            if "Request body exceeds" in str(exc):
+                from starlette.responses import Response
+                resp = Response("Request body too large", status_code=413)
+                await resp(scope, receive, send)
+            else:
+                raise
 
 
 def _ensure_env_passthrough(paths: Paths, config: dict, keys: list[str]) -> None:
