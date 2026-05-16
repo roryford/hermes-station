@@ -11,20 +11,33 @@
     <div class="alert error">⚠ {{ warning }}</div>
     {% endfor %}
 
-    {# Deployment status stages #}
+    {# Deployment status checklist — merges stage badges with action hints #}
+    {% set pending_stages = stages | selectattr('ok', 'false') | list %}
     <section class="card">
         <div class="card-header">
             <h2>Deployment status</h2>
+            {% if pending_stages | length == 0 %}
+                <span class="badge success">All set</span>
+            {% endif %}
         </div>
-        <dl class="kv">
+        <ul style="margin:0;padding-left:0;list-style:none;">
             {% for stage in stages %}
-            <dt>{{ stage.label }}</dt>
-            <dd>
-                <span class="badge {{ 'success' if stage.ok else 'muted' }}">{{ 'ok' if stage.ok else 'pending' }}</span>
-                {% if stage.hint %}<span class="muted" style="font-size:0.85rem;margin-left:0.5rem;">— {{ stage.hint }}</span>{% endif %}
-            </dd>
+            <li class="row" style="padding:0.3rem 0;{% if not loop.last %}border-bottom:1px solid rgba(255,255,255,0.06);{% endif %}">
+                <span class="badge {{ 'success' if stage.ok else 'muted' }}" style="flex-shrink:0;min-width:1.5rem;text-align:center;">
+                    {{ '✓' if stage.ok else '□' }}
+                </span>
+                <span class="{{ 'muted' if stage.ok }}">
+                    <strong>{{ stage.label }}</strong>
+                    {% if not stage.ok and stage.hint %}
+                        <span class="muted" style="font-size:0.85rem;"> — {{ stage.hint }}</span>
+                    {% endif %}
+                </span>
+            </li>
             {% endfor %}
-        </dl>
+        </ul>
+        {% if pending_stages | length == 0 %}
+        <p class="muted" style="margin-top:0.75rem;margin-bottom:0;">Everything looks good. Your deployment is fully configured and connected.</p>
+        {% endif %}
     </section>
 
     {% if provider.configured and not gateway.running %}
@@ -160,33 +173,5 @@
         </details>
     </section>
 
-    {# Next steps checklist #}
-    <section class="card">
-        <div class="card-header">
-            <h2>Next steps</h2>
-            {% if stages | selectattr('ok', 'equalto', false) | list | length == 0 %}
-                <span class="badge success">All set</span>
-            {% endif %}
-        </div>
-        {% if stages | selectattr('ok', 'equalto', false) | list | length == 0 %}
-            <p class="muted">Everything looks good. Your deployment is fully configured and connected.</p>
-        {% else %}
-            <ul style="margin:0;padding-left:1.25rem;line-height:1.9;">
-                {% for stage in stages %}
-                <li style="color: {{ 'var(--text-dim)' if stage.ok else 'var(--text)' }};">
-                    {% if stage.ok %}
-                        <span style="color:#5fbe7d;">✓</span>
-                    {% else %}
-                        <span style="color:var(--text-dim);">□</span>
-                    {% endif %}
-                    <strong>{{ stage.label }}</strong>
-                    {% if not stage.ok and stage.hint %}
-                        <span class="muted" style="font-size:0.85rem;"> — {{ stage.hint }}</span>
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        {% endif %}
-    </section>
 
 </div>
