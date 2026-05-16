@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Any
@@ -311,16 +312,14 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
     config = load_yaml_config(paths.config_path)
     env = load_env_file(paths.env_path)
     gateway = getattr(request.app.state, "gateway", None)
-    results = []
-    for coro in [
+    results = await asyncio.gather(
         _test_storage(paths),
         _test_provider(config, env),
         _test_gateway(gateway, config),
         _test_github_mcp(config, env),
         _test_web_search(config, env),
-    ]:
-        results.append(await coro)
-    return results
+    )
+    return list(results)
 
 
 async def smoketest_page(request: Request) -> Response:
