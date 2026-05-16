@@ -108,6 +108,34 @@ KNOWN_SECRETS: tuple[dict[str, Any], ...] = (
         "hint": "Project identifier paired with BROWSERBASE_API_KEY.",
         "in_process": True,
     },
+    {
+        "key": "BROWSER_USE_API_KEY",
+        "label": "Browser Use",
+        "group": "browser",
+        "url": "https://cloud.browser-use.com/",
+        "hint": "Browser Use cloud. Free tier available. Auto-detected by hermes-agent when set.",
+        "in_process": True,
+    },
+    {
+        "key": "CAMOFOX_URL",
+        "label": "Camofox",
+        "group": "browser",
+        "url": "https://github.com/jo-inc/camofox-browser",
+        "hint": (
+            "URL of your self-hosted Camofox service "
+            "(e.g. http://camofox.railway.internal:9377). "
+            "Takes priority over all cloud providers when set."
+        ),
+        "in_process": True,
+    },
+    {
+        "key": "STEEL_API_KEY",
+        "label": "Steel",
+        "group": "browser",
+        "url": "https://app.steel.dev/",
+        "hint": "Steel cloud. 100 hrs/month free. Requires hermes-agent ≥ next release.",
+        "in_process": True,
+    },
 )
 
 
