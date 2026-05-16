@@ -162,11 +162,19 @@ def _build_stages(
         return "Start the gateway in the Supervisors section"
 
     return [
-        {"label": "Running",    "ok": webui_running,       "hint": "" if webui_running else "WebUI process is stopped — click Start in Supervisors"},
-        {"label": "Secured",    "ok": secured,             "hint": _hint_secured()},
-        {"label": "Configured", "ok": provider_configured, "hint": "" if provider_configured else "Add a provider key in Settings"},
-        {"label": "Connected",  "ok": connected,           "hint": _hint_connected()},
-        {"label": "Useful",     "ok": useful,              "hint": "" if useful else "Complete the steps above"},
+        {
+            "label": "Running",
+            "ok": webui_running,
+            "hint": "" if webui_running else "WebUI process is stopped — click Start in Supervisors",
+        },
+        {"label": "Secured", "ok": secured, "hint": _hint_secured()},
+        {
+            "label": "Configured",
+            "ok": provider_configured,
+            "hint": "" if provider_configured else "Add a provider key in Settings",
+        },
+        {"label": "Connected", "ok": connected, "hint": _hint_connected()},
+        {"label": "Useful", "ok": useful, "hint": "" if useful else "Complete the steps above"},
     ]
 
 
@@ -177,6 +185,7 @@ def _build_guardrail_warnings(
     data_dir: "Path",
 ) -> list[str]:
     import os as _os
+
     out: list[str] = []
     if not webui_password:
         out.append(
@@ -184,10 +193,7 @@ def _build_guardrail_warnings(
             "Set HERMES_WEBUI_PASSWORD."
         )
     if not admin_password:
-        out.append(
-            "Admin has no password — this control plane is unprotected. "
-            "Set HERMES_ADMIN_PASSWORD."
-        )
+        out.append("Admin has no password — this control plane is unprotected. Set HERMES_ADMIN_PASSWORD.")
     try:
         data_dev = _os.stat(str(data_dir)).st_dev
         root_dev = _os.stat("/").st_dev
