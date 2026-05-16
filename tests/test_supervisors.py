@@ -545,8 +545,15 @@ def test_webui_build_env_passes_admin_password(tmp_path: Path, monkeypatch: pyte
     assert env.get("HERMES_WEBUI_PASSWORD") == "test-admin-pw"
 
 
-def test_webui_build_env_no_secret_passthrough(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """ANTHROPIC_API_KEY and HERMES_ADMIN_PASSWORD must NOT pass through directly."""
+def test_webui_build_env_forwards_provider_secret(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provider API keys MUST reach the webui subprocess so the in-webui agent's
+    tool catalog sees credentialed tools (image_generate via FAL_KEY, etc.).
+
+    Reverses an earlier "no secret passthrough" stance: hiding secrets from
+    the webui caused every credentialed tool to silently disappear from the
+    model's catalog. The Secrets page (config.admin.disabled_secrets) is the
+    correct opt-out mechanism — see test_webui_env_passthrough.py.
+    """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
     monkeypatch.setenv("HERMES_ADMIN_PASSWORD", "my-password")
 
@@ -558,8 +565,11 @@ def test_webui_build_env_no_secret_passthrough(tmp_path: Path, monkeypatch: pyte
         config_path=tmp_path / "hermes" / "config.yaml",
     )
     env = proc._build_env()
-    assert "ANTHROPIC_API_KEY" not in env
+    assert env.get("ANTHROPIC_API_KEY") == "sk-secret"
+    # HERMES_ADMIN_PASSWORD still doesn't pass through directly — webui only
+    # sees HERMES_WEBUI_PASSWORD (substituted from admin pw when unset).
     assert "HERMES_ADMIN_PASSWORD" not in env
+    assert env.get("HERMES_WEBUI_PASSWORD") == "my-password"
 
 
 def test_webui_build_env_no_admin_password_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

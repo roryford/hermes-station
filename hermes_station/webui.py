@@ -180,9 +180,15 @@ class WebUIProcess:
         }
 
     def _build_env(self) -> dict[str, str]:
-        # Pass only the minimum env vars hermes-webui needs.
-        # Do NOT forward arbitrary secrets (API keys, admin password, bot tokens).
+        # System keys go through the static whitelist. Secrets (provider
+        # API keys, FAL_KEY, channel tokens, custom keys) flow through the
+        # dynamic Secrets-catalog passthrough — so when an operator adds a
+        # key on /admin/settings it reaches the in-webui agent without a
+        # code change. Without this, tools whose check_fn reads os.environ
+        # (image_generate via FAL_KEY, web_search via BRAVE_API_KEY, etc.)
+        # silently disappear from the model's tool catalog inside webui.
         env: dict[str, str] = {k: v for k, v in os.environ.items() if k in _WEBUI_ENV_PASSTHROUGH}
+        env.update(self._secrets_passthrough())
         if not env.get("HERMES_WEBUI_AGENT_DIR"):
             import sysconfig
 
@@ -206,6 +212,44 @@ class WebUIProcess:
             if admin_pw:
                 env["HERMES_WEBUI_PASSWORD"] = admin_pw
         return env
+
+    def _secrets_passthrough(self) -> dict[str, str]:
+        """Forward Secrets-page keys from os.environ to the webui child.
+
+        Source of truth: the same lists the Secrets page renders —
+        ``KNOWN_SECRETS`` (catalog) + ``admin.custom_secret_keys`` (user
+        additions) + provider keys + channel tokens. Anything else is left
+        out so we don't leak unrelated env vars into a subprocess.
+
+        Honors ``admin.disabled_secrets``: a disabled key is dropped here
+        too, matching the lifespan-level ``os.environ.pop`` behavior so the
+        webui agent never sees a value the operator suppressed.
+        """
+        # Local imports to keep this module's top of file free of admin/
+        # circular dependencies. webui.py is imported by app.py very early.
+        from hermes_station.admin.channels import CHANNEL_ENV_KEYS
+        from hermes_station.admin.provider import provider_env_var_names, PROVIDER_CATALOG
+        from hermes_station.admin.secrets_catalog import (
+            KNOWN_SECRETS,
+            get_custom_keys,
+            get_disabled_keys,
+        )
+        from hermes_station.config import load_yaml_config
+
+        keys: set[str] = set()
+        keys.update(entry["key"] for entry in KNOWN_SECRETS)
+        keys.update(CHANNEL_ENV_KEYS)
+        for provider_id in PROVIDER_CATALOG:
+            keys.update(provider_env_var_names(provider_id))
+
+        try:
+            cfg = load_yaml_config(self.config_path)
+        except Exception:  # noqa: BLE001 — fall back to empty config on read failure
+            cfg = {}
+        keys.update(get_custom_keys(cfg))
+        keys.difference_update(get_disabled_keys(cfg))
+
+        return {k: os.environ[k] for k in keys if k in os.environ}
 
     async def _spawn(self) -> None:
         server_py = self.webui_src / "server.py"
