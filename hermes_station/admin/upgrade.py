@@ -75,9 +75,9 @@ async def fetch_upgrade_info(current_versions: dict[str, Any]) -> list[dict[str,
     """Fetch latest versions for all components. Returns a row per component."""
     rows = []
     for defn in _COMPONENT_DEFS:
-        key = defn["key"]
+        key = str(defn["key"])
         current = str(current_versions.get(key) or "unknown")
-        latest = await _fetch_latest(defn["repo"], defn["use_tags"])
+        latest = await _fetch_latest(str(defn["repo"]), bool(defn["use_tags"]))
 
         if current == "unknown" or not latest:
             status = "unknown"
