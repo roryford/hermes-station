@@ -111,7 +111,10 @@ async def _gather_status(request: Request) -> dict[str, Any]:
         data_dir=paths.home,
     )
 
-    return {
+    readiness = getattr(request.app.state, "readiness", None)
+    versions = dict(readiness.versions) if readiness else {}
+
+    result: dict[str, Any] = {
         "paths": {
             "hermes_home": str(paths.hermes_home),
             "config_path": str(paths.config_path),
@@ -129,7 +132,10 @@ async def _gather_status(request: Request) -> dict[str, Any]:
         "pending_pairings": pending_count,
         "stages": stages,
         "warnings": warnings,
+        "versions": versions,
     }
+    result["explain"] = _explain_setup(result)
+    return result
 
 
 def _build_stages(
@@ -176,6 +182,64 @@ def _build_stages(
         {"label": "Connected", "ok": connected, "hint": _hint_connected()},
         {"label": "Useful", "ok": useful, "hint": "" if useful else "Complete the steps above"},
     ]
+
+
+def _explain_setup(status: dict[str, Any]) -> list[str]:
+    """Generate plain-English sentences describing the current deployment."""
+    sentences: list[str] = []
+
+    # Version
+    versions = status.get("versions") or {}
+    hs_ver = versions.get("hermes_station") or "unknown"
+    sentences.append(f"You are running hermes-station {hs_ver}.")
+
+    # Auth / passwords — "Secured" label must stay in sync with _build_stages
+    stages = status.get("stages") or []
+    secured = next((s["ok"] for s in stages if s["label"] == "Secured"), False)
+    if secured:
+        sentences.append("WebUI and admin are password protected.")
+    else:
+        warnings = status.get("warnings") or []
+        missing = [w for w in warnings if "password" in w.lower()]
+        if missing:
+            sentences.append("Admin or WebUI password is not set — the interface is unprotected.")
+
+    # Provider
+    provider = status.get("provider") or {}
+    if provider.get("configured"):
+        label = provider.get("label") or provider.get("id") or "unknown"
+        sentences.append(f"{label} is configured as the LLM provider.")
+    else:
+        sentences.append("No LLM provider is configured.")
+
+    # Gateway
+    gateway = status.get("gateway") or {}
+    gstate = gateway.get("state") or "unknown"
+    if gstate == "running":
+        sentences.append("The gateway is running and connected.")
+    elif gstate in ("starting", "stopping"):
+        sentences.append(f"The gateway is {gstate}.")
+    elif gstate == "startup_failed":
+        sentences.append("The gateway failed to start — check logs for details.")
+    else:
+        sentences.append("The gateway is stopped.")
+
+    # Channels
+    channels = status.get("channels") or []
+    active_channels = [c["label"] for c in channels if c.get("enabled")]
+    if active_channels:
+        sentences.append(f"Active messaging channels: {', '.join(active_channels)}.")
+    else:
+        sentences.append("No messaging channels are active.")
+
+    # Volume — absence of the warning string implies volume is attached
+    warnings_list = status.get("warnings") or []
+    if any("persistent volume" in w.lower() for w in warnings_list):
+        sentences.append("No persistent volume detected — data will be lost on restart.")
+    else:
+        sentences.append("A persistent /data volume is attached.")
+
+    return sentences
 
 
 def _build_guardrail_warnings(
@@ -274,6 +338,13 @@ async def mcp_fragment_toggle(request: Request) -> Response:
     return _templates.TemplateResponse(request, "admin/_mcp_card.html", context)
 
 
+async def explain_fragment(request: Request) -> Response:
+    if not is_authenticated(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    context = await _gather_status(request)
+    return _templates.TemplateResponse(request, "admin/_explain_card.html", context)
+
+
 async def status_fragment(request: Request) -> Response:
     # Fragment endpoints are HTMX-targeted: returning a 302 redirect would
     # silently swap the login page into the dashboard panel. Return 401 so
@@ -292,5 +363,6 @@ def routes() -> list[Route]:
     return [
         Route("/admin", dashboard_page, methods=["GET"]),
         Route("/admin/_partial/status", status_fragment, methods=["GET"]),
+        Route("/admin/_partial/explain", explain_fragment, methods=["GET"]),
         Route("/admin/_partial/mcp/toggle", mcp_fragment_toggle, methods=["POST"]),
     ]

@@ -10,6 +10,7 @@
         <p class="muted">Loading status…</p>
     </div>
 </div>
+{% include "admin/_explain_card.html" %}
 {# MCP card sits outside the polling panel so a freshly-shown alert doesn't
    get clobbered by the every-5s status refresh. It re-renders only on toggle. #}
 {% include "admin/_mcp_card.html" %}
