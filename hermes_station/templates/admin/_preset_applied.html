@@ -1,0 +1,26 @@
+<div id="preset-{{ preset.id }}" class="card">
+    <div class="card-header">
+        <h2 style="text-transform:none;letter-spacing:0;font-size:1rem;">{{ preset.label }}</h2>
+        {% if alert and alert.kind == "success" %}
+            <span class="badge success">Applied</span>
+        {% else %}
+            <span class="badge danger">Failed</span>
+        {% endif %}
+    </div>
+
+    {% if alert %}
+        <div class="alert {{ alert.kind }}">{{ alert.message }}</div>
+    {% endif %}
+
+    {% if preset %}
+        <p class="muted" style="margin-top:0;font-size:0.9rem;">{{ preset.description }}</p>
+        {% if alert and alert.kind == "success" and preset.todo %}
+        <h3 style="margin-top:0.75rem;font-size:0.9rem;">What's next</h3>
+        <ul style="margin:0;padding-left:1.25rem;line-height:1.8;font-size:0.9rem;">
+            {% for item in preset.todo %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    {% endif %}
+</div>

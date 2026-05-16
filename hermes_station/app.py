@@ -24,6 +24,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
 from hermes_station.admin.htmx_logs import routes as logs_routes
 from hermes_station.admin.htmx_settings import routes as settings_routes
+from hermes_station.admin.presets import routes as presets_routes
 from hermes_station.admin.routes import admin_routes
 from hermes_station.config import (
     AdminSettings,
@@ -279,6 +280,7 @@ def create_app() -> Starlette:
         *dashboard_routes(),
         *settings_routes(),
         *logs_routes(),
+        *presets_routes(),
         *admin_routes(),
         Mount(
             "/admin/static",
