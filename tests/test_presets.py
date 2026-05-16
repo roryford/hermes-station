@@ -7,7 +7,6 @@ from typing import Any
 
 import httpx
 import pytest
-import yaml
 from starlette.applications import Starlette
 from starlette.routing import Route
 
