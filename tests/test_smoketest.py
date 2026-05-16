@@ -7,7 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
-import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 
@@ -31,9 +30,7 @@ from hermes_station.config import Paths
 def _build_app(gateway: Any = None) -> Starlette:
     app_routes: list[Route] = list(smoketest_routes())
     app_routes.extend(
-        route
-        for route in admin_routes()
-        if not (isinstance(route, Route) and route.path == "/admin")
+        route for route in admin_routes() if not (isinstance(route, Route) and route.path == "/admin")
     )
     app = Starlette(routes=app_routes)
     app.state.paths = Paths()
@@ -42,9 +39,7 @@ def _build_app(gateway: Any = None) -> Starlette:
 
 
 async def _login(client: httpx.AsyncClient, password: str) -> None:
-    response = await client.post(
-        "/admin/login", data={"password": password}, follow_redirects=False
-    )
+    response = await client.post("/admin/login", data={"password": password}, follow_redirects=False)
     assert response.status_code == 302, response.text
 
 
@@ -379,9 +374,7 @@ async def test_web_search_skip_unknown_backend() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_smoketest_page_redirects_unauthenticated(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_smoketest_page_redirects_unauthenticated(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -389,9 +382,7 @@ async def test_smoketest_page_redirects_unauthenticated(
     assert response.status_code in (302, 303)
 
 
-async def test_smoketest_page_renders_after_login(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_smoketest_page_renders_after_login(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -402,9 +393,7 @@ async def test_smoketest_page_renders_after_login(
     assert "Run all tests" in response.text
 
 
-async def test_smoketest_run_unauthenticated_returns_401(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_smoketest_run_unauthenticated_returns_401(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -412,9 +401,7 @@ async def test_smoketest_run_unauthenticated_returns_401(
     assert response.status_code == 401
 
 
-async def test_smoketest_run_returns_results_html(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_smoketest_run_returns_results_html(fake_data_dir: Path, admin_password: str) -> None:
     """Run endpoint returns a table with all five test rows."""
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
@@ -436,9 +423,7 @@ async def test_smoketest_run_returns_results_html(
     assert "skipped" in body
 
 
-async def test_smoketest_run_shows_run_again_button(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_smoketest_run_shows_run_again_button(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
