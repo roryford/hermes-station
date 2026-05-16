@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<h1>Upgrade</h1>
+<p class="muted" style="margin-top:0;">Current versions running in this container, and the latest available on GitHub. Checking fetches from GitHub API — results are cached for 30 minutes.</p>
+
+<section class="card">
+    <div class="card-header">
+        <h2>Current versions</h2>
+    </div>
+    <dl class="kv">
+        {% for k, v in current_versions.items() %}
+        {% if v %}
+        <dt>{{ k }}</dt><dd><code>{{ v }}</code></dd>
+        {% endif %}
+        {% endfor %}
+    </dl>
+</section>
+
+<div id="upgrade-table">
+    {% if rows %}
+        {% include "admin/_upgrade_table.html" %}
+    {% else %}
+    <section class="card">
+        <div class="card-header"><h2>Latest versions</h2></div>
+        <p class="muted">Not checked yet.</p>
+        <button type="button" class="btn"
+                hx-post="/admin/_partial/upgrade/check"
+                hx-target="#upgrade-table"
+                hx-swap="outerHTML">
+            Check for updates
+        </button>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
