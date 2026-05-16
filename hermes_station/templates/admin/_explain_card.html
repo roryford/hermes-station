@@ -1,0 +1,13 @@
+{# Explain my setup — polled every 30s, independent of the 5s status panel #}
+<section id="explain-card"
+         class="card"
+         hx-get="/admin/_partial/explain"
+         hx-trigger="load, every 30s"
+         hx-swap="outerHTML">
+    <div class="card-header">
+        <h2>System summary</h2>
+    </div>
+    <p style="line-height:1.7;margin:0;">
+        {% for sentence in explain %}{{ sentence }}{% if not loop.last %} {% endif %}{% endfor %}
+    </p>
+</section>
