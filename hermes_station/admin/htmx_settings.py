@@ -392,9 +392,7 @@ async def provider_cancel(request: Request) -> Response:
     return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
 
-async def _secrets_card_response(
-    request: Request, paths: Paths, alert: dict[str, str] | None
-) -> Response:
+async def _secrets_card_response(request: Request, paths: Paths, alert: dict[str, str] | None) -> Response:
     context: dict[str, Any] = {"alert": alert}
     context.update(_secrets_context(paths, request))
     return _templates.TemplateResponse(request, "admin/_secrets_card.html", context)

@@ -221,9 +221,7 @@ async def test_secrets_add_custom_with_value_saves(fake_data_dir: Path, admin_pa
     assert load_env_file(env_path)["MY_CUSTOM"] == "val-1234"
 
 
-async def test_secrets_add_with_sandbox_updates_passthrough(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_secrets_add_with_sandbox_updates_passthrough(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
