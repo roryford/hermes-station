@@ -76,7 +76,7 @@ allow-direct-references = true
 packages = ["hermes_station"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 
