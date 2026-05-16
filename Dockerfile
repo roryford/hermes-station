@@ -161,6 +161,7 @@ LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 FROM runtime AS test
 COPY uv.lock ./
 COPY tests/ /app/tests/
+COPY docs/ /app/docs/
 # Install pinned dev deps from the lockfile — faster than resolution and
 # deterministic. uv export reads uv.lock directly, no network needed.
 RUN uv export --only-group dev --frozen --no-hashes --no-header \

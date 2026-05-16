@@ -11,5 +11,7 @@ __pycache__
 htmlcov
 dist
 build
-docs
+docs/screenshots
+docs/*.png
+docs/*.jpg
 renovate.json5
