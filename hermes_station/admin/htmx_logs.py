@@ -62,7 +62,7 @@ def _parse_line(raw: str) -> dict:
         "ts": str(data.get("ts") or ""),
         "level": str(data.get("level") or "info").upper(),
         "component": str(data.get("component") or data.get("name") or ""),
-        "message": str(data.get("message") or data.get("msg") or raw),
+        "message": str(data["message"] if "message" in data else data.get("msg") or raw),
         "event": str(data.get("event") or ""),
     }
 
@@ -75,7 +75,7 @@ async def logs_fragment(request: Request) -> Response:
         return JSONResponse({"error": "unknown source"}, status_code=400)
     limit = _parse_limit(request.query_params.get("limit"))
     lines = BUFFERS[source].tail(limit)
-    parsed_lines = [_parse_line(l) for l in lines]
+    parsed_lines = [_parse_line(line) for line in lines]
     return _templates.TemplateResponse(
         request,
         "admin/_logs_pane.html",

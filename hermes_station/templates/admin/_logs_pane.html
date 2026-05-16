@@ -15,8 +15,8 @@
             {% for row in parsed_lines %}
             <div class="log-row" data-level="{{ row.level }}" style="display:flex;gap:0.5rem;align-items:baseline;padding:0.15rem 0;border-bottom:1px solid rgba(255,255,255,0.08);">
                 {% if row.level in ('ERROR', 'CRITICAL') %}
-                    <span class="badge danger" style="flex-shrink:0;font-size:0.7rem;padding:0.1rem 0.35rem;">{{ row.level }}</span>
-                {% elif row.level == 'WARNING' %}
+                    <span class="badge danger" style="flex-shrink:0;font-size:0.7rem;padding:0.1rem 0.35rem;">{{ row.level | e }}</span>
+                {% elif row.level in ('WARNING', 'WARN') %}
                     <span class="badge warning" style="flex-shrink:0;font-size:0.7rem;padding:0.1rem 0.35rem;">WARN</span>
                 {% elif row.level == 'plain' %}
                     <span class="badge muted" style="flex-shrink:0;font-size:0.7rem;padding:0.1rem 0.35rem;">OUT</span>
@@ -24,9 +24,9 @@
                     <span class="badge muted" style="flex-shrink:0;font-size:0.7rem;padding:0.1rem 0.35rem;">INFO</span>
                 {% endif %}
                 {% if row.component %}
-                    <span class="muted" style="flex-shrink:0;font-size:0.75rem;min-width:6rem;">{{ row.component }}</span>
+                    <span class="muted" style="flex-shrink:0;font-size:0.75rem;min-width:6rem;">{{ row.component | e }}</span>
                 {% endif %}
-                <span style="flex:1;word-break:break-word;">{{ row.message }}</span>
+                <span style="flex:1;word-break:break-word;">{{ row.message | e }}</span>
                 {% if row.ts %}
                     <span class="muted" style="flex-shrink:0;font-size:0.75rem;">{{ row.ts[-8:] }}</span>
                 {% endif %}
