@@ -92,7 +92,7 @@ def load_env_file(path: Path) -> dict[str, str]:
     return out
 
 
-def seed_env_file_to_os(path: Path) -> None:
+def seed_env_file_to_os(path: Path, config_path: Path | None = None) -> None:
     """Merge .env values into os.environ (CONTRACT.md §2.1 — .env takes precedence).
 
     Called before the in-process gateway task starts so credentials stored via
@@ -107,9 +107,18 @@ def seed_env_file_to_os(path: Path) -> None:
     is the preferred var for the gh CLI and for agent GitHub diagnostics; both
     are sourced from GITHUB_TOKEN (Railway injects it; GH_TOKEN is not set).
     The _HERMES_FORCE_ prefix is hermes-agent's escape hatch for exactly this.
+
+    When *config_path* is provided, any keys listed under
+    ``admin.disabled_secrets`` in config.yaml are popped from os.environ
+    after the .env merge. This lets operators actively suppress a Railway-
+    injected secret without changing the Railway dashboard (e.g. to disable
+    image generation by hiding FAL_KEY from the agent).
     """
     env_file = load_env_file(path)
     os.environ.update(env_file)
+    if config_path is not None:
+        for key in _disabled_secret_keys(config_path):
+            os.environ.pop(key, None)
     github_token = os.environ.get("GITHUB_TOKEN", "")
     if github_token:
         os.environ["_HERMES_FORCE_GITHUB_TOKEN"] = github_token
@@ -119,6 +128,26 @@ def seed_env_file_to_os(path: Path) -> None:
         os.environ.pop("_HERMES_FORCE_GITHUB_TOKEN", None)
         os.environ.pop("_HERMES_FORCE_GH_TOKEN", None)
     _seed_gh_cli_hosts(os.environ.get("GH_TOKEN") or github_token)
+
+
+def _disabled_secret_keys(config_path: Path) -> list[str]:
+    """Read ``admin.disabled_secrets`` from config.yaml. Tolerates missing/bad shape.
+
+    Lives in config.py (not admin/secrets_catalog.py) so seed_env_file_to_os
+    doesn't have to import the admin package, which depends on Jinja and
+    Starlette — a heavier dep tree than the boot path needs.
+    """
+    try:
+        config = load_yaml_config(config_path)
+    except (OSError, ValueError):
+        return []
+    admin = config.get("admin")
+    if not isinstance(admin, dict):
+        return []
+    raw = admin.get("disabled_secrets")
+    if not isinstance(raw, list):
+        return []
+    return [str(k).strip() for k in raw if str(k).strip()]
 
 
 def _seed_gh_cli_hosts(token: str) -> None:

@@ -170,6 +170,26 @@ model:
 
 Future provider extensions (e.g. multi-model fallback) may add keys under `model:`; hermes-station should preserve unknown keys round-trip rather than dropping them.
 
+#### `admin:` block — Secrets page state
+
+Added by `/admin/settings`. Two keys, both optional:
+
+```yaml
+admin:
+  custom_secret_keys:     # user-added env var names tracked on the Secrets page
+    - MY_SERVICE_API_KEY
+    - STRIPE_KEY
+  disabled_secrets:       # keys actively popped from os.environ after .env merge
+    - FAL_KEY             # (suppresses even Railway-injected values)
+```
+
+`disabled_secrets` is enforced by `seed_env_file_to_os` at boot and after
+every admin save. `custom_secret_keys` is display-only — it controls which
+non-catalog keys render on the Secrets page so the page doesn't have to
+list every env var the process sees.
+
+See [`secrets.md`](./secrets.md) for the operator-facing semantics.
+
 ### 4.3 `$HERMES_HOME/pairing/*.json`
 
 Mode: `0600`. JSON object. Empty `{}` when fresh.

@@ -130,6 +130,59 @@ def test_lifespan_image_gen_via_fal_block_reflected_in_health(
     assert "FAL_KEY" in readiness["image_gen"].get("reason", "")
 
 
+def test_lifespan_disabled_secrets_pop_from_os_environ(
+    fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A key on admin.disabled_secrets must be popped from os.environ at boot.
+
+    Validates the suppress-Railway-without-touching-Railway affordance: the
+    operator disables FAL_KEY via the Secrets page, redeploy, and the agent
+    no longer sees the Railway value.
+    """
+    from hermes_station.config import Paths, write_yaml_config
+
+    # Simulate Railway-injected FAL_KEY.
+    monkeypatch.setenv("FAL_KEY", "railway-injected-value")
+
+    paths = Paths()
+    write_yaml_config(
+        paths.config_path,
+        {"admin": {"disabled_secrets": ["FAL_KEY"]}},
+    )
+
+    app = _boot_app(fake_data_dir)
+    with TestClient(app):
+        pass
+
+    # After lifespan, FAL_KEY should be gone from os.environ.
+    assert os.environ.get("FAL_KEY") is None, (
+        f"disabled_secrets did not pop FAL_KEY; still {os.environ.get('FAL_KEY')!r}"
+    )
+
+
+def test_lifespan_disabled_secrets_does_not_pop_unrelated_keys(
+    fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Disabling one key must not affect any other env var."""
+    from hermes_station.config import Paths, write_yaml_config
+
+    monkeypatch.setenv("FAL_KEY", "to-be-popped")
+    monkeypatch.setenv("BRAVE_API_KEY", "should-survive")
+
+    paths = Paths()
+    write_yaml_config(
+        paths.config_path,
+        {"admin": {"disabled_secrets": ["FAL_KEY"]}},
+    )
+
+    app = _boot_app(fake_data_dir)
+    with TestClient(app):
+        pass
+
+    assert os.environ.get("FAL_KEY") is None
+    assert os.environ.get("BRAVE_API_KEY") == "should-survive"
+
+
 def test_lifespan_denorm_config_readiness_sees_correct_passthrough(
     fake_data_dir: Path,
 ) -> None:

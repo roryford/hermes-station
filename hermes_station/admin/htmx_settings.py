@@ -42,6 +42,15 @@ from hermes_station.admin.provider import (
     apply_provider_setup,
     provider_status,
 )
+from hermes_station.admin.secrets_catalog import (
+    add_custom_key,
+    clear_override,
+    disable,
+    enable,
+    forget_custom_key,
+    save_override,
+    secret_status,
+)
 from hermes_station.config import Paths, load_env_file, load_yaml_config, seed_env_file_to_os
 
 
@@ -102,6 +111,18 @@ def _pairings_context(paths: Paths) -> dict[str, Any]:
     }
 
 
+def _secrets_context(paths: Paths, request: Request | None = None) -> dict[str, Any]:
+    config = load_yaml_config(paths.config_path)
+    env_values = load_env_file(paths.env_path)
+    # Pre-seed Railway/host snapshot, set by app.py lifespan. Falls back to
+    # current os.environ when unavailable (e.g. minimal test apps) — that
+    # variant just can't detect shadows on already-saved overrides.
+    environ: dict[str, str] | None = None
+    if request is not None:
+        environ = getattr(request.app.state, "boot_environ", None)
+    return secret_status(config, env_values, environ=environ)
+
+
 # ───────────────────────────────────────────────────────────────── pages
 
 
@@ -113,6 +134,7 @@ async def settings_page(request: Request) -> Response:
     context: dict[str, Any] = {"active": "settings"}
     context.update(_provider_context(paths))
     context.update(_channels_context(paths))
+    context.update(_secrets_context(paths, request))
     return _templates.TemplateResponse(request, "admin/settings.html", context)
 
 
@@ -159,7 +181,7 @@ async def provider_fragment_save(request: Request) -> Response:
             api_key=str(form.get("api_key") or ""),
             base_url=str(form.get("base_url") or ""),
         )
-        seed_env_file_to_os(paths.env_path)
+        seed_env_file_to_os(paths.env_path, paths.config_path)
         gateway = getattr(request.app.state, "gateway", None)
         if gateway is not None:
             await gateway.restart()
@@ -188,7 +210,7 @@ async def channels_fragment_save(request: Request) -> Response:
     alert: dict[str, str]
     try:
         save_channel_values(paths.env_path, updates)
-        seed_env_file_to_os(paths.env_path)
+        seed_env_file_to_os(paths.env_path, paths.config_path)
         gateway = getattr(request.app.state, "gateway", None)
         if gateway is not None:
             await gateway.restart()
@@ -216,7 +238,7 @@ async def channels_fragment_clear(request: Request) -> Response:
             updates[entry["secondary_key"]] = None
         try:
             save_channel_values(paths.env_path, updates)
-            seed_env_file_to_os(paths.env_path)
+            seed_env_file_to_os(paths.env_path, paths.config_path)
             gateway = getattr(request.app.state, "gateway", None)
             if gateway is not None:
                 await gateway.restart()
@@ -247,7 +269,7 @@ async def channels_fragment_toggle(request: Request) -> Response:
         updates: dict[str, str | None] = {disable_key: None if currently_disabled else "1"}
         try:
             save_channel_values(paths.env_path, updates)
-            seed_env_file_to_os(paths.env_path)
+            seed_env_file_to_os(paths.env_path, paths.config_path)
             gateway = getattr(request.app.state, "gateway", None)
             if gateway is not None:
                 await gateway.restart()
@@ -341,7 +363,7 @@ async def copilot_oauth_poll(request: Request) -> Response:
                 model=meta["default_model"],
                 api_key=token,
             )
-            seed_env_file_to_os(paths.env_path)
+            seed_env_file_to_os(paths.env_path, paths.config_path)
             from hermes_station.gateway import Gateway as _Gateway
 
             gateway: _Gateway = request.app.state.gateway
@@ -368,6 +390,164 @@ async def provider_cancel(request: Request) -> Response:
     context: dict[str, Any] = {}
     context.update(_provider_context(paths))
     return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+
+async def _secrets_card_response(request: Request, paths: Paths, alert: dict[str, str] | None) -> Response:
+    context: dict[str, Any] = {"alert": alert}
+    context.update(_secrets_context(paths, request))
+    return _templates.TemplateResponse(request, "admin/_secrets_card.html", context)
+
+
+async def _after_secrets_change(request: Request, paths: Paths) -> None:
+    """Re-seed os.environ from .env (respecting disabled set) and restart gateway."""
+    seed_env_file_to_os(paths.env_path, paths.config_path)
+    gateway = getattr(request.app.state, "gateway", None)
+    if gateway is not None:
+        await gateway.restart()
+
+
+async def secrets_fragment_save(request: Request) -> Response:
+    """Save an override value for a single secret. Form: key, value."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    key = str(form.get("key") or "").strip()
+    value = str(form.get("value") or "")
+    try:
+        save_override(paths.env_path, paths.config_path, key, value)
+        await _after_secrets_change(request, paths)
+        alert: dict[str, str] | None = {"kind": "success", "message": f"{key} saved."}
+    except ValueError as exc:
+        alert = {"kind": "error", "message": str(exc)}
+    return await _secrets_card_response(request, paths, alert)
+
+
+async def secrets_fragment_clear(request: Request) -> Response:
+    """Remove a .env override so Railway/host value (if any) takes effect."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    key = str(form.get("key") or "").strip()
+    try:
+        clear_override(paths.env_path, key)
+        await _after_secrets_change(request, paths)
+        alert: dict[str, str] | None = {
+            "kind": "success",
+            "message": f"{key} override cleared.",
+        }
+    except ValueError as exc:
+        alert = {"kind": "error", "message": str(exc)}
+    return await _secrets_card_response(request, paths, alert)
+
+
+async def secrets_fragment_disable(request: Request) -> Response:
+    """Add a key to admin.disabled_secrets — actively suppress from agent env."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    key = str(form.get("key") or "").strip()
+    try:
+        disable(paths.config_path, key)
+        await _after_secrets_change(request, paths)
+        alert: dict[str, str] | None = {
+            "kind": "success",
+            "message": f"{key} disabled — agent will not see it.",
+        }
+    except ValueError as exc:
+        alert = {"kind": "error", "message": str(exc)}
+    return await _secrets_card_response(request, paths, alert)
+
+
+async def secrets_fragment_enable(request: Request) -> Response:
+    """Remove a key from admin.disabled_secrets."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    key = str(form.get("key") or "").strip()
+    try:
+        enable(paths.config_path, key)
+        await _after_secrets_change(request, paths)
+        alert: dict[str, str] | None = {"kind": "success", "message": f"{key} re-enabled."}
+    except ValueError as exc:
+        alert = {"kind": "error", "message": str(exc)}
+    return await _secrets_card_response(request, paths, alert)
+
+
+async def secrets_fragment_add(request: Request) -> Response:
+    """Register a custom (non-catalog) secret key for tracking on the page.
+
+    Optional ``value`` field — if present and non-empty, also saves as an
+    override in the same write. ``sandbox`` checkbox controls whether the
+    key is also added to terminal.env_passthrough.
+    """
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    key = str(form.get("key") or "").strip()
+    value = str(form.get("value") or "").strip()
+    expose_sandbox = str(form.get("sandbox") or "").strip().lower() in {"1", "true", "on", "yes"}
+    try:
+        if value:
+            save_override(paths.env_path, paths.config_path, key, value)
+        else:
+            add_custom_key(paths.config_path, key)
+        if expose_sandbox:
+            _ensure_env_passthrough_single(paths, key)
+        await _after_secrets_change(request, paths)
+        msg = f"{key} added." if not value else f"{key} added and saved."
+        alert: dict[str, str] | None = {"kind": "success", "message": msg}
+    except ValueError as exc:
+        alert = {"kind": "error", "message": str(exc)}
+    return await _secrets_card_response(request, paths, alert)
+
+
+async def secrets_fragment_forget(request: Request) -> Response:
+    """Untrack a custom key and clear any .env override. Disabled flag preserved."""
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+    form = await request.form()
+    key = str(form.get("key") or "").strip()
+    try:
+        forget_custom_key(paths.env_path, paths.config_path, key)
+        await _after_secrets_change(request, paths)
+        alert: dict[str, str] | None = {"kind": "success", "message": f"{key} forgotten."}
+    except ValueError as exc:
+        alert = {"kind": "error", "message": str(exc)}
+    return await _secrets_card_response(request, paths, alert)
+
+
+def _ensure_env_passthrough_single(paths: Paths, key: str) -> None:
+    """Add *key* to terminal.env_passthrough in config.yaml if missing.
+
+    Local import of write_yaml_config to avoid a circular dep with app.py
+    (which holds the multi-key helper). Idempotent; preserves order.
+    """
+    from hermes_station.config import write_yaml_config as _write
+
+    config = load_yaml_config(paths.config_path)
+    terminal = config.get("terminal")
+    if not isinstance(terminal, dict):
+        terminal = {}
+        config["terminal"] = terminal
+    passthrough = terminal.get("env_passthrough")
+    if not isinstance(passthrough, list):
+        passthrough = []
+    if key not in passthrough:
+        passthrough.append(key)
+    terminal["env_passthrough"] = passthrough
+    _write(paths.config_path, config)
 
 
 async def pairings_fragment_action(request: Request) -> Response:
@@ -409,6 +589,12 @@ def routes() -> list[Route]:
         Route("/admin/_partial/provider/copilot/start", copilot_oauth_start, methods=["POST"]),
         Route("/admin/_partial/provider/copilot/poll", copilot_oauth_poll, methods=["POST"]),
         Route("/admin/_partial/provider/cancel", provider_cancel, methods=["POST"]),
+        Route("/admin/_partial/secrets/save", secrets_fragment_save, methods=["POST"]),
+        Route("/admin/_partial/secrets/clear", secrets_fragment_clear, methods=["POST"]),
+        Route("/admin/_partial/secrets/disable", secrets_fragment_disable, methods=["POST"]),
+        Route("/admin/_partial/secrets/enable", secrets_fragment_enable, methods=["POST"]),
+        Route("/admin/_partial/secrets/add", secrets_fragment_add, methods=["POST"]),
+        Route("/admin/_partial/secrets/forget", secrets_fragment_forget, methods=["POST"]),
         Route(
             "/admin/_partial/pairing/{action}",
             pairings_fragment_action,

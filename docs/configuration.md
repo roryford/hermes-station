@@ -48,6 +48,8 @@ All of these follow the warn-and-continue rule: if the capability is referenced 
 
 The authoritative key names live in `hermes_station/admin/provider.py` (LLM providers) and `hermes_station/admin/channels.py` (Discord and other channels). When in doubt, those files win.
 
+The admin UI's **Secrets** page (`/admin/settings`) lets you set, override, or disable any of these keys at runtime — and add custom ones. See [`secrets.md`](./secrets.md) for the full model (auto/override/disabled, shadow detection, sandboxed-tool passthrough).
+
 ## First-boot config seeding
 
 On the first start against a fresh `/data`, hermes-station writes a minimal `config.yaml` containing:

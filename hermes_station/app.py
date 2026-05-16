@@ -137,6 +137,12 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     webui: WebUIProcess = app.state.webui
     gateway: Gateway = app.state.gateway
 
+    # Snapshot the Railway/host env BEFORE any .env merge so the Secrets page
+    # can detect "you have an override but Railway also sets this key" — once
+    # seed_env_file_to_os runs, .env values overwrite os.environ and the
+    # original Railway value is no longer recoverable.
+    app.state.boot_environ = dict(os.environ)
+
     try:
         settings = AdminSettings()
         if not settings.admin_password and settings.webui_password:
@@ -170,7 +176,9 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         # CONTRACT.md §2.1: .env values take precedence over process env.
         # The gateway runs in-process and reads os.environ directly — seed here
         # so provider credentials stored via the admin UI override Railway env vars.
-        seed_env_file_to_os(paths.env_path)
+        # Passing config_path also enforces admin.disabled_secrets: any key on
+        # that list is popped from os.environ after the .env merge.
+        seed_env_file_to_os(paths.env_path, paths.config_path)
         # Boot validator: reconcile intended vs actual readiness. The result
         # is cached on app.state for /health to consume; we never abort on
         # missing capability — image is publicly shareable, default posture
@@ -268,6 +276,10 @@ def create_app() -> Starlette:
     # Filled in by lifespan after config load. Set a default so /health
     # responds gracefully if a probe lands before lifespan completes.
     app.state.readiness = None
+    # Snapshot of os.environ before .env seeding. Lifespan overwrites this;
+    # the create_app default lets test apps that skip lifespan still observe
+    # the process env at app-construction time (good enough for diagnostics).
+    app.state.boot_environ = dict(os.environ)
     app.add_middleware(_SecurityHeadersMiddleware)
     app.add_middleware(_BodySizeLimitMiddleware)
     return app
