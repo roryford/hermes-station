@@ -212,6 +212,15 @@ async def test_gateway_fail_stopped() -> None:
     assert result["fix"]
 
 
+async def test_gateway_fail_attribute_error() -> None:
+    config = {"model": {"provider": "openai"}}
+    gw = MagicMock()
+    type(gw).gateway_state = property(lambda self: (_ for _ in ()).throw(RuntimeError("boom")))
+    result = await _test_gateway(gw, config)
+    assert result["status"] == "fail"
+    assert "boom" in result["detail"]
+
+
 # ---------------------------------------------------------------------------
 # Unit: _test_github_mcp
 # ---------------------------------------------------------------------------

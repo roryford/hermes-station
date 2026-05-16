@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Any
@@ -20,11 +21,24 @@ from hermes_station.config import Paths, load_env_file, load_yaml_config
 _TIMEOUT = 6.0  # seconds per HTTP test
 
 
+def _pick_env_key(env: dict[str, str], names: list[str]) -> str:
+    """Return the first non-empty value found in env or os.environ for any of names."""
+    for n in names:
+        v = (env.get(n) or os.environ.get(n) or "").strip()
+        if v:
+            return v
+    return ""
+
+
+def _probe_storage(home: str) -> None:
+    probe = Path(home) / ".smoketest_probe"
+    probe.write_text("ok", encoding="utf-8")
+    probe.unlink(missing_ok=True)
+
+
 async def _test_storage(paths: Paths) -> dict[str, Any]:
     try:
-        probe = Path(paths.home) / ".smoketest_probe"
-        probe.write_text("ok", encoding="utf-8")
-        probe.unlink(missing_ok=True)
+        await asyncio.to_thread(_probe_storage, paths.home)
         return {
             "name": "storage",
             "label": "Storage",
@@ -43,6 +57,7 @@ async def _test_storage(paths: Paths) -> dict[str, Any]:
 
 
 async def _test_provider(config: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    # Deferred to avoid a circular import: provider imports config which imports admin helpers.
     from hermes_station.admin.provider import provider_env_var_names
 
     model = config.get("model") or {}
@@ -57,14 +72,7 @@ async def _test_provider(config: dict[str, Any], env: dict[str, str]) -> dict[st
         }
 
     names = provider_env_var_names(provider)
-    key = next(
-        (
-            (env.get(n) or os.environ.get(n) or "").strip()
-            for n in names
-            if (env.get(n) or os.environ.get(n) or "").strip()
-        ),
-        "",
-    )
+    key = _pick_env_key(env, names)
     if not key:
         return {
             "name": "provider",
@@ -151,7 +159,16 @@ async def _test_gateway(gateway: Any, config: dict[str, Any]) -> dict[str, Any]:
             "detail": "Gateway supervisor not initialised.",
             "fix": "Check logs.",
         }
-    state = gateway.gateway_state
+    try:
+        state = gateway.gateway_state
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "name": "gateway",
+            "label": "Gateway",
+            "status": "fail",
+            "detail": str(exc),
+            "fix": "Check logs.",
+        }
     if state == "running":
         return {
             "name": "gateway",
@@ -311,16 +328,14 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
     config = load_yaml_config(paths.config_path)
     env = load_env_file(paths.env_path)
     gateway = getattr(request.app.state, "gateway", None)
-    results = []
-    for coro in [
+    results = await asyncio.gather(
         _test_storage(paths),
         _test_provider(config, env),
         _test_gateway(gateway, config),
         _test_github_mcp(config, env),
         _test_web_search(config, env),
-    ]:
-        results.append(await coro)
-    return results
+    )
+    return list(results)
 
 
 async def smoketest_page(request: Request) -> Response:
