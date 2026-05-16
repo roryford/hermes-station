@@ -7,6 +7,8 @@ every 3 seconds via HTMX.
 
 from __future__ import annotations
 
+import json as _json
+
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
@@ -47,6 +49,24 @@ async def logs_page(request: Request) -> Response:
     )
 
 
+def _parse_line(raw: str) -> dict:
+    """Parse a log line into a display dict. Falls back gracefully for non-JSON."""
+    try:
+        data = _json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError
+    except (ValueError, _json.JSONDecodeError):
+        return {"raw": raw, "level": "plain", "message": raw, "ts": "", "component": ""}
+    return {
+        "raw": raw,
+        "ts": str(data.get("ts") or ""),
+        "level": str(data.get("level") or "info").upper(),
+        "component": str(data.get("component") or data.get("name") or ""),
+        "message": str(data["message"] if "message" in data else data.get("msg") or raw),
+        "event": str(data.get("event") or ""),
+    }
+
+
 async def logs_fragment(request: Request) -> Response:
     if not is_authenticated(request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -55,10 +75,11 @@ async def logs_fragment(request: Request) -> Response:
         return JSONResponse({"error": "unknown source"}, status_code=400)
     limit = _parse_limit(request.query_params.get("limit"))
     lines = BUFFERS[source].tail(limit)
+    parsed_lines = [_parse_line(line) for line in lines]
     return _templates.TemplateResponse(
         request,
         "admin/_logs_pane.html",
-        {"source": source, "lines": lines},
+        {"source": source, "lines": lines, "parsed_lines": parsed_lines},
     )
 
 

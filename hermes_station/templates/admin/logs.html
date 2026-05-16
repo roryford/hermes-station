@@ -2,8 +2,7 @@
 {% block title %}hermes-station · {{ title }}{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
-<div class="grid logs-grid"
-     hx-on:htmx:after-swap="const p = event.target.querySelector('.log-box'); if (p) p.scrollTop = p.scrollHeight;">
+<div class="grid logs-grid">
     {% for source in sources %}
     <section class="card">
         <div class="card-header">
@@ -19,4 +18,36 @@
     </section>
     {% endfor %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+function _applyLogFilter(source, mode) {
+    const list = document.getElementById('loglist-' + source);
+    if (!list) return;
+    const warn = new Set(['WARNING', 'WARN', 'ERROR', 'CRITICAL']);
+    list.querySelectorAll('.log-row').forEach(function(row) {
+        const level = row.dataset.level || '';
+        row.style.display = (mode === 'all' || warn.has(level)) ? '' : 'none';
+    });
+    const btnAll = document.getElementById('btn-all-' + source);
+    const btnWarn = document.getElementById('btn-warn-' + source);
+    if (btnAll) btnAll.className = 'btn small' + (mode === 'all' ? '' : ' ghost');
+    if (btnWarn) btnWarn.className = 'btn small' + (mode === 'warn' ? '' : ' ghost');
+}
+
+function filterLogs(source, mode) {
+    sessionStorage.setItem('logFilter-' + source, mode);
+    _applyLogFilter(source, mode);
+}
+
+// Restore active filter after each HTMX poll swap.
+document.addEventListener('htmx:afterSwap', function(e) {
+    const id = e.target && e.target.id;
+    if (id && id.startsWith('logs-')) {
+        const source = id.slice('logs-'.length);
+        const mode = sessionStorage.getItem('logFilter-' + source) || 'all';
+        _applyLogFilter(source, mode);
+    }
+});
+</script>
 {% endblock %}
