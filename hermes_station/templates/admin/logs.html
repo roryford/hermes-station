@@ -2,8 +2,7 @@
 {% block title %}hermes-station · {{ title }}{% endblock %}
 {% block content %}
 <h1>{{ title }}</h1>
-<div class="grid logs-grid"
-     hx-on:htmx:after-swap="const p = event.target.querySelector('.log-box'); if (p) p.scrollTop = p.scrollHeight;">
+<div class="grid logs-grid">
     {% for source in sources %}
     <section class="card">
         <div class="card-header">
@@ -19,4 +18,19 @@
     </section>
     {% endfor %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+function filterLogs(source, mode) {
+    const list = document.getElementById('loglist-' + source);
+    if (!list) return;
+    const warn = new Set(['WARNING', 'ERROR', 'CRITICAL']);
+    list.querySelectorAll('.log-row').forEach(function(row) {
+        const level = row.dataset.level || '';
+        row.style.display = (mode === 'all' || warn.has(level)) ? '' : 'none';
+    });
+    document.getElementById('btn-all-' + source).className = 'btn small' + (mode === 'all' ? '' : ' ghost');
+    document.getElementById('btn-warn-' + source).className = 'btn small' + (mode === 'warn' ? '' : ' ghost');
+}
+</script>
 {% endblock %}
