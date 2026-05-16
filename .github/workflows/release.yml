@@ -80,13 +80,13 @@ jobs:
           sbom: false
 
   deploy:
-    name: update Railway hermes-dx-eval → new image
+    name: update Railway romantic-adventure → new image
     runs-on: ubuntu-latest
     needs: publish
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      RAILWAY_SERVICE_ID: a74d9666-4e53-494f-9dc9-f73b608836f4
-      RAILWAY_ENVIRONMENT_ID: ddbd4898-55eb-4e67-b993-b170644b0931
+      RAILWAY_SERVICE_ID: f442e62d-b3df-423e-b193-eb8816534c9d
+      RAILWAY_ENVIRONMENT_ID: c466490e-745c-4016-8180-66db7cc60997
     steps:
       - name: wait for GHCR manifest to propagate
         # GHCR has a brief eventual-consistency window after `docker push`
