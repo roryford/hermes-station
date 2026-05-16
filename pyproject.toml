@@ -1,6 +1,6 @@
 [project]
 name = "hermes-station"
-version = "0.2.0"
+version = "0.2.1"
 description = "Single-container deployment for Hermes Agent + WebUI — drop-in Railway image with an in-process control plane."
 readme = "README.md"
 license = {file = "LICENSE"}
