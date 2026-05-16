@@ -77,6 +77,7 @@ jq -e '.components.gateway.state != "unknown"'             /tmp/hs-health.json
   -e HERMES_STATION_E2E_URL=http://localhost:8787 \
   -e HERMES_STATION_E2E_ADMIN_PASSWORD="$E2E_PW" \
   -e HERMES_STATION_E2E_PASSWORD="$E2E_PW" \
+  -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
   hs-dx \
   python -m pytest tests/ -q --no-cov
 
