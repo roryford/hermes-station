@@ -10,7 +10,7 @@ permissions:
   packages: write  # required for GHCR push
 
 env:
-  STAGING_URL: https://hermes-all-in-one-staging.up.railway.app
+  STAGING_URL: https://hermes-station-staging.up.railway.app
 
 jobs:
   build-and-deploy:
