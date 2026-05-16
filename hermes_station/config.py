@@ -453,12 +453,13 @@ def _server_seed_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Build the on-disk config dict for one catalog entry.
 
     Default-off (`enabled: false`) per the lite-tier policy — users opt in
-    explicitly from /admin. Stdio transport is implied by `command`/`args`.
+    explicitly from /admin. Entries with a `url` key use HTTP/SSE transport;
+    entries with `command`/`args` use stdio transport.
     """
     if "url" in entry:
         # URL-based MCP server (remote HTTP/SSE transport).
         # Developer fills in the URL after deploying the external service.
-        return {"url": entry.get("url", ""), "enabled": False}
+        return {"url": entry["url"], "enabled": False}
     seed: dict[str, Any] = {
         "command": entry["command"],
         "args": list(entry["args"]),
