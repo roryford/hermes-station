@@ -15,13 +15,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0  # full history so git log can reach the previous tag
+
+      - name: generate release notes from conventional commits
+        id: notes
+        run: |
+          PREV=$(git tag --sort=-v:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          echo "previous tag: $PREV"
+          NOTES=$(git log "${PREV}..HEAD" --pretty=format:"- %s" --no-merges \
+            | grep -E "^- (feat|fix|perf|refactor|chore|docs|build|ci|security)\b" \
+            | sort)
+          if [ -z "$NOTES" ]; then
+            NOTES="- maintenance and internal improvements"
+          fi
+          {
+            echo "body<<EOF"
+            echo "## What's changed"
+            echo ""
+            echo "$NOTES"
+            echo ""
+            echo "**Full changelog:** https://github.com/roryford/hermes-station/compare/${PREV}...${GITHUB_REF_NAME}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           name: ${{ github.ref_name }}
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           make_latest: true
-          overwrite: true
 
   publish:
     name: build + push image to GHCR
