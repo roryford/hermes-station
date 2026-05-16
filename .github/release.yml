@@ -1,0 +1,33 @@
+# Config for GitHub's automatic PR-based release notes generator.
+# Consumed by the `gh api .../releases/generate-notes` call in
+# .github/workflows/release.yml. Labels listed under categories are matched
+# against PR labels; PRs are bucketed into the first category whose labels
+# match, with the wildcard catch-all last.
+changelog:
+  exclude:
+    labels:
+      - release-skip
+    authors:
+      - dependabot
+      - renovate-bot
+      - github-actions
+  categories:
+    - title: ✨ Features
+      labels:
+        - feature
+        - enhancement
+        - feat
+    - title: 🐛 Fixes
+      labels:
+        - bug
+        - fix
+    - title: 🔒 Security
+      labels:
+        - security
+    - title: 📚 Docs
+      labels:
+        - documentation
+        - docs
+    - title: 🔧 Internal
+      labels:
+        - "*"

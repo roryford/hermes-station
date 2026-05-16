@@ -18,25 +18,44 @@ jobs:
         with:
           fetch-depth: 0  # full history so git log can reach the previous tag
 
-      - name: generate release notes from conventional commits
+      - name: generate release notes
         id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV=$(git tag --sort=-v:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          # Find the previous semver tag for the changelog range. `sort -V`
+          # handles the v-prefix and zero-padded compares; head -1 picks the
+          # tag immediately preceding $GITHUB_REF_NAME.
+          PREV=$(git tag --list 'v*' --sort=-v:refname \
+            | grep -v "^${GITHUB_REF_NAME}$" | head -1)
           echo "previous tag: $PREV"
-          NOTES=$(git log "${PREV}..HEAD" --pretty=format:"- %s" --no-merges \
-            | grep -E "^- (feat|fix|perf|refactor|chore|docs|build|ci|security)\b" \
-            | sort)
-          if [ -z "$NOTES" ]; then
-            NOTES="- maintenance and internal improvements"
+
+          # Step 1: structured changelog via GitHub's PR-aware generator.
+          # Categories + label filters live in .github/release.yml.
+          CATEGORIZED=$(gh api \
+            -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="${GITHUB_REF_NAME}" \
+            -f previous_tag_name="${PREV}" \
+            --jq .body)
+
+          # Step 2: highlight section — full PR body for any merged PR
+          # labeled `release-highlight`. Lets landmark features ship with
+          # their full "why" + test plan instead of just a title line.
+          HIGHLIGHTS=""
+          PRS=$(gh pr list --base main --state merged \
+            --label release-highlight --limit 50 \
+            --search "merged:>=$(git log -1 --format=%aI "$PREV")" \
+            --json number,title,body \
+            --jq '.[] | "### #\(.number) — \(.title)\n\n\(.body)\n"')
+          if [ -n "$PRS" ]; then
+            HIGHLIGHTS=$'\n## 🌟 Highlights\n\n'"$PRS"
           fi
+
           {
-            echo "body<<EOF"
-            echo "## What's changed"
-            echo ""
-            echo "$NOTES"
-            echo ""
-            echo "**Full changelog:** https://github.com/roryford/hermes-station/compare/${PREV}...${GITHUB_REF_NAME}"
-            echo "EOF"
+            echo "body<<RELEASE_NOTES_EOF"
+            echo "$CATEGORIZED"
+            echo "$HIGHLIGHTS"
+            echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
