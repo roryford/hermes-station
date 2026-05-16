@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 from starlette.applications import Starlette
-from starlette.testclient import TestClient
 
 from hermes_station.admin.upgrade import (
     _normalise,
@@ -84,7 +83,9 @@ async def test_fetch_upgrade_info_update_available() -> None:
         "hermes_station.admin.upgrade._fetch_latest",
         new=AsyncMock(return_value="v0.3.0"),
     ):
-        rows = await fetch_upgrade_info({"hermes_station": "0.2.4", "hermes_agent": None, "hermes_webui": None})
+        rows = await fetch_upgrade_info(
+            {"hermes_station": "0.2.4", "hermes_agent": None, "hermes_webui": None}
+        )
 
     by_key = {r["key"]: r for r in rows}
     assert by_key["hermes_station"]["status"] == "update_available"
@@ -118,7 +119,9 @@ async def test_fetch_upgrade_info_row_structure() -> None:
         "hermes_station.admin.upgrade._fetch_latest",
         new=AsyncMock(return_value="v1.0.0"),
     ):
-        rows = await fetch_upgrade_info({"hermes_station": "1.0.0", "hermes_agent": "1.0.0", "hermes_webui": "v1.0.0"})
+        rows = await fetch_upgrade_info(
+            {"hermes_station": "1.0.0", "hermes_agent": "1.0.0", "hermes_webui": "v1.0.0"}
+        )
 
     required_keys = {"key", "label", "current", "latest", "status", "release_url"}
     for row in rows:
@@ -128,9 +131,7 @@ async def test_fetch_upgrade_info_row_structure() -> None:
 # ──────────────────────────────────────────── upgrade_check endpoint
 
 
-async def test_upgrade_check_unauthenticated_returns_401(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_upgrade_check_unauthenticated_returns_401(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -138,9 +139,7 @@ async def test_upgrade_check_unauthenticated_returns_401(
     assert resp.status_code == 401
 
 
-async def test_upgrade_check_authenticated_returns_html(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_upgrade_check_authenticated_returns_html(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
     with patch(
@@ -156,9 +155,7 @@ async def test_upgrade_check_authenticated_returns_html(
     assert "hermes-station" in resp.text
 
 
-async def test_upgrade_check_contains_status_badge(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_upgrade_check_contains_status_badge(fake_data_dir: Path, admin_password: str) -> None:
     app = _build_app()
     # Inject a fake readiness object so current versions are non-"unknown".
     from types import SimpleNamespace
@@ -186,9 +183,7 @@ async def test_upgrade_check_contains_status_badge(
 # ──────────────────────────────────────────── cache behaviour
 
 
-async def test_upgrade_check_cache_prevents_second_fetch(
-    fake_data_dir: Path, admin_password: str
-) -> None:
+async def test_upgrade_check_cache_prevents_second_fetch(fake_data_dir: Path, admin_password: str) -> None:
     """A second call within the TTL should not invoke _fetch_latest again."""
     app = _build_app()
     transport = httpx.ASGITransport(app=app)
@@ -220,7 +215,6 @@ async def test_upgrade_check_cache_refreshes_after_ttl(
             call_count_after_first = mock_fetch.call_count
 
             # Simulate cache expiry by back-dating the stored timestamp.
-            from hermes_station.admin import upgrade as _upgrade_mod
 
             old_cache = app.state._upgrade_cache
             app.state._upgrade_cache = {"rows": old_cache["rows"], "ts": time.monotonic() - 1900}
