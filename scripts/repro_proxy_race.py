@@ -14,6 +14,7 @@ Usage:
     python scripts/repro_proxy_race.py
 Exit 0 = proxy retried and recovered. Exit 1 = no retry, returned 502.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,9 +38,7 @@ async def main() -> int:
     def handler(request: httpx.Request) -> httpx.Response:
         upstream_calls["n"] += 1
         if upstream_calls["n"] == 1:
-            raise httpx.RemoteProtocolError(
-                "Server disconnected without sending a response."
-            )
+            raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
         return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
 
     async def route(request):  # type: ignore[no-untyped-def]
