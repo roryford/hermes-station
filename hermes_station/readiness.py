@@ -53,12 +53,19 @@ _PLACEHOLDER_TOKENS = frozenset(
 )
 
 
-# Web search backends → env var.
+# Web search backends → env var (empty string = no key required).
+# Keep in sync with hermes-agent plugins/web/*/plugin.yaml provider names.
 _WEB_SEARCH_KEYS: dict[str, str] = {
     "brave": "BRAVE_API_KEY",
+    "brave-free": "BRAVE_SEARCH_API_KEY",
     "tavily": "TAVILY_API_KEY",
     "serpapi": "SERPAPI_API_KEY",
     "google": "GOOGLE_CSE_API_KEY",
+    "firecrawl": "FIRECRAWL_API_KEY",
+    "exa": "EXA_API_KEY",
+    "parallel": "PARALLEL_API_KEY",
+    "searxng": "SEARXNG_URL",
+    "ddgs": "",  # DuckDuckGo — no API key required
 }
 
 
@@ -205,9 +212,12 @@ def _check_web_search(config: dict[str, Any], env_values: dict[str, str]) -> Cap
     backend = str(web.get("search_backend") or "").strip().lower()
     if not backend:
         return CapabilityRow(intended=False, ready=False)
-    key = _WEB_SEARCH_KEYS.get(backend)
-    if not key:
+    if backend not in _WEB_SEARCH_KEYS:
         return CapabilityRow(intended=True, ready=False, reason=f"unknown web search backend {backend!r}")
+    key = _WEB_SEARCH_KEYS[backend]
+    if not key:
+        # Keyless backend (e.g. ddgs) — always ready when intended.
+        return CapabilityRow(intended=True, ready=True)
     source = _credential_source(env_values, key)
     ok = source != "absent"
     return CapabilityRow(intended=True, ready=ok, reason="" if ok else f"missing {key}", source=source)

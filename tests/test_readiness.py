@@ -100,6 +100,65 @@ def test_web_search_ready_for_brave(fake_paths: Paths) -> None:
     assert row.ready is True
 
 
+@pytest.mark.parametrize(
+    ("backend", "key", "value"),
+    [
+        ("tavily", "TAVILY_API_KEY", "tvly-x"),
+        ("brave-free", "BRAVE_SEARCH_API_KEY", "bsf-x"),
+        ("firecrawl", "FIRECRAWL_API_KEY", "fc-x"),
+        ("exa", "EXA_API_KEY", "exa-x"),
+        ("parallel", "PARALLEL_API_KEY", "par-x"),
+        ("searxng", "SEARXNG_URL", "http://searxng.local"),
+    ],
+)
+def test_web_search_ready_for_keyed_backend(
+    fake_paths: Paths, backend: str, key: str, value: str
+) -> None:
+    config = {"web": {"search_backend": backend}}
+    rd = validate_readiness(fake_paths, config, {key: value})
+    row = rd.readiness["web_search"]
+    assert row.intended is True
+    assert row.ready is True, f"expected ready for {backend!r} with {key} set"
+    assert row.source == "env_file"
+
+
+@pytest.mark.parametrize(
+    ("backend", "key"),
+    [
+        ("tavily", "TAVILY_API_KEY"),
+        ("brave-free", "BRAVE_SEARCH_API_KEY"),
+        ("firecrawl", "FIRECRAWL_API_KEY"),
+        ("exa", "EXA_API_KEY"),
+        ("parallel", "PARALLEL_API_KEY"),
+        ("searxng", "SEARXNG_URL"),
+    ],
+)
+def test_web_search_not_ready_for_keyed_backend_missing_key(
+    fake_paths: Paths,
+    backend: str,
+    key: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(key, raising=False)
+    config = {"web": {"search_backend": backend}}
+    rd = validate_readiness(fake_paths, config, {})
+    row = rd.readiness["web_search"]
+    assert row.intended is True
+    assert row.ready is False
+    assert key in row.reason
+
+
+def test_web_search_ddgs_always_ready_no_key_required(
+    fake_paths: Paths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = {"web": {"search_backend": "ddgs"}}
+    rd = validate_readiness(fake_paths, config, {})
+    row = rd.readiness["web_search"]
+    assert row.intended is True
+    assert row.ready is True
+    assert not row.reason
+
+
 def test_image_gen_intended_via_toolsets_list(fake_paths: Paths, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("FAL_KEY", raising=False)
     config = {"toolsets": ["image_gen"]}
