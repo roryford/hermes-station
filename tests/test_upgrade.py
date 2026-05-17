@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from starlette.applications import Starlette
 
 from hermes_station.admin.upgrade import (
+    _fetch_latest,
     _normalise,
     fetch_upgrade_info,
     routes as upgrade_routes,
@@ -223,6 +224,103 @@ async def test_upgrade_check_cache_refreshes_after_ttl(
             call_count_after_second = mock_fetch.call_count
 
     assert call_count_after_second > call_count_after_first
+
+
+# ──────────────────────────────────────────── _fetch_latest unit tests
+
+
+def _make_mock_client(response: MagicMock) -> MagicMock:
+    """Build an async context-manager mock for httpx.AsyncClient."""
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = AsyncMock(return_value=response)
+    return mock_client
+
+
+async def test_fetch_latest_non_200_returns_none() -> None:
+    """A non-200 HTTP response should cause _fetch_latest to return None."""
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+
+    with patch(
+        "hermes_station.admin.upgrade.httpx.AsyncClient",
+        return_value=_make_mock_client(mock_response),
+    ):
+        result = await _fetch_latest("some/repo", use_tags=False)
+
+    assert result is None
+
+
+async def test_fetch_latest_tags_empty_list_returns_none() -> None:
+    """An empty tags list should cause _fetch_latest to return None."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    with patch(
+        "hermes_station.admin.upgrade.httpx.AsyncClient",
+        return_value=_make_mock_client(mock_response),
+    ):
+        result = await _fetch_latest("some/repo", use_tags=True)
+
+    assert result is None
+
+
+async def test_fetch_latest_tags_returns_first_name() -> None:
+    """A non-empty tags list should return the name of the first tag."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{"name": "v1.2.3"}]
+
+    with patch(
+        "hermes_station.admin.upgrade.httpx.AsyncClient",
+        return_value=_make_mock_client(mock_response),
+    ):
+        result = await _fetch_latest("some/repo", use_tags=True)
+
+    assert result == "v1.2.3"
+
+
+async def test_fetch_latest_release_returns_tag_name() -> None:
+    """A releases/latest response should return the tag_name field."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"tag_name": "v2.0.0"}
+
+    with patch(
+        "hermes_station.admin.upgrade.httpx.AsyncClient",
+        return_value=_make_mock_client(mock_response),
+    ):
+        result = await _fetch_latest("some/repo", use_tags=False)
+
+    assert result == "v2.0.0"
+
+
+async def test_fetch_latest_network_exception_returns_none() -> None:
+    """Any exception during the HTTP call should be caught and return None."""
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+
+    with patch("hermes_station.admin.upgrade.httpx.AsyncClient", return_value=mock_client):
+        result = await _fetch_latest("some/repo", use_tags=False)
+
+    assert result is None
+
+
+async def test_fetch_latest_timeout_returns_none() -> None:
+    """A timeout exception should be caught and return None."""
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
+
+    with patch("hermes_station.admin.upgrade.httpx.AsyncClient", return_value=mock_client):
+        result = await _fetch_latest("some/repo", use_tags=True)
+
+    assert result is None
 
 
 # ──────────────────────────────────────────── upgrade page GET
