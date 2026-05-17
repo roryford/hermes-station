@@ -326,7 +326,8 @@ async def test_web_search_skip_not_configured() -> None:
     assert result["name"] == "web_search"
 
 
-async def test_web_search_fail_no_key() -> None:
+async def test_web_search_fail_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
     config = {"web": {"search_backend": "brave"}}
     result = await _test_web_search(config, {})
     assert result["status"] == "fail"
