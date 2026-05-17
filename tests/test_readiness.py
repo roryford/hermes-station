@@ -111,9 +111,7 @@ def test_web_search_ready_for_brave(fake_paths: Paths) -> None:
         ("searxng", "SEARXNG_URL", "http://searxng.local"),
     ],
 )
-def test_web_search_ready_for_keyed_backend(
-    fake_paths: Paths, backend: str, key: str, value: str
-) -> None:
+def test_web_search_ready_for_keyed_backend(fake_paths: Paths, backend: str, key: str, value: str) -> None:
     config = {"web": {"search_backend": backend}}
     rd = validate_readiness(fake_paths, config, {key: value})
     row = rd.readiness["web_search"]
