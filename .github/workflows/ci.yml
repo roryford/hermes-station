@@ -51,7 +51,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
-      - name: build
+      - name: build runtime image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
@@ -65,6 +65,20 @@ jobs:
           # provenance/sbom both off when load:true — docker daemon can't ingest
           # manifest lists, and buildx emits one whenever either attestor is on.
           # Re-enable behind a separate push-only build if attestation matters.
+          provenance: false
+          sbom: false
+
+      - name: build test image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          load: true
+          target: test
+          tags: hermes-station:ci-test
+          build-args: |
+            IMAGE_REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           provenance: false
           sbom: false
 
@@ -89,6 +103,7 @@ jobs:
           docker run -d --name hs-smoke \
             -p 8787:8787 \
             -e HERMES_WEBUI_PASSWORD=ci -e HERMES_ADMIN_PASSWORD=ci \
+            -e OPENROUTER_API_KEY=ci-fake-key \
             -v /tmp/hs-data:/data \
             hermes-station:ci
           for i in $(seq 1 60); do
@@ -110,14 +125,39 @@ jobs:
           uv venv --python 3.12
           uv pip install -e ".[dev]"
 
-      - name: login smoke (CSRF / proxy Host forwarding)
+      - name: e2e + integration tests (host-runnable)
         env:
           HERMES_STATION_E2E_URL: http://127.0.0.1:8787
           HERMES_STATION_E2E_PASSWORD: ci
-        # --no-cov: this is an integration step against the running container,
-        # not a unit run — pyproject's --cov-fail-under=85 makes no sense for
-        # a single-file invocation that doesn't exercise the package directly.
-        run: .venv/bin/pytest tests/test_login_smoke.py -q --no-cov
+          HERMES_STATION_E2E_ADMIN_PASSWORD: ci
+        # Runs all tests that can reach the container from the host runner.
+        # Excludes test_container_toolbelt and test_plugin_manifests — those
+        # require binaries only present inside the image (run in next step).
+        # Excludes test_compat_realistic — requires a local fixture directory
+        # that is intentionally not committed to the repo.
+        # --no-cov: integration run against a live container, not a unit run.
+        run: |
+          .venv/bin/pytest tests/ \
+            --ignore=tests/fixtures \
+            --ignore=tests/test_compat_realistic.py \
+            --ignore=tests/test_container_toolbelt.py \
+            --ignore=tests/test_plugin_manifests.py \
+            -q --no-cov
+
+      - name: in-container tests (toolbelt + plugin manifests)
+        # Runs inside the test image where all toolbelt binaries are on PATH.
+        # --network=host lets the container reach the runtime container on 127.0.0.1:8787.
+        run: |
+          docker run --rm --network=host \
+            -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
+            -e HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
+            -e HERMES_STATION_E2E_PASSWORD=ci \
+            -e HERMES_STATION_E2E_ADMIN_PASSWORD=ci \
+            hermes-station:ci-test \
+            python -m pytest \
+              tests/test_container_toolbelt.py \
+              tests/test_plugin_manifests.py \
+              -v --no-cov
 
       - name: container logs on failure
         if: failure()
