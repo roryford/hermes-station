@@ -220,7 +220,11 @@ CMD ["python", "-m", "hermes_station"]
 ARG RAILWAY_GIT_COMMIT_SHA=
 ARG IMAGE_REVISION=${RAILWAY_GIT_COMMIT_SHA:-dev}
 ENV HERMES_WEBUI_VERSION=${HERMES_WEBUI_VERSION}
-RUN echo "${IMAGE_REVISION}" > /etc/hermes-station-build
+RUN station=$(python3 -c "from importlib.metadata import version; print(version('hermes-station'))" 2>/dev/null || echo n/a) \
+    && agent=$(python3 -c "from importlib.metadata import version; print(version('hermes-agent'))" 2>/dev/null || echo n/a) \
+    && echo "${IMAGE_REVISION}" > /etc/hermes-station-build \
+    && printf '\n=== hermes-station built ===\n  station : %s\n  revision: %s\n  webui   : %s\n  agent   : %s\n===========================\n\n' \
+         "$station" "${IMAGE_REVISION}" "${HERMES_WEBUI_VERSION}" "$agent"
 LABEL org.opencontainers.image.source="https://github.com/roryford/hermes-station"
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
