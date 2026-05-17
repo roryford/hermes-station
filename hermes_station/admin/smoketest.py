@@ -345,6 +345,62 @@ async def _check_tavily(key: str) -> dict[str, Any]:
         return _r("fail", str(exc), "Check logs for details.")
 
 
+async def _test_plugin_registry() -> dict[str, Any]:
+    import sysconfig
+
+    plugins_root = Path(sysconfig.get_paths()["purelib"]) / "plugins"
+    if not plugins_root.exists():
+        return {
+            "name": "plugin_registry",
+            "label": "Plugin registry",
+            "status": "skip",
+            "detail": "hermes-agent plugins directory not found.",
+            "fix": "",
+        }
+
+    manifests = list(plugins_root.glob("web/*/plugin.yaml"))
+    count = len(manifests)
+
+    if count == 0:
+        return {
+            "name": "plugin_registry",
+            "label": "Plugin registry",
+            "status": "fail",
+            "detail": "plugins/web directory exists but no plugin.yaml manifests found.",
+            "fix": (
+                "Apply the Dockerfile patch from upstream PRs #27240/#27268 "
+                "to ensure plugin.yaml files are included in the installed package."
+            ),
+        }
+
+    # Best-effort: verify discovery returns providers when manifests are present.
+    try:
+        import hermes_cli.plugins as _hp
+
+        web_dir = plugins_root / "web"
+        discover_fn = getattr(_hp, "_scan_directory_level", None) or getattr(_hp, "discover", None)
+        if discover_fn is not None:
+            providers = discover_fn(web_dir)
+            if isinstance(providers, list) and len(providers) == 0:
+                return {
+                    "name": "plugin_registry",
+                    "label": "Plugin registry",
+                    "status": "fail",
+                    "detail": "manifests present but discovery returned 0 providers.",
+                    "fix": "Check hermes_cli.plugins for registration errors.",
+                }
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "name": "plugin_registry",
+        "label": "Plugin registry",
+        "status": "pass",
+        "detail": f"{count} web plugin manifest{'s' if count != 1 else ''} present.",
+        "fix": "",
+    }
+
+
 async def run_all_tests(request: Request) -> list[dict[str, Any]]:
     paths: Paths = request.app.state.paths
     config = load_yaml_config(paths.config_path)
@@ -356,6 +412,7 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
         _test_gateway(gateway, config),
         _test_github_mcp(config, env),
         _test_web_search(config, env),
+        _test_plugin_registry(),
     )
     return list(results)
 

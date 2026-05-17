@@ -14,6 +14,7 @@ from hermes_station.admin.routes import admin_routes
 from hermes_station.admin.smoketest import (
     _test_gateway,
     _test_github_mcp,
+    _test_plugin_registry,
     _test_provider,
     _test_storage,
     _test_web_search,
@@ -447,6 +448,75 @@ async def test_web_search_fail_key_missing_firecrawl() -> None:
     result = await _test_web_search(config, {})
     assert result["status"] == "fail"
     assert "FIRECRAWL_API_KEY" in result["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_plugin_registry
+# ---------------------------------------------------------------------------
+
+
+def _plugin_registry_patch(fake_purelib: Path) -> Any:
+    """Return a context manager that patches sysconfig.get_paths to point at fake_purelib."""
+    import sysconfig as _sysconfig
+
+    return patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)})
+
+
+async def test_plugin_registry_skip_no_dir(tmp_path: Path) -> None:
+    """When the plugins root doesn't exist the test should be skipped."""
+    fake_purelib = tmp_path / "site-packages"
+    fake_purelib.mkdir()
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["name"] == "plugin_registry"
+    assert result["status"] == "skip"
+    assert "not found" in result["detail"].lower()
+
+
+async def test_plugin_registry_pass_with_manifests(tmp_path: Path) -> None:
+    """When manifests are present the test should pass and report the count."""
+    fake_purelib = tmp_path / "site-packages"
+    (fake_purelib / "plugins" / "web" / "plugin_a").mkdir(parents=True)
+    (fake_purelib / "plugins" / "web" / "plugin_b").mkdir(parents=True)
+    (fake_purelib / "plugins" / "web" / "plugin_a" / "plugin.yaml").write_text("name: a")
+    (fake_purelib / "plugins" / "web" / "plugin_b" / "plugin.yaml").write_text("name: b")
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["status"] == "pass"
+    assert "2" in result["detail"]
+    assert result["name"] == "plugin_registry"
+
+
+async def test_plugin_registry_fail_dir_exists_no_yamls(tmp_path: Path) -> None:
+    """When the plugins/web dir exists but has no yaml files the test should fail."""
+    fake_purelib = tmp_path / "site-packages"
+    (fake_purelib / "plugins" / "web" / "plugin_a").mkdir(parents=True)
+    # No plugin.yaml files — just an empty subdirectory.
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["status"] == "fail"
+    assert result["fix"]
+    assert "#27240" in result["fix"] or "#27268" in result["fix"]
+
+
+async def test_plugin_registry_detail_contains_count(tmp_path: Path) -> None:
+    """Detail string must contain the manifest count."""
+    fake_purelib = tmp_path / "site-packages"
+    for i in range(7):
+        (fake_purelib / "plugins" / "web" / f"plugin_{i}").mkdir(parents=True)
+        (fake_purelib / "plugins" / "web" / f"plugin_{i}" / "plugin.yaml").write_text(f"name: p{i}")
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["status"] == "pass"
+    assert "7" in result["detail"]
 
 
 # ---------------------------------------------------------------------------
