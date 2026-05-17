@@ -277,9 +277,7 @@ async def test_proxy_retries_on_remote_protocol_error_and_recovers() -> None:
     def _handler(request: httpx.Request) -> httpx.Response:
         calls["n"] += 1
         if calls["n"] == 1:
-            raise httpx.RemoteProtocolError(
-                "Server disconnected without sending a response."
-            )
+            raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
         return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
 
     class _FakeWebUI:
@@ -309,9 +307,7 @@ async def test_proxy_returns_502_when_retry_also_fails() -> None:
 
     def _handler(request: httpx.Request) -> httpx.Response:
         calls["n"] += 1
-        raise httpx.RemoteProtocolError(
-            "Server disconnected without sending a response."
-        )
+        raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
 
     class _FakeWebUI:
         INTERNAL_HOST = "127.0.0.1"
