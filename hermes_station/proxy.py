@@ -137,14 +137,29 @@ async def proxy_to_webui(request: Request) -> Response:
 
     body = await request.body()
 
-    try:
-        upstream_request = client.build_request(
+    def _build() -> httpx.Request:
+        return client.build_request(
             method=request.method,
             url=upstream_url,
             headers=headers,
             content=body if body else None,
         )
-        upstream = await client.send(upstream_request, stream=True)
+
+    # HTTP/1.1 keep-alive race: hermes-webui closes idle pooled connections
+    # after ~5s, and httpx's pool may hand us one the server has just FIN'd.
+    # The first send() raises RemoteProtocolError "Server disconnected without
+    # sending a response." — meaning no request bytes reached upstream, so a
+    # retry is safe even for POST. Other errors (real upstream failure) fall
+    # through to the 502 branch.
+    try:
+        upstream = await client.send(_build(), stream=True)
+    except httpx.RemoteProtocolError as exc:
+        logger.info("proxy retrying after stale pooled connection: %s", exc)
+        try:
+            upstream = await client.send(_build(), stream=True)
+        except (httpx.HTTPError, httpx.RequestError) as exc2:
+            logger.warning("proxy upstream error (after retry): %s", exc2)
+            return Response(b"upstream WebUI unavailable", status_code=502)
     except (httpx.HTTPError, httpx.RequestError) as exc:
         logger.warning("proxy upstream error: %s", exc)
         return Response(b"upstream WebUI unavailable", status_code=502)
