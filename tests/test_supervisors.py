@@ -263,6 +263,74 @@ async def test_proxy_preserves_multiple_set_cookie_headers() -> None:
     assert "b=2; Path=/" in cookies
 
 
+# ───────────── proxy retries once on RemoteProtocolError (keep-alive race)
+# Regression: hermes-webui closes idle pooled connections after ~5s, and
+# httpx's pool may hand us one the server has just FIN'd. The first send()
+# then raises RemoteProtocolError before any request bytes reach upstream.
+# Without retry, every such race becomes a user-visible 502 — production
+# logged ~100 of these in a ~10-minute window.
+
+
+async def test_proxy_retries_on_remote_protocol_error_and_recovers() -> None:
+    calls = {"n": 0}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+        return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
+
+    class _FakeWebUI:
+        INTERNAL_HOST = "127.0.0.1"
+        INTERNAL_PORT = 8788
+
+    async def _route(request):  # type: ignore[no-untyped-def]
+        return await proxy_to_webui(request)
+
+    app = Starlette(routes=[Route("/{path:path}", _route, methods=["GET"])])
+    app.state.webui = _FakeWebUI()
+    app.state.proxy_client = httpx.AsyncClient(transport=httpx.MockTransport(_handler))
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://station.test"
+    ) as client:
+        resp = await client.get("/api/sessions")
+
+    await app.state.proxy_client.aclose()
+
+    assert resp.status_code == 200
+    assert calls["n"] == 2  # one failed attempt + one successful retry
+
+
+async def test_proxy_returns_502_when_retry_also_fails() -> None:
+    calls = {"n": 0}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+
+    class _FakeWebUI:
+        INTERNAL_HOST = "127.0.0.1"
+        INTERNAL_PORT = 8788
+
+    async def _route(request):  # type: ignore[no-untyped-def]
+        return await proxy_to_webui(request)
+
+    app = Starlette(routes=[Route("/{path:path}", _route, methods=["GET"])])
+    app.state.webui = _FakeWebUI()
+    app.state.proxy_client = httpx.AsyncClient(transport=httpx.MockTransport(_handler))
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://station.test"
+    ) as client:
+        resp = await client.get("/api/sessions")
+
+    await app.state.proxy_client.aclose()
+
+    assert resp.status_code == 502
+    assert calls["n"] == 2  # bounded — exactly one retry, no infinite loop
+
+
 # ────────────────────────────────────────────────── supervisor state defaults
 
 
