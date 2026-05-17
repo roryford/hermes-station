@@ -255,72 +255,94 @@ async def _test_github_mcp(config: dict[str, Any], env: dict[str, str]) -> dict[
         }
 
 
+# Backend → env var name (empty = no key required).
+# Keep in sync with readiness._WEB_SEARCH_KEYS.
+_WEB_SEARCH_ENV: dict[str, str] = {
+    "brave": "BRAVE_API_KEY",
+    "brave-free": "BRAVE_SEARCH_API_KEY",
+    "tavily": "TAVILY_API_KEY",
+    "serpapi": "SERPAPI_API_KEY",
+    "google": "GOOGLE_CSE_API_KEY",
+    "firecrawl": "FIRECRAWL_API_KEY",
+    "exa": "EXA_API_KEY",
+    "parallel": "PARALLEL_API_KEY",
+    "searxng": "SEARXNG_URL",
+    "ddgs": "",
+}
+
+
+def _r(status: str, detail: str, fix: str = "") -> dict[str, Any]:
+    return {"name": "web_search", "label": "Web search", "status": status, "detail": detail, "fix": fix}
+
+
 async def _test_web_search(config: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
     web = config.get("web") or {}
     backend = str(web.get("search_backend") or "").strip().lower()
     if not backend:
-        return {
-            "name": "web_search",
-            "label": "Web search",
-            "status": "skip",
-            "detail": "No search backend configured.",
-            "fix": "",
-        }
-    if backend == "brave":
-        key = (env.get("BRAVE_API_KEY") or os.environ.get("BRAVE_API_KEY") or "").strip()
-        if not key:
-            return {
-                "name": "web_search",
-                "label": "Web search",
-                "status": "fail",
-                "detail": "BRAVE_API_KEY is not set.",
-                "fix": "Add BRAVE_API_KEY in Settings → Secrets.",
-            }
-        try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-                resp = await client.get(
-                    "https://api.search.brave.com/res/v1/web/search",
-                    params={"q": "test", "count": "1"},
-                    headers={"X-Subscription-Token": key, "Accept": "application/json"},
-                )
-            if resp.status_code == 200:
-                return {
-                    "name": "web_search",
-                    "label": "Web search",
-                    "status": "pass",
-                    "detail": "Brave Search API is reachable.",
-                    "fix": "",
-                }
-            return {
-                "name": "web_search",
-                "label": "Web search",
-                "status": "fail",
-                "detail": f"Brave Search returned HTTP {resp.status_code}.",
-                "fix": "Check BRAVE_API_KEY in Settings → Secrets — it may be invalid.",
-            }
-        except httpx.TimeoutException:
-            return {
-                "name": "web_search",
-                "label": "Web search",
-                "status": "fail",
-                "detail": "Brave Search timed out.",
-                "fix": "Check network connectivity.",
-            }
-        except Exception as exc:  # noqa: BLE001
-            return {
-                "name": "web_search",
-                "label": "Web search",
-                "status": "fail",
-                "detail": str(exc),
-                "fix": "Check logs for details.",
-            }
-    return {
-        "name": "web_search",
-        "label": "Web search",
-        "status": "skip",
-        "detail": f"HTTP check not implemented for backend {backend!r}.",
-        "fix": "",
-    }
+        return _r("skip", "No search backend configured.")
+    if backend not in _WEB_SEARCH_ENV:
+        return _r("fail", f"Unknown search backend {backend!r}.", "Check web.search_backend in config.yaml.")
+
+    env_key = _WEB_SEARCH_ENV[backend]
+
+    # ddgs needs no API key — if it's configured it's ready.
+    if not env_key:
+        return _r("pass", "DuckDuckGo search requires no API key.")
+
+    key = (env.get(env_key) or os.environ.get(env_key) or "").strip()
+    if not key:
+        return _r("fail", f"{env_key} is not set.", f"Add {env_key} in Settings → Secrets.")
+
+    # Backends with a live HTTP check.
+    if backend in ("brave", "brave-free"):
+        return await _check_brave(key, env_key)
+    if backend == "tavily":
+        return await _check_tavily(key)
+
+    # All other backends: key is present — treat as pass.
+    return _r("pass", f"{backend} credential is present ({env_key} is set).")
+
+
+async def _check_brave(key: str, env_key: str) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                params={"q": "test", "count": "1"},
+                headers={"X-Subscription-Token": key, "Accept": "application/json"},
+            )
+        if resp.status_code == 200:
+            return _r("pass", "Brave Search API is reachable.")
+        return _r(
+            "fail",
+            f"Brave Search returned HTTP {resp.status_code}.",
+            f"Check {env_key} in Settings → Secrets — it may be invalid.",
+        )
+    except httpx.TimeoutException:
+        return _r("fail", "Brave Search timed out.", "Check network connectivity.")
+    except Exception as exc:  # noqa: BLE001
+        return _r("fail", str(exc), "Check logs for details.")
+
+
+async def _check_tavily(key: str) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                "https://api.tavily.com/search",
+                json={"query": "test", "max_results": 1},
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            )
+        if resp.status_code == 200:
+            return _r("pass", "Tavily Search API is reachable.")
+        return _r(
+            "fail",
+            f"Tavily Search returned HTTP {resp.status_code}.",
+            "Check TAVILY_API_KEY in Settings → Secrets — it may be invalid.",
+        )
+    except httpx.TimeoutException:
+        return _r("fail", "Tavily Search timed out.", "Check network connectivity.")
+    except Exception as exc:  # noqa: BLE001
+        return _r("fail", str(exc), "Check logs for details.")
 
 
 async def run_all_tests(request: Request) -> list[dict[str, Any]]:

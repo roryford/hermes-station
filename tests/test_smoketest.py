@@ -370,12 +370,83 @@ async def test_web_search_fail_brave_403() -> None:
     assert result["fix"]
 
 
-async def test_web_search_skip_unknown_backend() -> None:
+async def test_web_search_fail_unknown_backend() -> None:
     config = {"web": {"search_backend": "duckduckgo"}}
-    env = {}
-    result = await _test_web_search(config, env)
-    assert result["status"] == "skip"
+    result = await _test_web_search(config, {})
+    assert result["status"] == "fail"
     assert "duckduckgo" in result["detail"]
+    assert result["fix"]
+
+
+async def test_web_search_pass_tavily_200() -> None:
+    config = {"web": {"search_backend": "tavily"}}
+    env = {"TAVILY_API_KEY": "tvly-test"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_post(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.post = fake_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_web_search(config, env)
+
+    assert result["status"] == "pass"
+    assert "Tavily" in result["detail"]
+
+
+async def test_web_search_fail_tavily_401() -> None:
+    config = {"web": {"search_backend": "tavily"}}
+    env = {"TAVILY_API_KEY": "bad-key"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+
+    async def fake_post(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.post = fake_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_web_search(config, env)
+
+    assert result["status"] == "fail"
+    assert "401" in result["detail"]
+    assert result["fix"]
+
+
+async def test_web_search_fail_tavily_no_key() -> None:
+    config = {"web": {"search_backend": "tavily"}}
+    result = await _test_web_search(config, {})
+    assert result["status"] == "fail"
+    assert "TAVILY_API_KEY" in result["detail"]
+
+
+async def test_web_search_pass_ddgs_no_key_needed() -> None:
+    config = {"web": {"search_backend": "ddgs"}}
+    result = await _test_web_search(config, {})
+    assert result["status"] == "pass"
+    assert "no api key" in result["detail"].lower()
+
+
+async def test_web_search_pass_key_present_firecrawl() -> None:
+    config = {"web": {"search_backend": "firecrawl"}}
+    result = await _test_web_search(config, {"FIRECRAWL_API_KEY": "fc-x"})
+    assert result["status"] == "pass"
+    assert "FIRECRAWL_API_KEY" in result["detail"]
+
+
+async def test_web_search_fail_key_missing_firecrawl() -> None:
+    config = {"web": {"search_backend": "firecrawl"}}
+    result = await _test_web_search(config, {})
+    assert result["status"] == "fail"
+    assert "FIRECRAWL_API_KEY" in result["detail"]
 
 
 # ---------------------------------------------------------------------------
