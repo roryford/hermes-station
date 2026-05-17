@@ -103,6 +103,7 @@ jobs:
           docker run -d --name hs-smoke \
             -p 8787:8787 \
             -e HERMES_WEBUI_PASSWORD=ci -e HERMES_ADMIN_PASSWORD=ci \
+            -e OPENROUTER_API_KEY=ci-fake-key \
             -v /tmp/hs-data:/data \
             hermes-station:ci
           for i in $(seq 1 60); do

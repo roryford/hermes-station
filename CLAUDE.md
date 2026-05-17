@@ -25,6 +25,7 @@ container build --target test -t hermes-station:test .
 container run -d --name hs-test -p 8787:8787 \
   -e HERMES_WEBUI_PASSWORD=test-admin-pw \
   -e HERMES_ADMIN_PASSWORD=test-admin-pw \
+  -e OPENROUTER_API_KEY=local-fake-key \
   hermes-station:local
 ```
 Poll until healthy: `curl -s http://127.0.0.1:8787/health`
