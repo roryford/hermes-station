@@ -686,3 +686,819 @@ async def test_copilot_oauth_poll_success(fake_data_dir: Path, admin_password: s
             )
     assert resp.status_code == 200
     assert "GitHub Copilot connected" in resp.text or "Provider" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# _secrets_context with boot_environ (line 121->123)
+# ---------------------------------------------------------------------------
+
+
+async def test_settings_page_with_boot_environ(fake_data_dir: Path, admin_password: str) -> None:
+    """settings_page passes boot_environ to _secrets_context when it exists on app.state."""
+    app = _build_app()
+    app.state.boot_environ = {"FAL_KEY": "test-railway-val"}
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.get("/admin/settings")
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# provider_fragment_save with gateway restart (line 187)
+# ---------------------------------------------------------------------------
+
+
+async def test_provider_fragment_save_with_gateway(fake_data_dir: Path, admin_password: str) -> None:
+    """provider_fragment_save calls gateway.restart() when gateway is present."""
+    app = _build_app_with_gateway(fake_data_dir)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/admin/login", data={"password": admin_password}, follow_redirects=False)
+        assert r.status_code == 302
+        resp = await client.post(
+            "/admin/_partial/provider/setup",
+            data={"provider": "anthropic", "model": "claude-sonnet-4-6", "api_key": "sk-ant-test"},
+        )
+    assert resp.status_code == 200
+    assert "Provider saved." in resp.text
+
+
+# ---------------------------------------------------------------------------
+# channels_fragment_save with key-in-form-but-blank (line 208->204)
+# ---------------------------------------------------------------------------
+
+
+async def test_channels_fragment_save_blank_value_skipped(fake_data_dir: Path, admin_password: str) -> None:
+    """Blank channel field in form is skipped (not treated as an update)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        # Send the key in the form but with an empty/blank value — should be skipped.
+        resp = await client.post(
+            "/admin/_partial/channels/save",
+            data={"TELEGRAM_BOT_TOKEN": "  "},
+        )
+    assert resp.status_code == 200
+    # No error — just returns the channels card.
+    assert "Channels" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# channels_fragment_clear with secondary_key (line 237->239)
+# ---------------------------------------------------------------------------
+
+
+async def test_channels_fragment_clear_with_secondary_key(fake_data_dir: Path, admin_password: str) -> None:
+    """channels_fragment_clear clears both primary and secondary keys when present."""
+    # Telegram has TELEGRAM_ALLOWED_USERS as secondary_key.
+    env_path = fake_data_dir / ".hermes" / ".env"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("TELEGRAM_BOT_TOKEN=tok123\nTELEGRAM_ALLOWED_USERS=42,99\n", encoding="utf-8")
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/channels/clear",
+            data={"slug": "telegram"},
+        )
+    assert resp.status_code == 200
+    assert "Telegram cleared." in resp.text
+
+
+# ---------------------------------------------------------------------------
+# channels_fragment_clear ValueError (lines 246-247)
+# channels_fragment_toggle ValueError (lines 279-280)
+# ---------------------------------------------------------------------------
+
+
+async def test_channels_fragment_clear_error_path(fake_data_dir: Path, admin_password: str) -> None:
+    """channels_fragment_clear returns error HTML when save_channel_values raises."""
+    from unittest.mock import patch
+
+    import hermes_station.admin.htmx_settings as _htmx_settings
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+
+    def _raise(*_a, **_kw):
+        raise ValueError("disk error")
+
+    with patch.object(_htmx_settings, "save_channel_values", _raise):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await _login(client, admin_password)
+            resp = await client.post(
+                "/admin/_partial/channels/clear",
+                data={"slug": "telegram"},
+            )
+    assert resp.status_code == 200
+    assert "disk error" in resp.text
+
+
+async def test_channels_fragment_toggle_error_path(fake_data_dir: Path, admin_password: str) -> None:
+    """channels_fragment_toggle returns error HTML when save_channel_values raises."""
+    from unittest.mock import patch
+
+    import hermes_station.admin.htmx_settings as _htmx_settings
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+
+    def _raise(*_a, **_kw):
+        raise ValueError("toggle disk error")
+
+    with patch.object(_htmx_settings, "save_channel_values", _raise):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await _login(client, admin_password)
+            resp = await client.post(
+                "/admin/_partial/channels/toggle",
+                data={"slug": "telegram"},
+            )
+    assert resp.status_code == 200
+    assert "toggle disk error" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# copilot_oauth_start unauthenticated (line 292) and error path (lines 296-301)
+# ---------------------------------------------------------------------------
+
+
+async def test_copilot_oauth_start_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/provider/copilot/start redirects to login."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/admin/_partial/provider/copilot/start", follow_redirects=False)
+    assert resp.status_code == 302
+
+
+async def test_copilot_oauth_start_error_path(fake_data_dir: Path, admin_password: str) -> None:
+    """copilot_oauth_start returns error card when start_device_flow raises."""
+    from unittest.mock import patch
+
+    import hermes_station.admin.htmx_settings as _htmx_settings
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+
+    async def _mock_fail():
+        raise RuntimeError("network timeout")
+
+    with patch.object(_htmx_settings, "start_device_flow", _mock_fail):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await _login(client, admin_password)
+            resp = await client.post("/admin/_partial/provider/copilot/start")
+    assert resp.status_code == 200
+    assert "Could not start GitHub OAuth" in resp.text
+    assert "network timeout" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# copilot_oauth_poll unauthenticated (line 318) and interval parse error (324-325)
+# ---------------------------------------------------------------------------
+
+
+async def test_copilot_oauth_poll_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/provider/copilot/poll redirects to login."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/admin/_partial/provider/copilot/poll", follow_redirects=False)
+    assert resp.status_code == 302
+
+
+async def test_copilot_oauth_poll_bad_interval_fallback(fake_data_dir: Path, admin_password: str) -> None:
+    """Poll with non-numeric interval falls back to 8 (lines 324-325)."""
+    from unittest.mock import patch
+
+    import hermes_station.admin.htmx_settings as _htmx_settings
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+
+    async def _mock_poll(device_code, interval=None):
+        return {"status": "pending", "poll_interval": interval}
+
+    with patch.object(_htmx_settings, "poll_device_flow", _mock_poll):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await _login(client, admin_password)
+            resp = await client.post(
+                "/admin/_partial/provider/copilot/poll",
+                data={"device_code": "dev123", "interval": "not-a-number"},
+            )
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# copilot_oauth_poll poll exception (lines 336-339)
+# ---------------------------------------------------------------------------
+
+
+async def test_copilot_oauth_poll_exception(fake_data_dir: Path, admin_password: str) -> None:
+    """Poll returns error card when poll_device_flow raises an exception."""
+    from unittest.mock import patch
+
+    import hermes_station.admin.htmx_settings as _htmx_settings
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+
+    async def _mock_poll(device_code, interval=None):
+        raise RuntimeError("connection refused")
+
+    with patch.object(_htmx_settings, "poll_device_flow", _mock_poll):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await _login(client, admin_password)
+            resp = await client.post(
+                "/admin/_partial/provider/copilot/poll",
+                data={"device_code": "dev123", "interval": "8"},
+            )
+    assert resp.status_code == 200
+    assert "Poll error" in resp.text
+    assert "connection refused" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# copilot_oauth_poll success path with save error (lines 372-373)
+# ---------------------------------------------------------------------------
+
+
+async def test_copilot_oauth_poll_success_save_error(fake_data_dir: Path, admin_password: str) -> None:
+    """Poll success: if apply_provider_setup raises, error alert is returned."""
+    from unittest.mock import patch
+
+    import hermes_station.admin.htmx_settings as _htmx_settings
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+
+    async def _mock_poll_success(device_code, interval=None):
+        return {"status": "success", "token": "gho_tok", "poll_interval": 0}
+
+    def _mock_apply(**_kw):
+        raise ValueError("cannot save token")
+
+    with patch.object(_htmx_settings, "poll_device_flow", _mock_poll_success):
+        with patch.object(_htmx_settings, "apply_provider_setup", _mock_apply):
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                await _login(client, admin_password)
+                resp = await client.post(
+                    "/admin/_partial/provider/copilot/poll",
+                    data={"device_code": "dev123", "interval": "8"},
+                )
+    assert resp.status_code == 200
+    assert "Token received but could not save" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# provider_cancel unauthenticated (line 388)
+# ---------------------------------------------------------------------------
+
+
+async def test_provider_cancel_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/provider/cancel redirects to login."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/admin/_partial/provider/cancel", follow_redirects=False)
+    assert resp.status_code == 302
+
+
+# ---------------------------------------------------------------------------
+# secrets_fragment_save, clear, disable, enable, add, forget — error paths
+# (lines 431, 442-443, 462-463, 479-480, 526-527)
+# ---------------------------------------------------------------------------
+
+
+async def test_secrets_fragment_save_error(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_save with invalid key returns error HTML (line 431)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        # Empty key is invalid
+        resp = await client.post(
+            "/admin/_partial/secrets/save",
+            data={"key": "", "value": "some-value"},
+        )
+    assert resp.status_code == 200
+    assert "error" in resp.text.lower()
+
+
+async def test_secrets_fragment_clear_error(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_clear with invalid key returns error HTML (lines 442-443)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/clear",
+            data={"key": "invalid key with spaces"},
+        )
+    assert resp.status_code == 200
+    assert "error" in resp.text.lower()
+
+
+async def test_secrets_fragment_disable_error(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_disable with invalid key returns error HTML (lines 462-463)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/disable",
+            data={"key": ""},
+        )
+    assert resp.status_code == 200
+    assert "error" in resp.text.lower()
+
+
+async def test_secrets_fragment_enable_error(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_enable with invalid key returns error HTML (lines 479-480)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/enable",
+            data={"key": "lowercase_invalid"},
+        )
+    assert resp.status_code == 200
+    assert "error" in resp.text.lower()
+
+
+async def test_secrets_fragment_forget_error(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_forget with invalid key returns error HTML (lines 526-527)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/forget",
+            data={"key": "invalid-key-with-dashes"},
+        )
+    assert resp.status_code == 200
+    assert "error" in resp.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# secrets_fragment_add — unauthenticated (line 493), sandbox branch (line 518)
+# ---------------------------------------------------------------------------
+
+
+async def test_secrets_fragment_add_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/secrets/add redirects to login (line 493)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/admin/_partial/secrets/add",
+            data={"key": "MY_KEY"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 302
+
+
+async def test_secrets_fragment_add_key_only(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_add with key and no value uses add_custom_key (line 503)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/add",
+            data={"key": "MY_CUSTOM_KEY", "value": ""},
+        )
+    assert resp.status_code == 200
+    assert "MY_CUSTOM_KEY added." in resp.text
+
+
+async def test_secrets_fragment_add_with_value_and_sandbox(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_add with value and sandbox=1 also sets env_passthrough (line 518)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/add",
+            data={"key": "MY_SANDBOX_KEY", "value": "some-secret", "sandbox": "1"},
+        )
+    assert resp.status_code == 200
+    assert "MY_SANDBOX_KEY added and saved." in resp.text
+
+    # Verify the key was added to terminal.env_passthrough in config.yaml
+    import yaml
+
+    config = yaml.safe_load((fake_data_dir / ".hermes" / "config.yaml").read_text())
+    assert "MY_SANDBOX_KEY" in config.get("terminal", {}).get("env_passthrough", [])
+
+
+# ---------------------------------------------------------------------------
+# _ensure_env_passthrough_single branches (lines 541->544, 545->547, 547->549)
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_env_passthrough_single_no_terminal(fake_data_dir: Path) -> None:
+    """_ensure_env_passthrough_single creates terminal block if absent (line 541->544)."""
+    from hermes_station.admin.htmx_settings import _ensure_env_passthrough_single
+
+    import yaml
+
+    paths = Paths()
+    config_path = fake_data_dir / ".hermes" / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    # No terminal block at all.
+    config_path.write_text(yaml.safe_dump({}), encoding="utf-8")
+
+    _ensure_env_passthrough_single(paths, "MY_KEY")
+
+    config = yaml.safe_load(config_path.read_text())
+    assert "MY_KEY" in config["terminal"]["env_passthrough"]
+
+
+def test_ensure_env_passthrough_single_no_passthrough_list(fake_data_dir: Path) -> None:
+    """_ensure_env_passthrough_single creates passthrough list if not a list (line 545->547)."""
+    from hermes_station.admin.htmx_settings import _ensure_env_passthrough_single
+
+    import yaml
+
+    paths = Paths()
+    config_path = fake_data_dir / ".hermes" / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    # terminal exists but env_passthrough is not a list.
+    config_path.write_text(yaml.safe_dump({"terminal": {"other_key": "val"}}), encoding="utf-8")
+
+    _ensure_env_passthrough_single(paths, "ANOTHER_KEY")
+
+    config = yaml.safe_load(config_path.read_text())
+    assert "ANOTHER_KEY" in config["terminal"]["env_passthrough"]
+
+
+def test_ensure_env_passthrough_single_already_present(fake_data_dir: Path) -> None:
+    """_ensure_env_passthrough_single is idempotent when key already present (line 547->549 skipped)."""
+    from hermes_station.admin.htmx_settings import _ensure_env_passthrough_single
+
+    import yaml
+
+    paths = Paths()
+    config_path = fake_data_dir / ".hermes" / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        yaml.safe_dump({"terminal": {"env_passthrough": ["EXISTING_KEY"]}}), encoding="utf-8"
+    )
+
+    _ensure_env_passthrough_single(paths, "EXISTING_KEY")
+
+    config = yaml.safe_load(config_path.read_text())
+    # Should not be duplicated.
+    assert config["terminal"]["env_passthrough"].count("EXISTING_KEY") == 1
+
+
+# ---------------------------------------------------------------------------
+# pairings_fragment_action unauthenticated (line 557), invalid action (line 562->573)
+# and exception swallow (lines 566-572)
+# ---------------------------------------------------------------------------
+
+
+async def test_pairings_fragment_action_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/pairing/approve redirects to login (line 557)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/admin/_partial/pairing/approve",
+            data={"user_id": "42"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 302
+
+
+async def test_pairings_fragment_action_invalid_action(fake_data_dir: Path, admin_password: str) -> None:
+    """pairings_fragment_action with unknown action skips the action block (line 562->573)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/pairing/unknown-action",
+            data={"user_id": "42"},
+        )
+    assert resp.status_code == 200
+    assert "Pending pairings" in resp.text
+
+
+async def test_pairings_fragment_action_no_user_id(fake_data_dir: Path, admin_password: str) -> None:
+    """pairings_fragment_action with missing user_id skips the action (line 562->573)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/pairing/approve",
+            data={},
+        )
+    assert resp.status_code == 200
+    assert "Pending pairings" in resp.text
+
+
+async def test_pairings_fragment_action_deny(fake_data_dir: Path, admin_password: str) -> None:
+    """pairings_fragment_action deny action covers elif branch (line 567)."""
+    pairing_dir = fake_data_dir / ".hermes" / "pairing"
+    _write_pairing(pairing_dir / "telegram-pending.json", {"55": {"user_name": "charlie"}})
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/pairing/deny",
+            data={"user_id": "55"},
+        )
+    assert resp.status_code == 200
+    assert "Pending pairings" in resp.text
+
+
+async def test_pairings_fragment_action_revoke(fake_data_dir: Path, admin_password: str) -> None:
+    """pairings_fragment_action revoke action covers else branch (line 568-569)."""
+    pairing_dir = fake_data_dir / ".hermes" / "pairing"
+    _write_pairing(pairing_dir / "telegram-approved.json", {"77": {"user_name": "dave"}})
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/pairing/revoke",
+            data={"user_id": "77"},
+        )
+    assert resp.status_code == 200
+    assert "Pending pairings" in resp.text
+
+
+async def test_pairings_fragment_action_swallows_keyerror(fake_data_dir: Path, admin_password: str) -> None:
+    """pairings_fragment_action swallows KeyError/ValueError from action helpers (lines 570-572)."""
+    from unittest.mock import patch
+
+    import hermes_station.admin.htmx_settings as _htmx_settings
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+
+    def _raise(*_a, **_kw):
+        raise KeyError("user not found")
+
+    with patch.object(_htmx_settings, "approve", _raise):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await _login(client, admin_password)
+            resp = await client.post(
+                "/admin/_partial/pairing/approve",
+                data={"user_id": "99"},
+            )
+    assert resp.status_code == 200
+    # Error is swallowed — panel still renders.
+    assert "Pending pairings" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# secrets_fragment_save success (covers _after_secrets_change + boot_environ)
+# ---------------------------------------------------------------------------
+
+
+async def test_secrets_fragment_save_success(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_save with valid key/value persists and returns success card."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/save",
+            data={"key": "BRAVE_API_KEY", "value": "bsearch-key-123"},
+        )
+    assert resp.status_code == 200
+    assert "BRAVE_API_KEY saved." in resp.text
+
+
+async def test_secrets_fragment_clear_success(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_clear removes a .env override and returns success card."""
+    env_path = fake_data_dir / ".hermes" / ".env"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("BRAVE_API_KEY=oldval\n", encoding="utf-8")
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/clear",
+            data={"key": "BRAVE_API_KEY"},
+        )
+    assert resp.status_code == 200
+    assert "BRAVE_API_KEY override cleared." in resp.text
+
+
+async def test_secrets_fragment_disable_success(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_disable adds key to disabled_secrets in config."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/disable",
+            data={"key": "FAL_KEY"},
+        )
+    assert resp.status_code == 200
+    assert "FAL_KEY disabled" in resp.text
+
+
+async def test_secrets_fragment_enable_success(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_enable removes key from disabled_secrets in config."""
+    import yaml
+
+    config_path = fake_data_dir / ".hermes" / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        yaml.safe_dump({"admin": {"disabled_secrets": ["FAL_KEY"]}}),
+        encoding="utf-8",
+    )
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/enable",
+            data={"key": "FAL_KEY"},
+        )
+    assert resp.status_code == 200
+    assert "FAL_KEY re-enabled." in resp.text
+
+
+async def test_secrets_fragment_forget_success(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_forget unregisters a custom key and clears the override."""
+    import yaml
+
+    config_path = fake_data_dir / ".hermes" / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        yaml.safe_dump({"admin": {"custom_secret_keys": ["MY_CUSTOM"]}}),
+        encoding="utf-8",
+    )
+
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/forget",
+            data={"key": "MY_CUSTOM"},
+        )
+    assert resp.status_code == 200
+    assert "MY_CUSTOM forgotten." in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Secrets endpoints — unauthenticated guard paths
+# (lines 413, 431, 451, 471, 518)
+# ---------------------------------------------------------------------------
+
+
+async def test_secrets_fragment_save_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/secrets/save redirects to login (line 413)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/admin/_partial/secrets/save",
+            data={"key": "FAL_KEY", "value": "x"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 302
+
+
+async def test_secrets_fragment_clear_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/secrets/clear redirects to login (line 431)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/admin/_partial/secrets/clear",
+            data={"key": "FAL_KEY"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 302
+
+
+async def test_secrets_fragment_disable_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/secrets/disable redirects to login (line 451)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/admin/_partial/secrets/disable",
+            data={"key": "FAL_KEY"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 302
+
+
+async def test_secrets_fragment_enable_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/secrets/enable redirects to login (line 471)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/admin/_partial/secrets/enable",
+            data={"key": "FAL_KEY"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 302
+
+
+async def test_secrets_fragment_forget_requires_admin(fake_data_dir: Path) -> None:
+    """Unauthenticated POST /admin/_partial/secrets/forget redirects to login (line 518)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/admin/_partial/secrets/forget",
+            data={"key": "MY_CUSTOM"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 302
+
+
+# ---------------------------------------------------------------------------
+# _after_secrets_change with gateway (line 406)
+# ---------------------------------------------------------------------------
+
+
+async def test_secrets_fragment_save_with_gateway(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_save calls gateway.restart() when gateway is present (line 406)."""
+    app = _build_app_with_gateway(fake_data_dir)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/admin/login", data={"password": admin_password}, follow_redirects=False)
+        assert r.status_code == 302
+        resp = await client.post(
+            "/admin/_partial/secrets/save",
+            data={"key": "BRAVE_API_KEY", "value": "bsearch-test-key"},
+        )
+    assert resp.status_code == 200
+    assert "BRAVE_API_KEY saved." in resp.text
+
+
+# ---------------------------------------------------------------------------
+# channels_fragment_clear without secondary key (line 237->239 False branch)
+# ---------------------------------------------------------------------------
+
+
+async def test_channels_fragment_clear_no_secondary_key(fake_data_dir: Path, admin_password: str) -> None:
+    """channels_fragment_clear for a channel with no secondary_key (line 237->239)."""
+    # whatsapp has an empty secondary_key
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/channels/clear",
+            data={"slug": "whatsapp"},
+        )
+    assert resp.status_code == 200
+    assert "cleared." in resp.text
+
+
+# ---------------------------------------------------------------------------
+# secrets_fragment_add — ValueError error path (lines 509-510)
+# ---------------------------------------------------------------------------
+
+
+async def test_secrets_fragment_add_error(fake_data_dir: Path, admin_password: str) -> None:
+    """secrets_fragment_add with invalid key returns error HTML (lines 509-510)."""
+    app = _build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/_partial/secrets/add",
+            data={"key": "", "value": ""},
+        )
+    assert resp.status_code == 200
+    assert "error" in resp.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# _secrets_context called without request (line 121->123 False branch)
+# ---------------------------------------------------------------------------
+
+
+def test_secrets_context_without_request(fake_data_dir: Path) -> None:
+    """_secrets_context with request=None skips boot_environ lookup (line 121->123)."""
+    from hermes_station.admin.htmx_settings import _secrets_context
+
+    paths = Paths()
+    result = _secrets_context(paths, request=None)
+    assert "groups" in result
+    assert "rows" in result
