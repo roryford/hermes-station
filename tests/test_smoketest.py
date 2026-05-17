@@ -14,6 +14,7 @@ from hermes_station.admin.routes import admin_routes
 from hermes_station.admin.smoketest import (
     _test_gateway,
     _test_github_mcp,
+    _test_mcp_urls,
     _test_provider,
     _test_storage,
     _test_web_search,
@@ -447,6 +448,118 @@ async def test_web_search_fail_key_missing_firecrawl() -> None:
     result = await _test_web_search(config, {})
     assert result["status"] == "fail"
     assert "FIRECRAWL_API_KEY" in result["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_mcp_urls
+# ---------------------------------------------------------------------------
+
+_MCP_URL_SERVER = {
+    "name": "playwright-mcp",
+    "label": "Playwright MCP",
+    "description": "Browser automation",
+    "command": "",
+    "args": [],
+    "enabled": True,
+    "configured": True,
+    "needs": [],
+    "needs_satisfied": True,
+    "url": "http://playwright-mcp.railway.internal:8931/mcp",
+    "is_url_based": True,
+}
+
+
+def _url_row(**overrides: Any) -> dict[str, Any]:
+    row = dict(_MCP_URL_SERVER)
+    row.update(overrides)
+    return row
+
+
+async def test_mcp_urls_skip_no_url_based_servers() -> None:
+    """No URL-based servers in config → skip."""
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[]):
+        result = await _test_mcp_urls({}, {})
+    assert result["status"] == "skip"
+    assert result["name"] == "mcp_urls"
+    assert "No URL-based" in result["detail"]
+
+
+async def test_mcp_urls_skip_url_based_but_not_enabled() -> None:
+    """URL-based server present but disabled → skip."""
+    disabled_row = _url_row(enabled=False)
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[disabled_row]):
+        result = await _test_mcp_urls({}, {})
+    assert result["status"] == "skip"
+
+
+async def test_mcp_urls_pass_one_reachable_200() -> None:
+    """One enabled URL-based server responds 200 → pass."""
+    row = _url_row()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[row]):
+        with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get = fake_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_client
+            result = await _test_mcp_urls({}, {})
+
+    assert result["status"] == "pass"
+    assert "playwright-mcp" in result["detail"]
+    assert result["fix"] == ""
+
+
+async def test_mcp_urls_fail_connection_error() -> None:
+    """One enabled URL-based server raises ConnectError → fail with server name."""
+    row = _url_row()
+
+    async def fake_get(url: str, **kwargs: Any) -> None:
+        raise httpx.ConnectError("connection refused")
+
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[row]):
+        with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get = fake_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_client
+            result = await _test_mcp_urls({}, {})
+
+    assert result["status"] == "fail"
+    assert "playwright-mcp" in result["detail"]
+    assert result["fix"]
+
+
+async def test_mcp_urls_fail_mixed_reachable_and_unreachable() -> None:
+    """Two servers: one reachable, one not → fail listing both unreachable names."""
+    row_ok = _url_row(name="mcp-a", url="http://mcp-a.internal/mcp")
+    row_bad = _url_row(name="mcp-b", url="http://mcp-b.internal/mcp")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        if "mcp-a" in url:
+            return mock_resp
+        raise httpx.ConnectError("refused")
+
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[row_ok, row_bad]):
+        with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get = fake_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_client
+            result = await _test_mcp_urls({}, {})
+
+    assert result["status"] == "fail"
+    assert "mcp-b" in result["detail"]
+    assert result["fix"]
 
 
 # ---------------------------------------------------------------------------

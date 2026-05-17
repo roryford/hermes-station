@@ -345,6 +345,56 @@ async def _check_tavily(key: str) -> dict[str, Any]:
         return _r("fail", str(exc), "Check logs for details.")
 
 
+async def _probe_mcp_url(name: str, url: str) -> tuple[str, str, bool]:
+    """Return (name, url, reachable). 2xx or 4xx counts as reachable."""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            await client.get(url)
+        return name, url, True
+    except Exception:  # noqa: BLE001
+        return name, url, False
+
+
+async def _test_mcp_urls(config: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    # Deferred import to avoid circular deps.
+    from hermes_station.admin.mcp import mcp_status
+
+    rows = [r for r in mcp_status(config, env) if r["is_url_based"] and r["enabled"] and r.get("url")]
+
+    if not rows:
+        return {
+            "name": "mcp_urls",
+            "label": "MCP URLs",
+            "status": "skip",
+            "detail": "No URL-based MCP servers enabled.",
+            "fix": "",
+        }
+
+    probes = await asyncio.gather(*[_probe_mcp_url(r["name"], r["url"]) for r in rows])
+
+    unreachable = [(name, url) for name, url, ok in probes if not ok]
+    reachable_names = [name for name, _url, ok in probes if ok]
+    n = len(rows)
+
+    if not unreachable:
+        return {
+            "name": "mcp_urls",
+            "label": "MCP URLs",
+            "status": "pass",
+            "detail": f"All {n} URL-based MCP server(s) reachable: {', '.join(reachable_names)}.",
+            "fix": "",
+        }
+
+    failed_parts = ", ".join(f"{name} ({url})" for name, url in unreachable)
+    return {
+        "name": "mcp_urls",
+        "label": "MCP URLs",
+        "status": "fail",
+        "detail": f"Unreachable MCP server(s): {failed_parts}.",
+        "fix": "Check that the external MCP service is running and the URL in config.yaml is correct.",
+    }
+
+
 async def run_all_tests(request: Request) -> list[dict[str, Any]]:
     paths: Paths = request.app.state.paths
     config = load_yaml_config(paths.config_path)
@@ -356,6 +406,7 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
         _test_gateway(gateway, config),
         _test_github_mcp(config, env),
         _test_web_search(config, env),
+        _test_mcp_urls(config, env),
     )
     return list(results)
 
