@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS runtime
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file gnupg \
