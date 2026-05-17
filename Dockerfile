@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS runtime
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file gnupg \
@@ -60,8 +60,8 @@ WORKDIR /app
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
 # hermes-webui is fetched at build time because it has no pyproject.toml,
 # so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
-ARG HERMES_WEBUI_VERSION=v0.51.80
-ARG HERMES_WEBUI_SHA=d624d7f6b3588354330883c2c60f3e8bbfc31cb9
+ARG HERMES_WEBUI_VERSION=v0.51.82
+ARG HERMES_WEBUI_SHA=603183a3011f4abbb79b6fe7f5434d5878c6c800
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
