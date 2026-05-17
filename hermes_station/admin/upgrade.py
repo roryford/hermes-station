@@ -41,9 +41,9 @@ _COMPONENT_DEFS = [
     {
         "key": "hermes_webui",
         "label": "hermes-webui",
-        "repo": "NousResearch/hermes-webui",
-        "use_tags": False,
-        "release_url": "https://github.com/NousResearch/hermes-webui/releases",
+        "repo": "nesquena/hermes-webui",
+        "use_tags": True,
+        "release_url": "https://github.com/nesquena/hermes-webui/releases",
     },
 ]
 
