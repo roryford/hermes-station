@@ -80,7 +80,7 @@ jobs:
           exit-code: "0"  # warn only; don't fail the build on first scan
 
       - name: upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@181d5eefc20863364f96762470ba6f862bdef56b # v3.29.2
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           sarif_file: trivy-results.sarif
 
