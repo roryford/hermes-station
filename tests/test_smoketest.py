@@ -14,6 +14,7 @@ from hermes_station.admin.routes import admin_routes
 from hermes_station.admin.smoketest import (
     _test_gateway,
     _test_github_mcp,
+    _test_image_gen,
     _test_provider,
     _test_storage,
     _test_web_search,
@@ -447,6 +448,89 @@ async def test_web_search_fail_key_missing_firecrawl() -> None:
     result = await _test_web_search(config, {})
     assert result["status"] == "fail"
     assert "FIRECRAWL_API_KEY" in result["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_image_gen
+# ---------------------------------------------------------------------------
+
+
+async def test_image_gen_skip_not_intended() -> None:
+    result = await _test_image_gen({}, {})
+    assert result["status"] == "skip"
+    assert result["name"] == "image_gen"
+    assert "not configured" in result["detail"].lower()
+
+
+async def test_image_gen_fail_no_key() -> None:
+    config = {"toolsets": ["image_gen"]}
+    with patch("hermes_station.admin.smoketest.os.environ", {}):
+        result = await _test_image_gen(config, {})
+    assert result["status"] == "fail"
+    assert "FAL_KEY" in result["detail"]
+    assert result["fix"]
+
+
+async def test_image_gen_pass_200() -> None:
+    config = {"toolsets": ["image_gen"]}
+    env = {"FAL_KEY": "fal-test-key"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_image_gen(config, env)
+
+    assert result["status"] == "pass"
+    assert "fal.ai" in result["detail"]
+
+
+async def test_image_gen_fail_403() -> None:
+    config = {"toolsets": ["image_gen"]}
+    env = {"FAL_KEY": "fal-bad-key"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_image_gen(config, env)
+
+    assert result["status"] == "fail"
+    assert "403" in result["detail"]
+    assert result["fix"]
+
+
+async def test_image_gen_fail_timeout() -> None:
+    config = {"toolsets": ["image_gen"]}
+    env = {"FAL_KEY": "fal-test-key"}
+
+    async def fake_get(url: str, **kwargs: Any) -> None:
+        raise httpx.TimeoutException("timed out")
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_image_gen(config, env)
+
+    assert result["status"] == "fail"
+    assert "timed out" in result["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
