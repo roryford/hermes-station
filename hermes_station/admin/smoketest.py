@@ -345,6 +345,90 @@ async def _check_tavily(key: str) -> dict[str, Any]:
         return _r("fail", str(exc), "Check logs for details.")
 
 
+# Browser backend env vars in priority order (highest first).
+_BROWSER_BACKENDS: list[tuple[str, list[str]]] = [
+    ("camofox", ["CAMOFOX_URL"]),
+    ("browserbase", ["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"]),
+    ("browser_use", ["BROWSER_USE_API_KEY"]),
+    ("steel", ["STEEL_API_KEY"]),
+]
+
+
+def _rb(status: str, detail: str, fix: str = "") -> dict[str, Any]:
+    return {
+        "name": "browser_backend",
+        "label": "Browser backend",
+        "status": status,
+        "detail": detail,
+        "fix": fix,
+    }
+
+
+async def _test_browser_backend(env: dict[str, str]) -> dict[str, Any]:
+    # Determine which backend (if any) is configured.
+    for backend, keys in _BROWSER_BACKENDS:
+        values = {k: (env.get(k) or os.environ.get(k) or "").strip() for k in keys}
+        if not all(values.values()):
+            continue
+
+        if backend == "camofox":
+            url = values["CAMOFOX_URL"].rstrip("/")
+            try:
+                async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                    resp = await client.get(f"{url}/health")
+                    if resp.status_code == 404:
+                        resp = await client.get(url)
+                if resp.is_success:
+                    return _rb("pass", f"Camofox reachable at {url}.")
+                return _rb(
+                    "fail",
+                    f"Camofox returned HTTP {resp.status_code}.",
+                    "Check CAMOFOX_URL in Settings — make sure the service is running.",
+                )
+            except Exception as exc:  # noqa: BLE001
+                return _rb(
+                    "fail",
+                    str(exc),
+                    "Check CAMOFOX_URL in Settings — make sure the service is running.",
+                )
+
+        if backend == "browserbase":
+            key = values["BROWSERBASE_API_KEY"]
+            try:
+                async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                    resp = await client.get(
+                        "https://www.browserbase.com/v1/sessions",
+                        headers={"X-BB-API-Key": key},
+                    )
+                if resp.status_code == 200:
+                    return _rb("pass", "Browserbase API is reachable.")
+                if resp.status_code == 401:
+                    return _rb(
+                        "fail",
+                        "BROWSERBASE_API_KEY is invalid.",
+                        "Check BROWSERBASE_API_KEY in Settings → Secrets.",
+                    )
+                return _rb(
+                    "fail",
+                    f"Browserbase returned HTTP {resp.status_code}.",
+                    "Check BROWSERBASE_API_KEY in Settings → Secrets.",
+                )
+            except Exception as exc:  # noqa: BLE001
+                return _rb(
+                    "fail",
+                    str(exc),
+                    "Check network connectivity and BROWSERBASE_API_KEY.",
+                )
+
+        if backend == "browser_use":
+            return _rb("pass", "Browser Use credential is present.")
+
+        if backend == "steel":
+            return _rb("pass", "Steel credential is present.")
+
+    return _rb("skip", "No browser backend configured.")
+
+
 async def run_all_tests(request: Request) -> list[dict[str, Any]]:
     paths: Paths = request.app.state.paths
     config = load_yaml_config(paths.config_path)
@@ -356,6 +440,7 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
         _test_gateway(gateway, config),
         _test_github_mcp(config, env),
         _test_web_search(config, env),
+        _test_browser_backend(env),
     )
     return list(results)
 

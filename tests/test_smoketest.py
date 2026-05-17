@@ -12,6 +12,7 @@ from starlette.routing import Route
 
 from hermes_station.admin.routes import admin_routes
 from hermes_station.admin.smoketest import (
+    _test_browser_backend,
     _test_gateway,
     _test_github_mcp,
     _test_provider,
@@ -447,6 +448,110 @@ async def test_web_search_fail_key_missing_firecrawl() -> None:
     result = await _test_web_search(config, {})
     assert result["status"] == "fail"
     assert "FIRECRAWL_API_KEY" in result["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_browser_backend
+# ---------------------------------------------------------------------------
+
+
+async def test_browser_backend_skip_none_configured() -> None:
+    result = await _test_browser_backend({})
+    assert result["status"] == "skip"
+    assert result["name"] == "browser_backend"
+
+
+async def test_browser_backend_camofox_pass_200() -> None:
+    env = {"CAMOFOX_URL": "http://camofox.internal:9377"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.is_success = True
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "pass"
+    assert "camofox.internal" in result["detail"].lower() or "Camofox" in result["detail"]
+
+
+async def test_browser_backend_camofox_connection_error() -> None:
+    env = {"CAMOFOX_URL": "http://camofox.internal:9377"}
+
+    async def fake_get(url: str, **kwargs: Any) -> None:
+        raise httpx.ConnectError("connection refused")
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "fail"
+    assert result["fix"]
+
+
+async def test_browser_backend_browserbase_pass_200() -> None:
+    env = {"BROWSERBASE_API_KEY": "bb-key", "BROWSERBASE_PROJECT_ID": "proj-123"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "pass"
+
+
+async def test_browser_backend_browserbase_fail_401() -> None:
+    env = {"BROWSERBASE_API_KEY": "bad-key", "BROWSERBASE_PROJECT_ID": "proj-123"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "fail"
+    assert "invalid" in result["detail"].lower()
+    assert result["fix"]
+
+
+async def test_browser_backend_browser_use_credential_present() -> None:
+    env = {"BROWSER_USE_API_KEY": "bu-secret"}
+    result = await _test_browser_backend(env)
+    assert result["status"] == "pass"
+    assert "Browser Use credential is present" in result["detail"]
+
+
+async def test_browser_backend_steel_credential_present() -> None:
+    env = {"STEEL_API_KEY": "steel-secret"}
+    result = await _test_browser_backend(env)
+    assert result["status"] == "pass"
+    assert "Steel credential is present" in result["detail"]
 
 
 # ---------------------------------------------------------------------------
