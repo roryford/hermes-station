@@ -7,14 +7,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 
 from hermes_station.admin.routes import admin_routes
 from hermes_station.admin.smoketest import (
+    _test_browser_backend,
     _test_gateway,
     _test_github_mcp,
     _test_image_gen,
+    _test_mcp_urls,
+    _test_plugin_registry,
     _test_provider,
     _test_storage,
     _test_web_search,
@@ -595,3 +599,285 @@ async def test_smoketest_run_shows_run_again_button(fake_data_dir: Path, admin_p
         response = await client.post("/admin/_partial/smoketest/run")
     assert response.status_code == 200
     assert "Run again" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_browser_backend
+# ---------------------------------------------------------------------------
+
+
+async def test_browser_backend_skip_none_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in (
+        "CAMOFOX_URL",
+        "BROWSERBASE_API_KEY",
+        "BROWSERBASE_PROJECT_ID",
+        "BROWSER_USE_API_KEY",
+        "STEEL_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    result = await _test_browser_backend({})
+    assert result["status"] == "skip"
+    assert result["name"] == "browser_backend"
+
+
+async def test_browser_backend_camofox_pass_200() -> None:
+    env = {"CAMOFOX_URL": "http://camofox.internal:9377"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.is_success = True
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "pass"
+    assert "camofox.internal" in result["detail"].lower() or "Camofox" in result["detail"]
+
+
+async def test_browser_backend_camofox_connection_error() -> None:
+    env = {"CAMOFOX_URL": "http://camofox.internal:9377"}
+
+    async def fake_get(url: str, **kwargs: Any) -> None:
+        raise httpx.ConnectError("connection refused")
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "fail"
+    assert result["fix"]
+
+
+async def test_browser_backend_browserbase_pass_200() -> None:
+    env = {"BROWSERBASE_API_KEY": "bb-key", "BROWSERBASE_PROJECT_ID": "proj-123"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "pass"
+
+
+async def test_browser_backend_browserbase_fail_401(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CAMOFOX_URL", raising=False)
+    env = {"BROWSERBASE_API_KEY": "bad-key", "BROWSERBASE_PROJECT_ID": "proj-123"}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.get = fake_get
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value = mock_client
+        result = await _test_browser_backend(env)
+
+    assert result["status"] == "fail"
+    assert "invalid" in result["detail"].lower()
+    assert result["fix"]
+
+
+async def test_browser_backend_browser_use_credential_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CAMOFOX_URL", raising=False)
+    monkeypatch.delenv("BROWSERBASE_API_KEY", raising=False)
+    monkeypatch.delenv("BROWSERBASE_PROJECT_ID", raising=False)
+    env = {"BROWSER_USE_API_KEY": "bu-secret"}
+    result = await _test_browser_backend(env)
+    assert result["status"] == "pass"
+    assert "Browser Use credential is present" in result["detail"]
+
+
+async def test_browser_backend_steel_credential_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CAMOFOX_URL", raising=False)
+    monkeypatch.delenv("BROWSERBASE_API_KEY", raising=False)
+    monkeypatch.delenv("BROWSERBASE_PROJECT_ID", raising=False)
+    monkeypatch.delenv("BROWSER_USE_API_KEY", raising=False)
+    env = {"STEEL_API_KEY": "steel-secret"}
+    result = await _test_browser_backend(env)
+    assert result["status"] == "pass"
+    assert "Steel credential is present" in result["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_plugin_registry
+# ---------------------------------------------------------------------------
+
+
+async def test_plugin_registry_skip_no_dir(tmp_path: Path) -> None:
+    """When the plugins root doesn't exist the test should be skipped."""
+    fake_purelib = tmp_path / "site-packages"
+    fake_purelib.mkdir()
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["name"] == "plugin_registry"
+    assert result["status"] == "skip"
+    assert "not found" in result["detail"].lower()
+
+
+async def test_plugin_registry_pass_with_manifests(tmp_path: Path) -> None:
+    """When manifests are present the test should pass and report the count."""
+    fake_purelib = tmp_path / "site-packages"
+    (fake_purelib / "plugins" / "web" / "plugin_a").mkdir(parents=True)
+    (fake_purelib / "plugins" / "web" / "plugin_b").mkdir(parents=True)
+    (fake_purelib / "plugins" / "web" / "plugin_a" / "plugin.yaml").write_text("name: a")
+    (fake_purelib / "plugins" / "web" / "plugin_b" / "plugin.yaml").write_text("name: b")
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["status"] == "pass"
+    assert "2" in result["detail"]
+    assert result["name"] == "plugin_registry"
+
+
+async def test_plugin_registry_fail_dir_exists_no_yamls(tmp_path: Path) -> None:
+    """When the plugins/web dir exists but has no yaml files the test should fail."""
+    fake_purelib = tmp_path / "site-packages"
+    (fake_purelib / "plugins" / "web" / "plugin_a").mkdir(parents=True)
+    # No plugin.yaml files — just an empty subdirectory.
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["status"] == "fail"
+    assert result["fix"]
+    assert "#27240" in result["fix"] or "#27268" in result["fix"]
+
+
+async def test_plugin_registry_detail_contains_count(tmp_path: Path) -> None:
+    """Detail string must contain the manifest count."""
+    fake_purelib = tmp_path / "site-packages"
+    for i in range(7):
+        (fake_purelib / "plugins" / "web" / f"plugin_{i}").mkdir(parents=True)
+        (fake_purelib / "plugins" / "web" / f"plugin_{i}" / "plugin.yaml").write_text(f"name: p{i}")
+    import sysconfig as _sysconfig
+
+    with patch.object(_sysconfig, "get_paths", return_value={"purelib": str(fake_purelib)}):
+        result = await _test_plugin_registry()
+    assert result["status"] == "pass"
+    assert "7" in result["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_mcp_urls
+# ---------------------------------------------------------------------------
+
+
+def _url_row(
+    name: str = "playwright-mcp",
+    url: str = "http://playwright-mcp.railway.internal:8931/mcp",
+    enabled: bool = True,
+) -> dict[str, Any]:
+    return {"name": name, "url": url, "enabled": enabled, "is_url_based": True}
+
+
+async def test_mcp_urls_skip_no_url_based_servers() -> None:
+    """No URL-based servers in config → skip."""
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[]):
+        result = await _test_mcp_urls({}, {})
+    assert result["status"] == "skip"
+    assert result["name"] == "mcp_urls"
+    assert "No URL-based" in result["detail"]
+
+
+async def test_mcp_urls_skip_url_based_but_not_enabled() -> None:
+    """URL-based server present but disabled → skip."""
+    disabled_row = _url_row(enabled=False)
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[disabled_row]):
+        result = await _test_mcp_urls({}, {})
+    assert result["status"] == "skip"
+
+
+async def test_mcp_urls_pass_one_reachable_200() -> None:
+    """One enabled URL-based server responds 200 → pass."""
+    row = _url_row()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        return mock_resp
+
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[row]):
+        with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get = fake_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_client
+            result = await _test_mcp_urls({}, {})
+
+    assert result["status"] == "pass"
+    assert "playwright-mcp" in result["detail"]
+    assert result["fix"] == ""
+
+
+async def test_mcp_urls_fail_connection_error() -> None:
+    """One enabled URL-based server raises ConnectError → fail with server name."""
+    row = _url_row()
+
+    async def fake_get(url: str, **kwargs: Any) -> None:
+        raise httpx.ConnectError("connection refused")
+
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[row]):
+        with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get = fake_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_client
+            result = await _test_mcp_urls({}, {})
+
+    assert result["status"] == "fail"
+    assert "playwright-mcp" in result["detail"]
+    assert result["fix"]
+
+
+async def test_mcp_urls_fail_mixed_reachable_and_unreachable() -> None:
+    """Two servers: one reachable, one not → fail listing both unreachable names."""
+    row_ok = _url_row(name="mcp-a", url="http://mcp-a.internal/mcp")
+    row_bad = _url_row(name="mcp-b", url="http://mcp-b.internal/mcp")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    async def fake_get(url: str, **kwargs: Any) -> MagicMock:
+        if "mcp-a" in url:
+            return mock_resp
+        raise httpx.ConnectError("refused")
+
+    with patch("hermes_station.admin.mcp.mcp_status", return_value=[row_ok, row_bad]):
+        with patch("hermes_station.admin.smoketest.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.get = fake_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_client
+            result = await _test_mcp_urls({}, {})
+
+    assert result["status"] == "fail"
+    assert "mcp-b" in result["detail"]
+    assert result["fix"]

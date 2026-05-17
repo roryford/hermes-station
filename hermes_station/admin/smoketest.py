@@ -381,6 +381,179 @@ async def _test_image_gen(config: dict[str, Any], env: dict[str, str]) -> dict[s
         return _r_image_gen("fail", str(exc))
 
 
+_BROWSER_BACKENDS: list[tuple[str, list[str]]] = [
+    ("camofox", ["CAMOFOX_URL"]),
+    ("browserbase", ["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"]),
+    ("browser_use", ["BROWSER_USE_API_KEY"]),
+    ("steel", ["STEEL_API_KEY"]),
+]
+
+
+def _rb(status: str, detail: str, fix: str = "") -> dict[str, Any]:
+    return {
+        "name": "browser_backend",
+        "label": "Browser backend",
+        "status": status,
+        "detail": detail,
+        "fix": fix,
+    }
+
+
+async def _test_browser_backend(env: dict[str, str]) -> dict[str, Any]:
+    for backend, keys in _BROWSER_BACKENDS:
+        values = {k: (env.get(k) or os.environ.get(k) or "").strip() for k in keys}
+        if not all(values.values()):
+            continue
+
+        if backend == "camofox":
+            url = values["CAMOFOX_URL"].rstrip("/")
+            try:
+                async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                    resp = await client.get(f"{url}/health")
+                    if resp.status_code == 404:
+                        resp = await client.get(url)
+                if resp.is_success:
+                    return _rb("pass", f"Camofox reachable at {url}.")
+                return _rb(
+                    "fail",
+                    f"Camofox returned HTTP {resp.status_code}.",
+                    "Check CAMOFOX_URL in Settings — make sure the service is running.",
+                )
+            except Exception as exc:  # noqa: BLE001
+                return _rb("fail", str(exc), "Check CAMOFOX_URL — make sure the service is running.")
+
+        if backend == "browserbase":
+            key = values["BROWSERBASE_API_KEY"]
+            try:
+                async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                    resp = await client.get(
+                        "https://www.browserbase.com/v1/sessions",
+                        headers={"X-BB-API-Key": key},
+                    )
+                if resp.status_code == 200:
+                    return _rb("pass", "Browserbase API is reachable.")
+                if resp.status_code == 401:
+                    return _rb(
+                        "fail",
+                        "BROWSERBASE_API_KEY is invalid.",
+                        "Check BROWSERBASE_API_KEY in Settings → Secrets.",
+                    )
+                return _rb(
+                    "fail",
+                    f"Browserbase returned HTTP {resp.status_code}.",
+                    "Check BROWSERBASE_API_KEY in Settings → Secrets.",
+                )
+            except Exception as exc:  # noqa: BLE001
+                return _rb("fail", str(exc), "Check network connectivity and BROWSERBASE_API_KEY.")
+
+        if backend == "browser_use":
+            return _rb("pass", "Browser Use credential is present.")
+
+        if backend == "steel":
+            return _rb("pass", "Steel credential is present.")
+
+    return _rb("skip", "No browser backend configured.")
+
+
+async def _test_plugin_registry() -> dict[str, Any]:
+    import sysconfig
+
+    plugins_root = Path(sysconfig.get_paths()["purelib"]) / "plugins"
+    if not plugins_root.exists():
+        return {
+            "name": "plugin_registry",
+            "label": "Plugin registry",
+            "status": "skip",
+            "detail": "hermes-agent plugins directory not found.",
+            "fix": "",
+        }
+
+    manifests = list(plugins_root.glob("web/*/plugin.yaml"))
+    count = len(manifests)
+
+    if count == 0:
+        return {
+            "name": "plugin_registry",
+            "label": "Plugin registry",
+            "status": "fail",
+            "detail": "plugins/web directory exists but no plugin.yaml manifests found.",
+            "fix": "Apply the Dockerfile patch — upstream PRs #27240/#27268 fix this in hermes-agent.",
+        }
+
+    try:
+        import hermes_cli.plugins as _hp  # type: ignore[import-not-found]
+
+        web_dir = plugins_root / "web"
+        discover_fn = getattr(_hp, "_scan_directory_level", None) or getattr(_hp, "discover", None)
+        if discover_fn is not None:
+            providers = discover_fn(web_dir)
+            if isinstance(providers, list) and len(providers) == 0:
+                return {
+                    "name": "plugin_registry",
+                    "label": "Plugin registry",
+                    "status": "fail",
+                    "detail": "Manifests present but discovery returned 0 providers.",
+                    "fix": "Check hermes_cli.plugins for registration errors.",
+                }
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "name": "plugin_registry",
+        "label": "Plugin registry",
+        "status": "pass",
+        "detail": f"{count} web plugin manifest{'s' if count != 1 else ''} present.",
+        "fix": "",
+    }
+
+
+async def _probe_mcp_url(name: str, url: str) -> tuple[str, str, bool]:
+    """Return (name, url, reachable). Any HTTP response (even 4xx) counts as reachable."""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            await client.get(url)
+        return name, url, True
+    except Exception:  # noqa: BLE001
+        return name, url, False
+
+
+async def _test_mcp_urls(config: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    from hermes_station.admin.mcp import mcp_status
+
+    rows = [r for r in mcp_status(config, env) if r["is_url_based"] and r["enabled"] and r.get("url")]
+    if not rows:
+        return {
+            "name": "mcp_urls",
+            "label": "MCP URLs",
+            "status": "skip",
+            "detail": "No URL-based MCP servers enabled.",
+            "fix": "",
+        }
+
+    probes = await asyncio.gather(*[_probe_mcp_url(r["name"], r["url"]) for r in rows])
+    unreachable = [(name, url) for name, url, ok in probes if not ok]
+    reachable_names = [name for name, _url, ok in probes if ok]
+    n = len(rows)
+
+    if not unreachable:
+        return {
+            "name": "mcp_urls",
+            "label": "MCP URLs",
+            "status": "pass",
+            "detail": f"All {n} URL-based MCP server(s) reachable: {', '.join(reachable_names)}.",
+            "fix": "",
+        }
+
+    failed_parts = ", ".join(f"{name} ({url})" for name, url in unreachable)
+    return {
+        "name": "mcp_urls",
+        "label": "MCP URLs",
+        "status": "fail",
+        "detail": f"Unreachable MCP server(s): {failed_parts}.",
+        "fix": "Check that the external MCP service is running and the URL in config.yaml is correct.",
+    }
+
+
 async def run_all_tests(request: Request) -> list[dict[str, Any]]:
     paths: Paths = request.app.state.paths
     config = load_yaml_config(paths.config_path)
@@ -393,6 +566,9 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
         _test_github_mcp(config, env),
         _test_web_search(config, env),
         _test_image_gen(config, env),
+        _test_browser_backend(env),
+        _test_plugin_registry(),
+        _test_mcp_urls(config, env),
     )
     return list(results)
 
