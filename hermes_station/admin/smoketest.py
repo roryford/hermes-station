@@ -16,6 +16,7 @@ from starlette.routing import Route
 from hermes_station.admin._templates import templates as _templates
 from hermes_station.admin.auth import is_authenticated, require_admin
 from hermes_station.config import Paths, load_env_file, load_yaml_config
+from hermes_station.readiness import _image_gen_intended
 
 
 _TIMEOUT = 6.0  # seconds per HTTP test
@@ -345,6 +346,41 @@ async def _check_tavily(key: str) -> dict[str, Any]:
         return _r("fail", str(exc), "Check logs for details.")
 
 
+def _r_image_gen(status: str, detail: str, fix: str = "") -> dict[str, Any]:
+    return {"name": "image_gen", "label": "Image gen", "status": status, "detail": detail, "fix": fix}
+
+
+async def _test_image_gen(config: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    if not _image_gen_intended(config):
+        return _r_image_gen("skip", "Image gen not configured.")
+
+    fal_key = (env.get("FAL_KEY") or os.environ.get("FAL_KEY") or "").strip()
+    if not fal_key:
+        return _r_image_gen(
+            "fail",
+            "FAL_KEY is not set.",
+            "Add FAL_KEY in Settings → Secrets.",
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(
+                "https://fal.ai/models",
+                headers={"Authorization": f"Key {fal_key}"},
+            )
+        if resp.status_code == 200:
+            return _r_image_gen("pass", "fal.ai API is reachable.")
+        return _r_image_gen(
+            "fail",
+            f"fal.ai returned HTTP {resp.status_code}.",
+            "Check FAL_KEY in Settings → Secrets — it may be invalid or expired.",
+        )
+    except httpx.TimeoutException:
+        return _r_image_gen("fail", "fal.ai timed out.")
+    except Exception as exc:  # noqa: BLE001
+        return _r_image_gen("fail", str(exc))
+
+
 async def run_all_tests(request: Request) -> list[dict[str, Any]]:
     paths: Paths = request.app.state.paths
     config = load_yaml_config(paths.config_path)
@@ -356,6 +392,7 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
         _test_gateway(gateway, config),
         _test_github_mcp(config, env),
         _test_web_search(config, env),
+        _test_image_gen(config, env),
     )
     return list(results)
 
