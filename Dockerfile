@@ -229,10 +229,24 @@ LABEL org.opencontainers.image.source="https://github.com/roryford/hermes-statio
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 
+# Harden: prevent the agent from modifying its own application code at runtime.
+# Pre-compile /app so Python doesn't need __pycache__ write access, then strip
+# write bits from site-packages, the webui source, and the app source tree.
+# /data (all agent state) and /opt/mcp-cache (npm/uv tool caches) stay writable.
+# Running as a non-root user is what makes the chmod effective — root has
+# DAC_OVERRIDE and ignores file permission bits.
+RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
+    && python3 -m compileall -q /app \
+    && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
+    && chown -R hermes /data /opt/mcp-cache \
+    && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app
+USER hermes
+
 # --- test stage (not shipped to prod) ---
 # Extends runtime with dev deps + test suite so the full test suite
 # (unit + toolbelt + e2e) can run inside the image via `exec`.
 FROM runtime AS test
+USER root
 COPY uv.lock ./
 COPY tests/ /app/tests/
 COPY docs/ /app/docs/
