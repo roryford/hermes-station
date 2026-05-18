@@ -17,6 +17,7 @@ RUN apt-get update \
     && apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
+         gosu \
          gh \
          nodejs \
          ffmpeg \
@@ -213,7 +214,7 @@ ENV HOME=/data \
 
 EXPOSE 8787
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hermes-entrypoint"]
 CMD ["python", "-m", "hermes_station"]
 
 # --- version metadata (kept at bottom so revision changes don't bust deps cache) ---
@@ -235,18 +236,23 @@ LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 # /data (all agent state) and /opt/mcp-cache (npm/uv tool caches) stay writable.
 # Running as a non-root user is what makes the chmod effective — root has
 # DAC_OVERRIDE and ignores file permission bits.
+#
+# /data is NOT chowned here: bind-mounted volumes ignore image-layer ownership,
+# so the entrypoint script fixes /data ownership at container start before
+# dropping to the hermes user via gosu.
 RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
     && python3 -m compileall -q /app \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
-    && chown -R hermes /data /opt/mcp-cache \
-    && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app
-USER hermes
+    && chown -R hermes /opt/mcp-cache \
+    && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app \
+    && printf '#!/bin/sh\nset -e\nchown 10000 /data /data/.hermes /data/webui /data/workspace 2>/dev/null || true\nexec gosu hermes "$@"\n' \
+         > /usr/local/bin/hermes-entrypoint \
+    && chmod +x /usr/local/bin/hermes-entrypoint
 
 # --- test stage (not shipped to prod) ---
 # Extends runtime with dev deps + test suite so the full test suite
 # (unit + toolbelt + e2e) can run inside the image via `exec`.
 FROM runtime AS test
-USER root
 COPY uv.lock ./
 COPY tests/ /app/tests/
 COPY docs/ /app/docs/
