@@ -224,6 +224,11 @@ def _build_payload(request: Request) -> dict[str, Any]:
 
     status = _compose_status(storage=storage, readiness=readiness, webui=webui)
 
+    # Import locally to avoid pulling the admin subpackage at module import
+    # time (keeps /health/live ultra-cheap and avoids any chance of import
+    # cycles with admin extension loaders).
+    from hermes_station.admin.bridge_auth import get_bridge_failures_total
+
     payload: dict[str, Any] = {
         "status": status,
         "components": {
@@ -236,6 +241,7 @@ def _build_payload(request: Request) -> dict[str, Any]:
         },
         "readiness": _readiness_to_payload(readiness),
         "versions": _versions_payload(readiness),
+        "bridge_failures_total": get_bridge_failures_total(),
     }
     return payload
 
