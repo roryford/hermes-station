@@ -17,6 +17,7 @@ RUN apt-get update \
     && apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
+         gosu \
          gh \
          nodejs \
          ffmpeg \
@@ -60,8 +61,8 @@ WORKDIR /app
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
 # hermes-webui is fetched at build time because it has no pyproject.toml,
 # so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
-ARG HERMES_WEBUI_VERSION=v0.51.82
-ARG HERMES_WEBUI_SHA=603183a3011f4abbb79b6fe7f5434d5878c6c800
+ARG HERMES_WEBUI_VERSION=v0.51.89
+ARG HERMES_WEBUI_SHA=e6be01c4dd84a5f2a146adc3727f0e458508dc13
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
@@ -213,7 +214,7 @@ ENV HOME=/data \
 
 EXPOSE 8787
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hermes-entrypoint"]
 CMD ["python", "-m", "hermes_station"]
 
 # --- version metadata (kept at bottom so revision changes don't bust deps cache) ---
@@ -228,6 +229,25 @@ RUN station=$(python3 -c "from importlib.metadata import version; print(version(
 LABEL org.opencontainers.image.source="https://github.com/roryford/hermes-station"
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
+
+# Harden: prevent the agent from modifying its own application code at runtime.
+# Pre-compile /app so Python doesn't need __pycache__ write access, then strip
+# write bits from site-packages, the webui source, and the app source tree.
+# /data (all agent state) and /opt/mcp-cache (npm/uv tool caches) stay writable.
+# Running as a non-root user is what makes the chmod effective — root has
+# DAC_OVERRIDE and ignores file permission bits.
+#
+# /data is NOT chowned here: bind-mounted volumes ignore image-layer ownership,
+# so the entrypoint script fixes /data ownership at container start before
+# dropping to the hermes user via gosu.
+RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
+    && python3 -m compileall -q /app \
+    && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
+    && chown -R hermes /opt/mcp-cache \
+    && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app \
+    && printf '#!/bin/sh\nset -e\nchown 10000 /data /data/.hermes /data/webui /data/workspace 2>/dev/null || true\nexec gosu hermes "$@"\n' \
+         > /usr/local/bin/hermes-entrypoint \
+    && chmod +x /usr/local/bin/hermes-entrypoint
 
 # --- test stage (not shipped to prod) ---
 # Extends runtime with dev deps + test suite so the full test suite

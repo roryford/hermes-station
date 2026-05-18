@@ -23,9 +23,27 @@ the build job in CI sets the env vars and runs it).
 from __future__ import annotations
 
 import os
+import re
 
 import httpx
 import pytest
+
+
+def _fetch_csrf_token(client: httpx.Client, base_url: str) -> str:
+    """GET the webui root page and extract the session-bound CSRF token.
+
+    hermes-webui v0.51.88+ embeds the token in:
+      window.__HERMES_CONFIG__={...,csrfToken:"<hex>",...}
+
+    The token must be sent as ``X-Hermes-CSRF-Token`` on unsafe (POST) browser
+    requests that carry an Origin header, otherwise webui rejects them with
+    "Cross-origin request rejected".
+    """
+    page = client.get("/", headers={"Origin": base_url})
+    m = re.search(r'csrfToken\s*:\s*"([0-9a-f]+)"', page.text)
+    if not m:
+        return ""
+    return m.group(1)
 
 
 @pytest.fixture(scope="session")
@@ -64,7 +82,13 @@ def test_gzipped_json_response_preserves_content_encoding(base_url: str, webui_p
     """webui gzips JSON responses >1KB. /api/session/new returns ~1.5KB of
     metadata, so the proxy must keep Content-Encoding intact for the client
     to decode it. httpx auto-decompresses and still exposes the original
-    Content-Encoding header on resp.headers."""
+    Content-Encoding header on resp.headers.
+
+    hermes-webui v0.51.88+ requires a session-bound CSRF token on any POST
+    that carries an Origin header. We fetch the token from the root page
+    (where webui embeds it in window.__HERMES_CONFIG__) and include it as
+    X-Hermes-CSRF-Token — exactly what a browser's fetch interceptor does.
+    """
     with httpx.Client(base_url=base_url, follow_redirects=False, timeout=10.0) as client:
         login = client.post(
             "/api/auth/login",
@@ -73,9 +97,13 @@ def test_gzipped_json_response_preserves_content_encoding(base_url: str, webui_p
         )
         assert login.status_code == 200, f"login failed: {login.status_code} {login.text!r}"
 
+        # Fetch the CSRF token now that we have an authenticated session cookie.
+        csrf_token = _fetch_csrf_token(client, base_url)
+        assert csrf_token, "could not extract csrfToken from webui root page"
+
         resp = client.post(
             "/api/session/new",
-            headers={"Origin": base_url},
+            headers={"Origin": base_url, "X-Hermes-CSRF-Token": csrf_token},
             json={},
         )
 
