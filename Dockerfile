@@ -245,7 +245,7 @@ RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['pure
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
     && chown -R hermes /opt/mcp-cache \
     && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app \
-    && printf '#!/bin/sh\nset -e\nchown 10000 /data /data/.hermes /data/webui /data/workspace 2>/dev/null || true\nexec gosu hermes "$@"\n' \
+    && printf '#!/bin/sh\nset -e\nchown -R 10000 /data\nexec gosu hermes "$@"\n' \
          > /usr/local/bin/hermes-entrypoint \
     && chmod +x /usr/local/bin/hermes-entrypoint
 
