@@ -1,5 +1,6 @@
 /* hermes-station admin extension — settings pane styles */
-#settingsPaneAdmin { display: flex; flex-direction: column; gap: var(--space-3, 12px); padding: var(--space-3, 12px); }
+/* Match webui's .settings-pane visibility — only display when .active is set. ID specificity beats the .settings-pane base rule, so we MUST scope to .active or the pane leaks into other tabs. */
+#settingsPaneAdmin.active { display: flex; flex-direction: column; gap: var(--space-3, 12px); padding: var(--space-3, 12px); }
 .admin-card { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-card, 8px); padding: var(--space-3, 12px) var(--space-4, 16px); }
 .admin-card h3 { font-size: var(--font-size-md, 14px); color: var(--strong); margin-bottom: var(--space-2, 8px); font-weight: 600; }
 .admin-card dl { display: grid; grid-template-columns: max-content 1fr; column-gap: var(--space-3, 12px); row-gap: var(--space-1, 4px); align-items: baseline; }

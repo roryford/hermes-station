@@ -5,16 +5,31 @@
   const BACKOFFS = [5000, 10000, 30000, 60000];
   const DASH = "—";
 
+  const SECTION_ID = "station";
+  const SECTION_LABEL = "Station";
+
   const menu = document.getElementById("settingsMenu");
   const main = document.querySelector(".settings-main");
   if (!menu || !main) return;
 
+  // Build button with SVG icon matching webui's other settings items (activity/pulse icon).
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "side-menu-item";
-  btn.dataset.settingsSection = "admin";
-  btn.textContent = "Admin";
-  btn.setAttribute("onclick", "switchSettingsSection('admin')");
+  btn.dataset.settingsSection = SECTION_ID;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", "16"); svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.5");
+  svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(svgNS, "polyline");
+  path.setAttribute("points", "22 12 18 12 15 21 9 3 6 12 2 12");
+  svg.appendChild(path);
+  const label = document.createElement("span");
+  label.textContent = SECTION_LABEL;
+  btn.appendChild(svg); btn.appendChild(label);
   menu.appendChild(btn);
 
   const pane = document.createElement("div");
@@ -22,6 +37,27 @@
   pane.id = "settingsPaneAdmin";
   pane.innerHTML = '<div class="admin-empty">Loading status…</div>';
   main.appendChild(pane);
+
+  // webui's switchSettingsSection has a hardcoded allowlist of 6 sections; passing 'station'
+  // falls back to 'conversation'. We override it so our section integrates as a peer.
+  const _origSwitch = window.switchSettingsSection;
+  function activateStation() {
+    document.querySelectorAll("#settingsMenu .side-menu-item").forEach((it) => {
+      it.classList.toggle("active", it.dataset.settingsSection === SECTION_ID);
+    });
+    document.querySelectorAll(".settings-main .settings-pane").forEach((p) => {
+      p.classList.toggle("active", p.id === "settingsPaneAdmin");
+    });
+  }
+  window.switchSettingsSection = function (name) {
+    if (name === SECTION_ID) { activateStation(); return; }
+    // Switching to a non-station section: webui's original only knows its 6 sections,
+    // so it won't clear our .active. Clear it ourselves.
+    pane.classList.remove("active");
+    btn.classList.remove("active");
+    if (typeof _origSwitch === "function") return _origSwitch.apply(this, arguments);
+  };
+  btn.addEventListener("click", () => window.switchSettingsSection(SECTION_ID));
 
   async function fetchStatus() {
     if (typeof window.api === "function") return await window.api("/admin/api/pilot/status");
