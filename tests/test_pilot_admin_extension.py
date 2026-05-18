@@ -212,3 +212,38 @@ async def test_status_concurrency_safe_under_mid_write(
     assert "provider" in data
     assert "channels" in data
     assert "memory" in data
+
+
+# ─────────────────────────────────────────────────── docs-sync regression
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_readme_documents_pilot_restart_requirement() -> None:
+    """README's Pilot features section must state that flag changes require a
+    container restart — the webui subprocess captures env at boot, so live
+    env changes are not picked up. Pure docs-sync check; not behavior."""
+    readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Pilot features" in readme, "README must document pilot features"
+    assert "HERMES_STATION_PILOT_ADMIN_EXTENSION" in readme
+    assert "restart" in readme.lower()
+    assert "captures" in readme and "boot" in readme, (
+        "README must explain that the webui subprocess captures env at boot "
+        "so flag changes only take effect after a restart"
+    )
+
+
+def test_contract_documents_pilot_restart_requirement() -> None:
+    """docs/CONTRACT.md's Pilot features section must state that flag changes
+    require a container restart. Mirror of the README assertion above so both
+    docs stay in sync."""
+    contract = (_REPO_ROOT / "docs" / "CONTRACT.md").read_text(encoding="utf-8")
+    assert "Pilot features" in contract, "CONTRACT.md must document pilot features"
+    assert "HERMES_STATION_PILOT_ADMIN_EXTENSION" in contract
+    assert "Restart requirement" in contract, (
+        "CONTRACT.md must include an explicit 'Restart requirement' note"
+    )
+    assert "captures its environment at boot" in contract, (
+        "CONTRACT.md must explain that the webui subprocess captures env at boot"
+    )

@@ -134,3 +134,17 @@ container logs hermes-station | jq 'select(.level=="warning" or .level=="error")
 ```
 
 If you want plain text for grep-driven debugging, pipe through `jq -r '"\(.ts) \(.level) \(.component) \(.message)"'`.
+
+## Advanced / Extension directories
+
+The hermes-webui extension mechanism — `HERMES_WEBUI_EXTENSION_DIR`, `HERMES_WEBUI_EXTENSION_SCRIPT_URLS`, and `HERMES_WEBUI_EXTENSION_STYLESHEET_URLS` — is **operator-facing and not recommended for normal users.** It lets a host application inject its own JS and CSS into the webui shell; getting it wrong can produce a UI that silently fails to load.
+
+When `HERMES_STATION_PILOT_ADMIN_EXTENSION=1` (see the README's "Pilot features" section), hermes-station auto-seeds these three vars to point at the bundled admin extension at `/opt/hermes-station/extension/`:
+
+- `HERMES_WEBUI_EXTENSION_DIR=/opt/hermes-station/extension`
+- `HERMES_WEBUI_EXTENSION_SCRIPT_URLS=/extensions/admin.js`
+- `HERMES_WEBUI_EXTENSION_STYLESHEET_URLS=/extensions/admin.css`
+
+**Operator values override the auto-seed.** If any of these three env vars is already set when station boots, station logs a WARNING and honors the operator's value — it does *not* overwrite. This lets you point the webui at your own extension bundle while still using the pilot flag for the rest of the wiring.
+
+If you need to customize delivery (e.g. point at your own bundle, mix the bundled admin extension with custom JS), set the env vars directly. Invalid paths cause webui to start without the extension — there is no crash, just a missing tab; check the logs and confirm the directory is readable by uid 10000 (`hermes`).

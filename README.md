@@ -233,6 +233,31 @@ docker run --rm -d --name hermes-station -p 8787:8787 \
 curl http://127.0.0.1:8787/health | jq .status
 ```
 
+## Pilot features
+
+Pilot features are opt-in capabilities, gated by `HERMES_STATION_PILOT_*` env vars and **off by default**. They let us ship and dogfood new functionality before committing to a stable contract. Shapes, env-var names, and behavior may change between any two releases during the pilot phase. Each pilot eventually either flips to default-on, becomes GA (flag-free), or is removed — see [`docs/CONTRACT.md`](docs/CONTRACT.md) §12 for the lifecycle promise.
+
+**Note:** changes to pilot env vars only take effect after a container restart. The webui subprocess captures its environment at boot — flipping a flag on a running container has no effect until the container is restarted.
+
+### Admin UI extension (`HERMES_STATION_PILOT_ADMIN_EXTENSION`)
+
+Adds an "Admin" tab to the webui's settings menu that shows a live, read-only status snapshot of the gateway, webui, configured provider, channels, and memory backend. The extension reuses the same browser session as the chat UI — no separate admin password is needed during the pilot, and the bridge re-validates against the existing webui login on every request.
+
+**Enable:**
+
+```bash
+HERMES_STATION_PILOT_ADMIN_EXTENSION=1
+# then restart the container
+```
+
+**Rollback:**
+
+1. Set `HERMES_STATION_PILOT_ADMIN_EXTENSION=0` (or unset it).
+2. Restart the container.
+3. Hard-refresh the browser (Ctrl+Shift+R / Cmd+Shift+R) to drop the cached extension JS/CSS so the old tab disappears from the settings menu.
+
+Last-resort rollback: downgrade the image to `ghcr.io/roryford/hermes-station:v0.4.2`. v0.4.2 is stateless with respect to this pilot — no `/data` migration is required to move back.
+
 ## License
 
 MIT — see `LICENSE`. The pinned upstreams (`hermes-agent`, `hermes-webui`) are also MIT.
