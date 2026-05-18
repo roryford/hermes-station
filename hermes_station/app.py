@@ -162,6 +162,11 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     app.state.proxy_client = httpx.AsyncClient(
         timeout=httpx.Timeout(connect=10.0, read=300.0, write=None, pool=10.0)
     )
+    # Pooled client for the webui session-bridge auth (see
+    # hermes_station/admin/bridge_auth.py). Separate from proxy_client so the
+    # bridge's tight 2s timeout doesn't bleed into the user-facing proxy and
+    # vice versa. base_url left empty — bridge_auth uses absolute URLs.
+    app.state.bridge_http_client = httpx.AsyncClient(timeout=2.0)
 
     webui: WebUIProcess = app.state.webui
     gateway: Gateway = app.state.gateway
@@ -267,6 +272,8 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
             await webui.stop()
         with suppress(Exception):
             await app.state.proxy_client.aclose()
+        with suppress(Exception):
+            await app.state.bridge_http_client.aclose()
 
 
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]

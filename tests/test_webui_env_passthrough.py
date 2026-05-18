@@ -117,6 +117,33 @@ def test_missing_config_file_does_not_crash(fake_data_dir: Path, monkeypatch) ->
     assert env.get("FAL_KEY") == "fal-1234"
 
 
+def test_extension_dir_forwarded(fake_data_dir: Path, monkeypatch) -> None:
+    """HERMES_WEBUI_EXTENSION_DIR (system-class path) reaches the child."""
+    monkeypatch.setenv("HERMES_WEBUI_EXTENSION_DIR", "/opt/hermes-station/extension")
+    env = _process(fake_data_dir)._build_env()
+    assert env.get("HERMES_WEBUI_EXTENSION_DIR") == "/opt/hermes-station/extension"
+
+
+def test_extension_script_urls_forwarded(fake_data_dir: Path, monkeypatch) -> None:
+    """HERMES_WEBUI_EXTENSION_SCRIPT_URLS (URL list) reaches the child."""
+    monkeypatch.setenv(
+        "HERMES_WEBUI_EXTENSION_SCRIPT_URLS",
+        "/extensions/admin.js,/extensions/other.js",
+    )
+    env = _process(fake_data_dir)._build_env()
+    assert env.get("HERMES_WEBUI_EXTENSION_SCRIPT_URLS") == ("/extensions/admin.js,/extensions/other.js")
+
+
+def test_extension_stylesheet_urls_forwarded(fake_data_dir: Path, monkeypatch) -> None:
+    """HERMES_WEBUI_EXTENSION_STYLESHEET_URLS (URL list) reaches the child."""
+    monkeypatch.setenv(
+        "HERMES_WEBUI_EXTENSION_STYLESHEET_URLS",
+        "/extensions/admin.css",
+    )
+    env = _process(fake_data_dir)._build_env()
+    assert env.get("HERMES_WEBUI_EXTENSION_STYLESHEET_URLS") == "/extensions/admin.css"
+
+
 def test_static_whitelist_is_minimal(fake_data_dir: Path) -> None:
     """The static whitelist should remain non-secret-aware.
 

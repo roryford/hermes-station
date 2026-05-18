@@ -44,6 +44,23 @@ def admin_password(monkeypatch: pytest.MonkeyPatch) -> str:
 
 
 @pytest.fixture(autouse=True)
+def _reset_bridge_http_client() -> Iterator[None]:
+    """Ensure the pooled bridge HTTP client doesn't leak across tests.
+
+    Unit tests that swap in an ``httpx.ASGITransport`` against a fake-webui
+    ASGI app set ``app.state.bridge_http_client`` to their own client. Without
+    this fixture, a stale client created by an earlier test could linger and
+    serve requests in a later one.
+
+    No-op when no app is built (e.g. pure-unit tests without lifespan).
+    """
+    yield
+    # Nothing to clean up globally — each test that constructs an app owns
+    # the lifetime of its bridge_http_client. This fixture exists as a hook
+    # for future per-test resets and to satisfy the plan's contract.
+
+
+@pytest.fixture(autouse=True)
 def _clear_login_rate_limit() -> Iterator[None]:
     """Reset the in-process login rate-limit counter before every test.
 

@@ -16,10 +16,12 @@ from hermes_station.admin.auth import (
     admin_auth_enabled,
     auth_state,
     clear_session_cookie,
+    is_authenticated,
     issue_session_cookie,
     require_admin,
     verify_password,
 )
+from hermes_station.admin.bridge_auth import verify_webui_session
 from hermes_station.admin.channels import channel_status, save_channel_values
 from hermes_station.admin.pairing import approve, deny, get_approved, get_pending, revoke
 from hermes_station.admin.provider import apply_provider_setup
@@ -29,6 +31,7 @@ from hermes_station.config import (
     extract_model_config,
     load_env_file,
     load_yaml_config,
+    pilot_admin_extension_enabled,
     seed_env_file_to_os,
 )
 from hermes_station.gateway import Gateway
@@ -169,6 +172,167 @@ async def api_status(request: Request) -> Response:
             "phase": "1",
         }
     )
+
+
+async def api_ping(request: Request) -> Response:
+    """Dual-cookie diagnostic ping.
+
+    Accepts EITHER a webui ``hermes_session`` cookie (verified via the bridge
+    loopback to webui's ``/api/auth/status``) OR the legacy
+    ``hermes_station_admin`` cookie. Returns ``{ok: true, via: ...}`` so
+    operators can confirm which auth path is healthy during the pilot
+    transition.
+
+    Does NOT use ``require_admin()`` — it implements its own dual-cookie logic.
+    """
+    if await verify_webui_session(request):
+        return JSONResponse({"ok": True, "via": "webui_session"})
+    if is_authenticated(request):
+        return JSONResponse({"ok": True, "via": "station_admin"})
+    return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+
+def _pilot_compose_gateway(request: Request) -> dict[str, Any]:
+    """Best-effort gateway snapshot for the pilot status payload.
+
+    Returns nullable fields so a mid-write ``gateway_state.json`` (rewritten by
+    hermes-agent) can't 500 the whole response. Composed from the live
+    ``Gateway`` supervisor on ``app.state`` when present.
+    """
+    gateway = getattr(request.app.state, "gateway", None)
+    if gateway is None:
+        return {"state": "unknown", "pid": None, "uptime_s": None, "platform": None, "connection": None}
+    snap = gateway.snapshot()
+    raw_state = gateway.read_state()
+    pid = raw_state.get("pid") if isinstance(raw_state.get("pid"), int) else None
+    uptime = raw_state.get("uptime_s") if isinstance(raw_state.get("uptime_s"), int) else None
+    return {
+        "state": str(snap.get("state") or "unknown"),
+        "pid": pid,
+        "uptime_s": uptime,
+        "platform": snap.get("platform"),
+        "connection": snap.get("connection"),
+    }
+
+
+def _pilot_compose_webui(request: Request) -> dict[str, Any]:
+    webui = getattr(request.app.state, "webui", None)
+    if webui is None:
+        return {"state": "unknown", "pid": None}
+    snap = webui.snapshot()
+    pid_value = snap.get("pid")
+    pid = pid_value if isinstance(pid_value, int) else None
+    return {"state": str(snap.get("state") or "unknown"), "pid": pid}
+
+
+def _pilot_compose_provider(request: Request) -> dict[str, Any]:
+    paths = _paths(request)
+    config = load_yaml_config(paths.config_path)
+    model = extract_model_config(config)
+    return {
+        "name": model.provider or None,
+        "model": model.default or None,
+    }
+
+
+def _pilot_compose_channels(request: Request) -> list[dict[str, Any]]:
+    """Channel rows from the cached readiness report.
+
+    A "channel" row is either the bare ``discord`` key or anything namespaced
+    under ``channel:<slug>`` (matches ``readiness.validate_readiness``).
+    """
+    readiness = getattr(request.app.state, "readiness", None)
+    if readiness is None:
+        return []
+    rows = []
+    for key, row in readiness.readiness.items():
+        if key == "discord":
+            name = "discord"
+        elif key.startswith("channel:"):
+            name = key.split(":", 1)[1]
+        else:
+            continue
+        rows.append(
+            {
+                "name": name,
+                "intended": bool(row.intended),
+                "ready": bool(row.ready),
+                "reason": row.reason or None,
+            }
+        )
+    return rows
+
+
+def _pilot_compose_memory(request: Request) -> dict[str, Any]:
+    paths = _paths(request)
+    config = load_yaml_config(paths.config_path)
+    raw_memory = config.get("memory")
+    memory_block: dict[str, Any] = raw_memory if isinstance(raw_memory, dict) else {}
+    provider_name = str(memory_block.get("provider") or "").strip() or None
+
+    ready = False
+    readiness = getattr(request.app.state, "readiness", None)
+    if readiness is not None and provider_name:
+        row = readiness.readiness.get(f"memory:{provider_name}")
+        if row is not None:
+            ready = bool(row.ready)
+    return {"provider": provider_name, "ready": ready}
+
+
+async def api_pilot_status(request: Request) -> Response:
+    """Read-only status snapshot for the pilot admin extension.
+
+    Registered unconditionally; returns 404 when the pilot flag is off so the
+    route table stays consistent across deploys.
+
+    Auth: accepts either a webui ``hermes_session`` (via the bridge) or the
+    legacy ``hermes_station_admin`` cookie. Mirrors ``api_ping``'s dual-cookie
+    pattern.
+
+    Concurrency: each top-level field is composed in an independent try/except.
+    A mid-write ``gateway_state.json`` or transient read error degrades that
+    one field to null/empty and logs at INFO; the overall response still 200s.
+    """
+    if not pilot_admin_extension_enabled():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if not await verify_webui_session(request):
+        if not is_authenticated(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    payload: dict[str, Any] = {"ok": True}
+
+    try:
+        payload["gateway"] = _pilot_compose_gateway(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("pilot status: gateway compose failed: %s", exc)
+        payload["gateway"] = None
+
+    try:
+        payload["webui"] = _pilot_compose_webui(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("pilot status: webui compose failed: %s", exc)
+        payload["webui"] = None
+
+    try:
+        payload["provider"] = _pilot_compose_provider(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("pilot status: provider compose failed: %s", exc)
+        payload["provider"] = None
+
+    try:
+        payload["channels"] = _pilot_compose_channels(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("pilot status: channels compose failed: %s", exc)
+        payload["channels"] = None
+
+    try:
+        payload["memory"] = _pilot_compose_memory(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("pilot status: memory compose failed: %s", exc)
+        payload["memory"] = None
+
+    return JSONResponse(payload)
 
 
 async def api_provider_setup(request: Request) -> Response:
@@ -333,6 +497,8 @@ def admin_routes() -> list[Route]:
         Route("/admin/login", admin_login, methods=["POST"]),
         Route("/admin/logout", admin_logout, methods=["POST"]),
         Route("/admin/api/status", api_status, methods=["GET"]),
+        Route("/admin/api/ping", api_ping, methods=["GET"]),
+        Route("/admin/api/pilot/status", api_pilot_status, methods=["GET"]),
         Route("/admin/api/provider/setup", api_provider_setup, methods=["POST"]),
         Route("/admin/api/channels", api_channels_get, methods=["GET"]),
         Route("/admin/api/channels/save", api_channels_save, methods=["POST"]),

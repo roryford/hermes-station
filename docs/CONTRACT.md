@@ -343,6 +343,43 @@ If all four pass for both fixtures (when realistic is present), the new image is
 
 ---
 
+## 11. Internal service contracts
+
+This section names internal contracts hermes-station depends on that aren't user-facing but matter for upgrades: a breaking change upstream will manifest as a hermes-station regression even though no station-owned API moved.
+
+**hermes-webui `/api/auth/status` response shape.** hermes-station's auth bridge (`hermes_station/admin/bridge_auth.py`) depends on webui returning JSON of the form `{"auth_enabled": bool, "logged_in": bool}` at this endpoint. The bridge calls it over the internal loopback (`http://127.0.0.1:8788/api/auth/status`) on every `/admin/api/pilot/*` request, forwarding the browser's `hermes_session` cookie, and authorizes the request only when `logged_in` is `true`. If a future webui release changes this shape, the bridge will fail closed (returns `False` on missing `logged_in`) and pilot endpoints will become unreachable until station is updated to match. That is acceptable for a pilot, but it is tracked here so the dependency is visible the next time webui is bumped.
+
+---
+
+## 12. Pilot features
+
+hermes-station ships some capabilities as **pilots** — opt-in, flag-gated, and explicitly *outside* the stability guarantees of the rest of this contract.
+
+**Naming convention.** Env var flags are `HERMES_STATION_PILOT_*`. HTTP endpoints introduced by a pilot are namespaced under `/admin/api/pilot/` to keep them visually distinct from the stable `/admin/api/*` surface documented in §5.
+
+**No stability guarantees.** Response shapes, env-var names, endpoint paths, and feature behavior may change between any two versions during the pilot phase. Operators should not script against pilot endpoints or rely on their shapes in dashboards.
+
+**Lifecycle.** Each pilot moves through four phases:
+
+1. **Pilot** (current state, v0.5.x for this generation): flag default `0` (off). Opt-in only. Breaking changes allowed at any time.
+2. **Default-on** (no earlier than v0.6.0): if the pilot validates under real use, the flag default flips to `1`. Operators who want the old behavior can opt out via `=0`. Shape stabilizes here.
+3. **GA** (no earlier than v0.7.0): functionality is integrated, no flag, listed alongside the stable contract sections above.
+4. **Flag removal** (no earlier than v0.8.0): the env var no longer has any effect. Removal MUST be announced in release notes at least 30 days before it ships.
+
+**Restart requirement.** Changes to pilot env vars only take effect after a container restart. The webui subprocess captures its environment at boot; live env changes are not picked up. Documented in the README's "Pilot features" section as well.
+
+**Release-note language.** Any PR shipping a pilot feature should carry the `release-highlight` label, and the PR body should include the warning:
+
+> ⚠️ Pilot feature: opt-in via `<FLAG_NAME>`, see README.
+
+**Currently active pilots.**
+
+| Pilot | Flag | Introduced | Endpoints |
+|---|---|---|---|
+| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status` |
+
+---
+
 ## Known limitations
 
 - **Opaque hermes-agent state.** The internal formats for `state.db`, `memories/`, and `bin/` are owned entirely by hermes-agent. hermes-station does not read or modify them — it preserves them verbatim across restarts. Schema migrations (if any) are hermes-agent's responsibility.

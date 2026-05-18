@@ -23,7 +23,14 @@ import re as _re
 
 import httpx
 
+from hermes_station.config import pilot_admin_extension_enabled
 from hermes_station.logs import WEBUI_LOGS
+
+_PILOT_EXTENSION_DEFAULTS: dict[str, str] = {
+    "HERMES_WEBUI_EXTENSION_DIR": "/opt/hermes-station/extension",
+    "HERMES_WEBUI_EXTENSION_SCRIPT_URLS": "/extensions/admin.js",
+    "HERMES_WEBUI_EXTENSION_STYLESHEET_URLS": "/extensions/admin.css",
+}
 
 _SECRET_PATTERN = _re.compile(
     r"(?i)(password|token|api_key|secret|credential|auth)[^\S\r\n]*[=:]\s*\S+",
@@ -56,6 +63,12 @@ _WEBUI_ENV_PASSTHROUGH = frozenset(
         "UV_TOOL_DIR",
         # Auth — forwarded explicitly so Railway env var is honoured when set
         "HERMES_WEBUI_PASSWORD",
+        # Extension delivery (Layer A: passthrough; Layer B fills these in).
+        # System-class (paths / URL lists), not credentials — belongs here
+        # alongside PATH/HOME rather than in _secrets_passthrough().
+        "HERMES_WEBUI_EXTENSION_DIR",
+        "HERMES_WEBUI_EXTENSION_SCRIPT_URLS",
+        "HERMES_WEBUI_EXTENSION_STYLESHEET_URLS",
     }
 )
 
@@ -189,6 +202,17 @@ class WebUIProcess:
         # silently disappear from the model's tool catalog inside webui.
         env: dict[str, str] = {k: v for k, v in os.environ.items() if k in _WEBUI_ENV_PASSTHROUGH}
         env.update(self._secrets_passthrough())
+        # Pilot: auto-seed extension delivery env vars when the feature flag is
+        # on. Operator values (passed through above) win; we only set keys that
+        # aren't already present. WARNING is logged once per pre-set key so the
+        # operator can audit the override; the happy path (no overrides) stays
+        # silent.
+        if pilot_admin_extension_enabled():
+            for key, default_value in _PILOT_EXTENSION_DEFAULTS.items():
+                if key in env:
+                    logger.warning("%s already set in environment; honoring operator value", key)
+                else:
+                    env[key] = default_value
         if not env.get("HERMES_WEBUI_AGENT_DIR"):
             import sysconfig
 

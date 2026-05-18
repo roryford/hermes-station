@@ -195,6 +195,11 @@ RUN set -eux; \
     rm -rf /root/.cache/uv; \
     echo "MCP cache warmed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
 
+# Pilot admin extension bundle. Copied above the source layer so an edit to
+# hermes_station/ doesn't invalidate the extension layer, and so an extension
+# edit doesn't invalidate the (much heavier) `uv pip install` layer above.
+COPY extension/ /opt/hermes-station/extension/
+
 # Copy the real source last. At runtime `python -m hermes_station` runs from
 # WORKDIR=/app, so /app/hermes_station/ shadows the stub installed above.
 COPY hermes_station/ /app/hermes_station/
