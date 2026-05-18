@@ -56,6 +56,12 @@ _WEBUI_ENV_PASSTHROUGH = frozenset(
         "UV_TOOL_DIR",
         # Auth — forwarded explicitly so Railway env var is honoured when set
         "HERMES_WEBUI_PASSWORD",
+        # Extension delivery (Layer A: passthrough; Layer B fills these in).
+        # System-class (paths / URL lists), not credentials — belongs here
+        # alongside PATH/HOME rather than in _secrets_passthrough().
+        "HERMES_WEBUI_EXTENSION_DIR",
+        "HERMES_WEBUI_EXTENSION_SCRIPT_URLS",
+        "HERMES_WEBUI_EXTENSION_STYLESHEET_URLS",
     }
 )
 

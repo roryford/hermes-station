@@ -16,10 +16,12 @@ from hermes_station.admin.auth import (
     admin_auth_enabled,
     auth_state,
     clear_session_cookie,
+    is_authenticated,
     issue_session_cookie,
     require_admin,
     verify_password,
 )
+from hermes_station.admin.bridge_auth import verify_webui_session
 from hermes_station.admin.channels import channel_status, save_channel_values
 from hermes_station.admin.pairing import approve, deny, get_approved, get_pending, revoke
 from hermes_station.admin.provider import apply_provider_setup
@@ -169,6 +171,24 @@ async def api_status(request: Request) -> Response:
             "phase": "1",
         }
     )
+
+
+async def api_ping(request: Request) -> Response:
+    """Dual-cookie diagnostic ping.
+
+    Accepts EITHER a webui ``hermes_session`` cookie (verified via the bridge
+    loopback to webui's ``/api/auth/status``) OR the legacy
+    ``hermes_station_admin`` cookie. Returns ``{ok: true, via: ...}`` so
+    operators can confirm which auth path is healthy during the pilot
+    transition.
+
+    Does NOT use ``require_admin()`` — it implements its own dual-cookie logic.
+    """
+    if await verify_webui_session(request):
+        return JSONResponse({"ok": True, "via": "webui_session"})
+    if is_authenticated(request):
+        return JSONResponse({"ok": True, "via": "station_admin"})
+    return JSONResponse({"error": "unauthorized"}, status_code=401)
 
 
 async def api_provider_setup(request: Request) -> Response:
@@ -333,6 +353,7 @@ def admin_routes() -> list[Route]:
         Route("/admin/login", admin_login, methods=["POST"]),
         Route("/admin/logout", admin_logout, methods=["POST"]),
         Route("/admin/api/status", api_status, methods=["GET"]),
+        Route("/admin/api/ping", api_ping, methods=["GET"]),
         Route("/admin/api/provider/setup", api_provider_setup, methods=["POST"]),
         Route("/admin/api/channels", api_channels_get, methods=["GET"]),
         Route("/admin/api/channels/save", api_channels_save, methods=["POST"]),
