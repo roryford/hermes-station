@@ -76,3 +76,70 @@ jobs:
           no-cache: true
           provenance: false
           sbom: false
+
+  deploy-prod:
+    name: deploy to Railway production
+    runs-on: ubuntu-latest
+    needs: publish
+    # The `production` environment gates this job. Configure required reviewers
+    # under repo Settings → Environments → production so prod deploys pause for
+    # a human nod before firing the Railway mutation.
+    environment:
+      name: production
+      url: https://chat.roryford.com
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_PROD_SERVICE_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_PROD_ENVIRONMENT_ID }}
+    steps:
+      - name: log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: wait for GHCR manifest to propagate
+        run: |
+          IMAGE="ghcr.io/roryford/hermes-station:${GITHUB_REF_NAME}"
+          for i in $(seq 1 60); do
+            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "manifest available after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "ERROR: manifest did not appear within 60s" >&2
+          exit 1
+
+      - name: trigger Railway production deploy
+        # serviceInstanceDeploy makes Railway re-pull the image tag the service
+        # is pinned to (ghcr.io/roryford/hermes-station:latest, just updated by
+        # the publish job). latestCommit:false because the service is
+        # image-sourced, not git-sourced.
+        run: |
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"mutation Deploy(\$svc: String!, \$env: String!) { serviceInstanceDeploy(serviceId: \$svc, environmentId: \$env, latestCommit: false) }\",
+              \"variables\": {
+                \"svc\": \"$RAILWAY_SERVICE_ID\",
+                \"env\": \"$RAILWAY_ENVIRONMENT_ID\"
+              }
+            }"
+
+      - name: wait for prod to serve new revision
+        run: |
+          SHA="${{ github.sha }}"
+          for i in $(seq 1 90); do
+            REV=$(curl -sf "https://chat.roryford.com/health" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('versions',{}).get('image_revision',''))" 2>/dev/null || echo "")
+            if [ "$REV" = "$SHA" ]; then
+              echo "prod serving $SHA after $((i * 5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "ERROR: prod did not serve new revision within 450s" >&2
+          exit 1
