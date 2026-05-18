@@ -298,3 +298,107 @@ async def test_missing_bridge_client_returns_false(
     with caplog.at_level(logging.INFO, logger="hermes_station.admin.bridge_auth"):
         assert await verify_webui_session(request) is False
     _assert_no_raw_cookie(caplog)
+
+
+# ─────────────────────────────────────────────────────────── counters
+
+
+async def test_failure_counters_increment_per_bucket() -> None:
+    """Each failure path bumps exactly the counter for its bucket."""
+    from hermes_station.admin import bridge_auth as ba
+
+    ba.reset_bridge_failures_total()
+
+    # http_4xx
+    counter: RequestCounter = {"calls": 0}
+
+    async def h_403(_r: Request) -> Response:
+        return PlainTextResponse("forbidden", status_code=403)
+
+    fake = _make_fake_webui(h_403, counter)
+    async with _bridge_client_for(fake) as bridge_client:
+        app = _build_station_app(bridge_client)
+        request = _build_bridge_request(app, SECRET_COOKIE, bridge_client)
+        await verify_webui_session(request)
+
+    # http_5xx
+    async def h_503(_r: Request) -> Response:
+        return PlainTextResponse("boom", status_code=503)
+
+    fake = _make_fake_webui(h_503, {"calls": 0})
+    async with _bridge_client_for(fake) as bridge_client:
+        app = _build_station_app(bridge_client)
+        request = _build_bridge_request(app, SECRET_COOKIE, bridge_client)
+        await verify_webui_session(request)
+
+    # malformed_json
+    async def h_text(_r: Request) -> Response:
+        return PlainTextResponse("not json", status_code=200)
+
+    fake = _make_fake_webui(h_text, {"calls": 0})
+    async with _bridge_client_for(fake) as bridge_client:
+        app = _build_station_app(bridge_client)
+        request = _build_bridge_request(app, SECRET_COOKIE, bridge_client)
+        await verify_webui_session(request)
+
+    # missing_field
+    async def h_missing(_r: Request) -> Response:
+        return Response(
+            json.dumps({"auth_enabled": True}),
+            status_code=200,
+            media_type="application/json",
+        )
+
+    fake = _make_fake_webui(h_missing, {"calls": 0})
+    async with _bridge_client_for(fake) as bridge_client:
+        app = _build_station_app(bridge_client)
+        request = _build_bridge_request(app, SECRET_COOKIE, bridge_client)
+        await verify_webui_session(request)
+
+    # timeout
+    class _TimingOutClient:
+        async def get(self, *_args: Any, **_kwargs: Any) -> httpx.Response:
+            raise httpx.ReadTimeout("simulated timeout")
+
+    app = _build_station_app(_TimingOutClient())  # type: ignore[arg-type]
+    request = _build_bridge_request(app, SECRET_COOKIE, None)
+    await verify_webui_session(request)
+
+    snapshot = ba.get_bridge_failures_total()
+    assert snapshot == {
+        "timeout": 1,
+        "http_4xx": 1,
+        "http_5xx": 1,
+        "malformed_json": 1,
+        "missing_field": 1,
+    }
+
+    # And success paths must NOT touch counters.
+    ba.reset_bridge_failures_total()
+
+    async def h_ok(_r: Request) -> Response:
+        return JSONResponse({"auth_enabled": True, "logged_in": True})
+
+    fake = _make_fake_webui(h_ok, {"calls": 0})
+    async with _bridge_client_for(fake) as bridge_client:
+        app = _build_station_app(bridge_client)
+        request = _build_bridge_request(app, SECRET_COOKIE, bridge_client)
+        assert await verify_webui_session(request) is True
+
+    assert ba.get_bridge_failures_total() == {
+        "timeout": 0,
+        "http_4xx": 0,
+        "http_5xx": 0,
+        "malformed_json": 0,
+        "missing_field": 0,
+    }
+
+
+def test_get_bridge_failures_total_returns_copy() -> None:
+    """Snapshot must not be the internal dict (mutation safety)."""
+    from hermes_station.admin import bridge_auth as ba
+
+    ba.reset_bridge_failures_total()
+    snap = ba.get_bridge_failures_total()
+    snap["timeout"] = 999
+    assert ba.get_bridge_failures_total()["timeout"] == 0

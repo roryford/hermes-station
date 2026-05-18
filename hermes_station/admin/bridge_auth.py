@@ -51,6 +51,37 @@ _WEBUI_COOKIE_NAME = "hermes_session"
 _TIMEOUT_SECONDS = 2.0
 
 
+# ─────────────────────────────────────────────────────── failure counters
+#
+# Process-local counters surfaced via ``/health`` so operators can spot
+# bridge degradation without grepping logs. Intentionally a plain dict (no
+# Prometheus dep) — the /health endpoint is the only consumer.
+#
+# Keys are intentionally exhaustive and stable: any new failure path must
+# pick one of these buckets or add a new key here AND in the /health shape.
+
+_FAILURE_BUCKETS = ("timeout", "http_4xx", "http_5xx", "malformed_json", "missing_field")
+
+_bridge_failures_total: dict[str, int] = {bucket: 0 for bucket in _FAILURE_BUCKETS}
+
+
+def _record_failure(bucket: str) -> None:
+    """Increment a failure counter. Unknown buckets are ignored (defensive)."""
+    if bucket in _bridge_failures_total:
+        _bridge_failures_total[bucket] += 1
+
+
+def get_bridge_failures_total() -> dict[str, int]:
+    """Return a snapshot copy of the per-type bridge failure counters."""
+    return dict(_bridge_failures_total)
+
+
+def reset_bridge_failures_total() -> None:
+    """Reset counters to zero. Test-only helper."""
+    for bucket in _FAILURE_BUCKETS:
+        _bridge_failures_total[bucket] = 0
+
+
 def _redacted_cookie_names(cookie_header: str) -> str:
     """Return a redacted list of cookie names from a Cookie header.
 
@@ -101,6 +132,14 @@ async def verify_webui_session(request: Request) -> bool:
             timeout=_TIMEOUT_SECONDS,
         )
     except httpx.HTTPError as exc:
+        # Bucket as "timeout" for the dedicated timeout exception; everything
+        # else httpx surfaces (connect error, read error, etc.) is folded
+        # into http_5xx since from the caller's perspective the upstream is
+        # effectively unavailable. Timeouts are the most common signal.
+        if isinstance(exc, httpx.TimeoutException):
+            _record_failure("timeout")
+        else:
+            _record_failure("http_5xx")
         logger.info(
             "bridge_auth: webui loopback failed: %s; cookies=%s",
             exc,
@@ -109,6 +148,10 @@ async def verify_webui_session(request: Request) -> bool:
         return False
 
     if resp.status_code != 200:
+        if 400 <= resp.status_code < 500:
+            _record_failure("http_4xx")
+        elif 500 <= resp.status_code < 600:
+            _record_failure("http_5xx")
         logger.info(
             "bridge_auth: webui returned %d; cookies=%s",
             resp.status_code,
@@ -119,6 +162,7 @@ async def verify_webui_session(request: Request) -> bool:
     try:
         data = resp.json()
     except ValueError as exc:
+        _record_failure("malformed_json")
         logger.info(
             "bridge_auth: malformed JSON from webui: %s; cookies=%s",
             exc,
@@ -127,6 +171,7 @@ async def verify_webui_session(request: Request) -> bool:
         return False
 
     if not isinstance(data, dict) or "logged_in" not in data:
+        _record_failure("missing_field")
         logger.info(
             "bridge_auth: webui response missing logged_in field; cookies=%s",
             _redacted_cookie_names(cookie_header),

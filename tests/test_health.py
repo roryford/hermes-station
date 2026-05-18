@@ -64,6 +64,19 @@ def test_health_full_returns_payload_shape(
     assert body["versions"]["hermes_station"]
     assert body["versions"]["hermes_webui"]
     assert body["versions"]["image_revision"]
+    # Bridge failure counters: present, with all five buckets, all integers.
+    assert "bridge_failures_total" in body
+    bft = body["bridge_failures_total"]
+    assert set(bft.keys()) == {
+        "timeout",
+        "http_4xx",
+        "http_5xx",
+        "malformed_json",
+        "missing_field",
+    }
+    for v in bft.values():
+        assert isinstance(v, int)
+        assert v >= 0
 
 
 def test_health_ready_503_when_intended_missing(fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
