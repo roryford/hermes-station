@@ -227,7 +227,8 @@ class WebUIProcess:
                 "PYTHONUNBUFFERED": "1",
                 "PYTHONNOUSERSITE": "1",
                 "PYTHONSAFEPATH": "1",
-                "PYTHONPATH": "",
+                # Explicit absolute path so PYTHONSAFEPATH=1 doesn't strip it.
+                "PYTHONPATH": str(self.webui_src),
             }
         )
         # Propagate the admin password as webui password so hermes-webui's own
