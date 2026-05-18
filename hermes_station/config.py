@@ -135,6 +135,12 @@ def seed_env_file_to_os(path: Path, config_path: Path | None = None) -> None:
     image generation by hiding FAL_KEY from the agent).
     """
     env_file = load_env_file(path)
+    # Strip vars that could redirect Python's import machinery or the dynamic
+    # linker — an agent-writable .env must not become a code-injection vector.
+    _INJECTION_VARS = frozenset(
+        {"PYTHONPATH", "PYTHONSTARTUP", "LD_PRELOAD", "LD_LIBRARY_PATH"}
+    )
+    env_file = {k: v for k, v in env_file.items() if k not in _INJECTION_VARS}
     os.environ.update(env_file)
     if config_path is not None:
         for key in _disabled_secret_keys(config_path):
