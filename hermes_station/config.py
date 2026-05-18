@@ -74,6 +74,26 @@ class AdminSettings(BaseSettings):
         return self.admin_password or self.webui_password
 
 
+_PILOT_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def pilot_admin_extension_enabled() -> bool:
+    """Return True iff the pilot admin-extension feature flag is set.
+
+    Reads ``HERMES_STATION_PILOT_ADMIN_EXTENSION`` from ``os.environ`` on every
+    call (no caching — tests may monkeypatch mid-run). Default is False: this
+    is an opt-in pilot, opposite of the MCP feature flag's default-true.
+
+    Truthy parsing mirrors ``hermes_station.admin.mcp._is_enabled`` (`{"1",
+    "true", "yes", "on"}`, case-insensitive, leading/trailing whitespace
+    stripped) so operators don't have to remember two boolean dialects.
+    """
+    raw = os.environ.get("HERMES_STATION_PILOT_ADMIN_EXTENSION")
+    if raw is None:
+        return False
+    return raw.strip().lower() in _PILOT_TRUTHY
+
+
 def load_env_file(path: Path) -> dict[str, str]:
     """Read `$HERMES_HOME/.env` per CONTRACT.md §4.1.
 
