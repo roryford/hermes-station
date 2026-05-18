@@ -56,7 +56,6 @@ _WEBUI_ENV_PASSTHROUGH = frozenset(
         "LC_CTYPE",
         "TMPDIR",
         "TERM",
-        "PYTHONPATH",
         # MCP cache dirs set by the Dockerfile
         "NPM_CONFIG_CACHE",
         "UV_CACHE_DIR",
@@ -226,6 +225,10 @@ class WebUIProcess:
                 "HERMES_WEBUI_STATE_DIR": str(self.webui_state_dir),
                 "HERMES_WEBUI_DEFAULT_WORKSPACE": str(self.workspace_dir),
                 "PYTHONUNBUFFERED": "1",
+                "PYTHONNOUSERSITE": "1",
+                "PYTHONSAFEPATH": "1",
+                # Explicit absolute path so PYTHONSAFEPATH=1 doesn't strip it.
+                "PYTHONPATH": str(self.webui_src),
             }
         )
         # Propagate the admin password as webui password so hermes-webui's own
