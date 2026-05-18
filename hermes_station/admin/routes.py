@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
@@ -335,6 +337,99 @@ async def api_pilot_status(request: Request) -> Response:
     return JSONResponse(payload)
 
 
+def _same_origin_or_missing(request: Request) -> bool:
+    """CSRF defense for state-changing pilot POSTs.
+
+    Returns True iff the request's ``Origin`` header is absent (non-browser
+    callers like curl/tests) OR matches the request's own host. Browsers always
+    send ``Origin`` on POST, so a cross-site forged POST will carry the
+    attacker's origin and fail this check. Same-origin form POSTs and our own
+    extension fetch (``credentials: include``) pass.
+
+    ``Referer`` is also consulted as a fallback when ``Origin`` is missing but
+    ``Referer`` is present, which covers older browsers and some privacy modes.
+    """
+    request_host = request.headers.get("host", "")
+    origin = request.headers.get("origin", "")
+    if origin:
+        try:
+            origin_host = urlsplit(origin).netloc
+        except ValueError:
+            return False
+        return bool(origin_host) and origin_host == request_host
+    referer = request.headers.get("referer", "")
+    if referer:
+        try:
+            referer_host = urlsplit(referer).netloc
+        except ValueError:
+            return False
+        return bool(referer_host) and referer_host == request_host
+    # No Origin and no Referer — accept (non-browser caller such as curl, tests,
+    # or the ASGITransport unit-test client).
+    return True
+
+
+async def api_pilot_gateway_restart(request: Request) -> Response:
+    """Restart the gateway subprocess (first write-action through the bridge).
+
+    Auth: accepts either a webui ``hermes_session`` (via the bridge) or the
+    legacy ``hermes_station_admin`` cookie. Same dual-cookie posture as
+    ``api_pilot_status``.
+
+    CSRF posture: this is the first state-changing pilot POST. No project-wide
+    CSRF token infrastructure exists yet (the legacy ``/admin/api/gateway/{action}``
+    POSTs ship without one). As defense in depth we require POST + a matching
+    ``Origin`` (or ``Referer``) header when one is present. Both webui's session
+    cookie and the legacy admin cookie are set with ``SameSite=Lax`` so a true
+    cross-site POST also can't carry credentials in modern browsers. A proper
+    CSRF token scheme is deferred — tracked under issue #74's workshop.
+
+    Returns 200 ``{"ok": true, "restarted_at": "<iso8601>"}`` on success,
+    503 when the gateway supervisor is not initialized, or 500 with a generic
+    error message (details in logs) on restart failure.
+    """
+    if not pilot_admin_extension_enabled():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if not await verify_webui_session(request):
+        if not is_authenticated(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    if not _same_origin_or_missing(request):
+        logger.warning(
+            "pilot gateway restart: cross-origin POST rejected (origin=%r host=%r)",
+            request.headers.get("origin", ""),
+            request.headers.get("host", ""),
+        )
+        return JSONResponse({"ok": False, "error": "cross-origin request rejected"}, status_code=403)
+
+    gateway: Gateway | None = getattr(request.app.state, "gateway", None)
+    if gateway is None:
+        return JSONResponse(
+            {"ok": False, "error": "gateway supervisor not initialized"},
+            status_code=503,
+        )
+
+    # Operator identity for the audit log: webui sessions are opaque on our
+    # side, so we surface which cookie path authorized the call rather than a
+    # username. Mirrors api_ping's diagnostic vocabulary.
+    via = "webui_session" if await verify_webui_session(request) else "station_admin"
+    logger.info("pilot gateway restart requested (via=%s)", via)
+
+    try:
+        await gateway.restart()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("pilot gateway restart failed: %s", exc)
+        return JSONResponse(
+            {"ok": False, "error": "restart failed — check logs for details."},
+            status_code=500,
+        )
+
+    restarted_at = datetime.now(timezone.utc).isoformat()
+    logger.info("pilot gateway restart completed at %s (via=%s)", restarted_at, via)
+    return JSONResponse({"ok": True, "restarted_at": restarted_at})
+
+
 async def api_provider_setup(request: Request) -> Response:
     guard = require_admin(request)
     if guard is not None:
@@ -499,6 +594,7 @@ def admin_routes() -> list[Route]:
         Route("/admin/api/status", api_status, methods=["GET"]),
         Route("/admin/api/ping", api_ping, methods=["GET"]),
         Route("/admin/api/pilot/status", api_pilot_status, methods=["GET"]),
+        Route("/admin/api/pilot/gateway/restart", api_pilot_gateway_restart, methods=["POST"]),
         Route("/admin/api/provider/setup", api_provider_setup, methods=["POST"]),
         Route("/admin/api/channels", api_channels_get, methods=["GET"]),
         Route("/admin/api/channels/save", api_channels_save, methods=["POST"]),

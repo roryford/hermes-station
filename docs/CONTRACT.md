@@ -378,7 +378,22 @@ hermes-station ships some capabilities as **pilots** — opt-in, flag-gated, and
 
 | Pilot | Flag | Introduced | Endpoints |
 |---|---|---|---|
-| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status` |
+| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status`, `/admin/api/pilot/gateway/restart` |
+
+**Graduation dispositions.**
+
+| Feature | Disposition | Rationale |
+|---|---|---|
+| Status pane (`/admin/api/pilot/status`) | Station-permanent | Aggregates station-owned subprocess state (gateway supervisor, webui supervisor, readiness cache) that upstream webui has no knowledge of. |
+| Gateway restart (`/admin/api/pilot/gateway/restart`) | Station-permanent | The gateway is a station-owned async task supervised by `hermes_station.gateway.Gateway`. Upstream webui has no concept of "the gateway" as a restartable process — it's a hermes-station deployment topology choice. The endpoint stays station-side. |
+
+**CSRF posture for state-changing pilot POSTs.** No project-wide CSRF token scheme exists yet. State-changing pilot endpoints (e.g. `/admin/api/pilot/gateway/restart`) defend against cross-site POSTs via:
+
+1. POST-only routing (no GET-triggered side effects).
+2. Cookie auth (dual-cookie bridge or legacy admin cookie), both set `SameSite=Lax`.
+3. Per-request `Origin`/`Referer` same-origin check when the header is present. Non-browser callers (curl, tests) without `Origin`/`Referer` are accepted.
+
+A token-based CSRF scheme is deferred to a follow-up; tracked as a sub-item of issue #74 if/when a second write endpoint lands without an obvious mitigation.
 
 ---
 

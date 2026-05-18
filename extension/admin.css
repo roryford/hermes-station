@@ -14,3 +14,7 @@
 .admin-pill.muted { background: var(--input-bg); color: var(--muted); }
 .admin-reason { font-style: italic; color: var(--muted); font-size: var(--font-size-xs, 11px); }
 .admin-empty { color: var(--muted); font-size: var(--font-size-sm, 12px); font-style: italic; }
+.admin-card-actions { display: flex; gap: var(--space-2, 8px); margin-top: var(--space-3, 12px); justify-content: flex-end; }
+.admin-btn { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-button, 6px); padding: 4px 12px; font-size: var(--font-size-sm, 12px); cursor: pointer; }
+.admin-btn:hover:not(:disabled) { background: var(--surface-hover, var(--surface)); border-color: var(--strong, var(--border)); }
+.admin-btn:disabled { opacity: 0.5; cursor: wait; }

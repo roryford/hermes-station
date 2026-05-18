@@ -116,11 +116,55 @@
       sec.appendChild(row);
     }
   }
+  async function restartGateway(button) {
+    if (!window.confirm("Restart the gateway? In-flight requests will be dropped.")) return;
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = "Restarting…";
+    try {
+      let payload;
+      if (typeof window.api === "function") {
+        payload = await window.api("/admin/api/pilot/gateway/restart", { method: "POST" });
+      } else {
+        const r = await fetch("/admin/api/pilot/gateway/restart", { method: "POST", credentials: "include" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        payload = await r.json();
+      }
+      if (payload && payload.ok) {
+        if (typeof window.showToast === "function") {
+          window.showToast("Gateway restarted.", 4000, "success");
+        }
+      } else {
+        const msg = (payload && payload.error) || "restart failed";
+        if (typeof window.showToast === "function") {
+          window.showToast("Gateway restart failed: " + msg, 6000, "error");
+        }
+      }
+    } catch (err) {
+      if (typeof window.showToast === "function") {
+        window.showToast("Gateway restart failed: " + (err && err.message ? err.message : err), 6000, "error");
+      }
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+      // Re-poll status so the UI reflects the new gateway state.
+      tick();
+    }
+  }
+
   function render(data) {
     pane.replaceChildren();
     const g = data.gateway || {}, w = data.webui || {}, p = data.provider || {}, m = data.memory || {};
     const gw = card("Gateway");
     appendDl(gw, [["State", titleCase(g.state)], ["PID", fmt(g.pid)], ["Uptime", fmtUptime(g.uptime_s)], ["Platform", fmt(g.platform)], ["Connection", fmt(g.connection)]]);
+    const actions = document.createElement("div"); actions.className = "admin-card-actions";
+    const restartBtn = document.createElement("button");
+    restartBtn.type = "button";
+    restartBtn.className = "admin-btn";
+    restartBtn.textContent = "Restart gateway";
+    restartBtn.addEventListener("click", () => restartGateway(restartBtn));
+    actions.appendChild(restartBtn);
+    gw.appendChild(actions);
     pane.appendChild(gw);
     const wc = card("WebUI"); appendDl(wc, [["State", titleCase(w.state)], ["PID", fmt(w.pid)]]); pane.appendChild(wc);
     const pc = card("Provider"); appendDl(pc, [["Name", fmt(p.name)], ["Model", fmt(p.model)]]); pane.appendChild(pc);
