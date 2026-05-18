@@ -256,7 +256,7 @@ HERMES_STATION_PILOT_ADMIN_EXTENSION=1
 2. Restart the container.
 3. Hard-refresh the browser (Ctrl+Shift+R / Cmd+Shift+R) to drop the cached extension JS/CSS so the old tab disappears from the settings menu.
 
-Last-resort rollback: downgrade the image to `ghcr.io/roryford/hermes-station:v0.4.2`. v0.4.2 is stateless with respect to this pilot — no `/data` migration is required to move back.
+Last-resort rollback: downgrade the image to `ghcr.io/roryford/hermes-station:v0.4.3`. v0.4.3 is stateless with respect to this pilot — no `/data` migration is required to move back.
 
 ## License
 
