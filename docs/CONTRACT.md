@@ -128,6 +128,22 @@ Skills are seeded from the pip-installed `hermes-agent` package data directory o
 
 `/data/webui/.signing_key` is a 32-byte secret used by hermes-webui to sign session cookies. **Any container restart that loses this file invalidates every logged-in browser session.** The compat test (`tests/test_compat.py`) asserts this byte-stable across restart. hermes-station must keep this invariant.
 
+### 3.6 Runtime write boundary
+
+The container runs as a non-root user (`hermes`, uid 10000). All application source paths are made read-only at image build time so the agent process cannot modify its own code at runtime.
+
+| Path | Mode at runtime | Rationale |
+|---|---|---|
+| `/data/` (entire tree) | **read-write** (owned by `hermes`) | All legitimate agent state lives here |
+| `/opt/mcp-cache/` | **read-write** (owned by `hermes`) | npm and uv tool caches updated at runtime |
+| `<site-packages>/` | **read-only** | hermes-agent source — must not be self-modified |
+| `/opt/hermes-webui/` | **read-only** | WebUI source — must not be self-modified |
+| `/app/` | **read-only** | hermes-station source — must not be self-modified |
+
+**Why non-root matters:** `chmod a-w` alone does not stop a root process — Linux's `DAC_OVERRIDE` capability lets root bypass file permission checks. Running as a non-root user (uid 10000) is what actually enforces the restriction. The image pre-compiles `/app` with `python -m compileall` so the agent process does not need to write `__pycache__` entries at runtime.
+
+**`.env` and secrets** live at `/data/.hermes/.env` (inside `/data`), which is writable. The control plane is the only writer; the agent reads credentials from there at boot. See §4.1 and [`secrets.md`](./secrets.md).
+
 ---
 
 ## 4. File formats
