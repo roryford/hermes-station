@@ -40,7 +40,7 @@ def _fetch_csrf_token(client: httpx.Client, base_url: str) -> str:
     "Cross-origin request rejected".
     """
     page = client.get("/", headers={"Origin": base_url})
-    m = re.search(r'"csrfToken"\s*:\s*"([0-9a-f]+)"', page.text)
+    m = re.search(r'csrfToken\s*:\s*"([0-9a-f]+)"', page.text)
     if not m:
         return ""
     return m.group(1)
