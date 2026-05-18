@@ -36,4 +36,20 @@ git tag "$VERSION"
 git push
 git push origin "$VERSION"
 
-echo "Released ${VERSION} — CI will publish the GitHub release shortly."
+cat <<EOF
+
+Released ${VERSION} — CI will publish the GitHub release shortly.
+
+Next: deploy to production (manual, intentionally — see docs/release-runbook.md):
+
+  railway redeploy --from-source --yes
+
+The --from-source flag is load-bearing. Plain 'railway redeploy' (or the
+dashboard 'Redeploy' button without the 'latest image' option) re-runs
+the SAME image digest and is a silent no-op.
+
+Verify:
+
+  curl -sf https://chat.roryford.com/health | jq -r .versions.image_revision
+  git rev-parse ${VERSION}      # should match
+EOF

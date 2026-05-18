@@ -187,6 +187,10 @@ Both upstreams move fast (hermes-agent: weekly, hermes-webui: several releases/d
 
 See `renovate.json5` for the schedule and `.github/workflows/ci.yml` for the gate.
 
+### Cutting a release
+
+See [`docs/release-runbook.md`](docs/release-runbook.md) for the full flow: version bump, tag, image publish, and the manual Railway redeploy step (with the `--from-source` flag that's a frequent gotcha).
+
 ### Version visibility
 
 To see exactly which `hermes-station`, `hermes-agent`, `hermes-webui`, and image revision a deployment is running:
