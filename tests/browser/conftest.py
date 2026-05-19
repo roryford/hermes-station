@@ -91,8 +91,9 @@ def _storage_state_path(
 ) -> Path:
     """Log in once per worker, save storage_state for reuse.
 
-    Dismisses the onboarding overlay if present so subsequent test contexts
-    that load this state don't have it covering the settings menu.
+    Only the auth cookie needs to persist — the onboarding overlay re-appears
+    on every fresh page load anyway (not localStorage-driven across sessions)
+    and is dismissed per-page by ``_dismiss_onboarding`` in ``station_page``.
     """
     # Worker-unique path. tmp_path_factory.mktemp() already gives per-worker
     # isolation under xdist, but include worker_id explicitly for clarity.
