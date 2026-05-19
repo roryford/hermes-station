@@ -373,7 +373,9 @@ class TestSnapshot:
             gw,
             {
                 "gateway_state": "stopped",
-                "platforms": {"telegram": {"state": "failed", "error_code": "unauthorized", "error_message": ""}},
+                "platforms": {
+                    "telegram": {"state": "failed", "error_code": "unauthorized", "error_message": ""}
+                },
             },
         )
         snap = gw.snapshot()
@@ -386,7 +388,13 @@ class TestSnapshot:
             gw,
             {
                 "gateway_state": "stopped",
-                "platforms": {"openrouter": {"state": "failed", "error_code": "api_error", "error_message": "401 Unauthorized"}},
+                "platforms": {
+                    "openrouter": {
+                        "state": "failed",
+                        "error_code": "api_error",
+                        "error_message": "401 Unauthorized",
+                    }
+                },
             },
         )
         snap = gw.snapshot()
