@@ -41,13 +41,16 @@ class _FakeGateway:
 
 
 def _seed_files(hermes_home: Path) -> None:
-    (hermes_home / ".env").write_text("OPENROUTER_API_KEY=sk-test\n")
     (hermes_home / "config.yaml").write_text("provider: openrouter\n")
     db = hermes_home / "state.db"
     conn = sqlite3.connect(str(db))
     conn.execute("CREATE TABLE sessions (id INTEGER PRIMARY KEY)")
     conn.commit()
     conn.close()
+    (hermes_home / "memories").mkdir(exist_ok=True)
+    (hermes_home / "memories" / "mem1.json").write_text("{}\n")
+    (hermes_home / "pairing").mkdir(exist_ok=True)
+    (hermes_home / "pairing" / "telegram-approved.json").write_text("[]\n")
 
 
 def _build_valid_archive(files: dict[str, bytes]) -> bytes:
@@ -129,9 +132,11 @@ async def test_backup_download_returns_valid_targz(
     buf = io.BytesIO(r.content)
     with tarfile.open(fileobj=buf, mode="r:gz") as tf:
         names = tf.getnames()
-    assert ".env" in names
     assert "config.yaml" in names
     assert "state.db" in names
+    assert any(n.startswith("memories") for n in names)
+    assert any(n.startswith("pairing") for n in names)
+    assert ".env" not in names
 
 
 async def test_backup_download_calls_gateway_stop_and_start(
@@ -162,8 +167,8 @@ async def test_backup_download_skips_missing_files(
     """Files not present on disk are simply omitted from the archive."""
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
     hermes_home = fake_data_dir / ".hermes"
-    # Only seed .env — no state.db, no config.yaml.
-    (hermes_home / ".env").write_text("OPENROUTER_API_KEY=sk-test\n")
+    # Only seed config.yaml — no state.db, no memories.
+    (hermes_home / "config.yaml").write_text("provider: openrouter\n")
 
     from hermes_station.app import create_app
 
@@ -177,8 +182,9 @@ async def test_backup_download_skips_missing_files(
     buf = io.BytesIO(r.content)
     with tarfile.open(fileobj=buf, mode="r:gz") as tf:
         names = tf.getnames()
-    assert ".env" in names
+    assert "config.yaml" in names
     assert "state.db" not in names
+    assert ".env" not in names
 
 
 # ── restore: unauthenticated ──────────────────────────────────────────────────
@@ -329,8 +335,8 @@ async def test_backup_restore_success_calls_gateway_stop_and_start(
     _seed_files(hermes_home)
 
     good_archive = _build_valid_archive({
-        ".env": b"OPENROUTER_API_KEY=sk-restored\n",
         "config.yaml": b"provider: openrouter\n",
+        "SOUL.md": b"# Soul\n",
     })
 
     fake_gw = _FakeGateway()
@@ -350,15 +356,15 @@ async def test_backup_restore_success_calls_gateway_stop_and_start(
     assert r.status_code == 200
     data = r.json()
     assert data["ok"] is True
-    assert set(data["files"]) == {".env", "config.yaml"}
+    assert set(data["files"]) == {"config.yaml", "SOUL.md"}
 
     # Gateway must have been stopped and started.
     assert fake_gw.stops == 1
     assert fake_gw.starts == 1
 
     # Files must actually have been written.
-    assert (hermes_home / ".env").read_text() == "OPENROUTER_API_KEY=sk-restored\n"
     assert (hermes_home / "config.yaml").read_text() == "provider: openrouter\n"
+    assert (hermes_home / "SOUL.md").read_text() == "# Soul\n"
 
 
 # ── restore: flag off ─────────────────────────────────────────────────────────

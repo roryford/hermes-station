@@ -374,7 +374,7 @@
     if (_backupInFlight) return;
     const file = fileInput && fileInput.files && fileInput.files[0];
     if (!file) { _backupSetStatus("Please choose a backup file first.", true); return; }
-    if (!window.confirm("Restore from backup? This will overwrite your current config, secrets, and database. The gateway will restart.")) return;
+    if (!window.confirm("Restore from backup? This will overwrite your current config and database. The gateway will restart.")) return;
     _backupInFlight = true;
     const restoreBtn = _backupCardEl && _backupCardEl.querySelector(".admin-backup-restore");
     if (restoreBtn) restoreBtn.disabled = true;
@@ -406,7 +406,7 @@
     const bc = card("Backup");
 
     const warn = document.createElement("div"); warn.className = "admin-backup-warn";
-    warn.textContent = "⚠ This backup contains your API keys. Store it securely.";
+    warn.textContent = "Includes config, state DB, memories, pairings, and SOUL.md. API keys (.env) are not included — back those up separately.";
     bc.appendChild(warn);
 
     const dlActions = document.createElement("div"); dlActions.className = "admin-card-actions";

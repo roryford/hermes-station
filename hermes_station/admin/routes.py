@@ -765,21 +765,35 @@ async def api_pilot_usage(request: Request) -> Response:
     return JSONResponse(payload)
 
 
-# Files allowed in backup archives (allowlist — no path traversal, no surprises).
-_BACKUP_ALLOWLIST = frozenset({".env", "config.yaml", "state.db", "gateway_state.json", "SOUL.md"})
+# Flat files and directories included in backup archives.
+# .env is excluded — users manage secrets separately via Railway env vars.
+_BACKUP_FILES = frozenset({"config.yaml", "state.db", "gateway_state.json", "SOUL.md"})
+_BACKUP_DIRS = frozenset({"memories", "pairing"})
+
+
+def _member_allowed(name: str) -> bool:
+    """Return True if a tar member name is permitted by the backup allowlist."""
+    parts = name.split("/")
+    if len(parts) == 1:
+        return name in _BACKUP_FILES
+    # Directory entries or files inside an allowed directory.
+    return parts[0] in _BACKUP_DIRS
 
 
 def _build_backup_sync(hermes_home: Path) -> tuple[bytes, str]:
-    """Build an in-memory tar.gz of the hermes_home files in the allowlist."""
+    """Build an in-memory tar.gz of the allowed files and directories."""
     buf = io.BytesIO()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     filename = f"hermes-station-backup-{timestamp}.tar.gz"
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        for name in sorted(_BACKUP_ALLOWLIST):
+        for name in sorted(_BACKUP_FILES):
             p = hermes_home / name
-            if not p.exists():
-                continue
-            tf.add(str(p), arcname=name)
+            if p.exists():
+                tf.add(str(p), arcname=name)
+        for name in sorted(_BACKUP_DIRS):
+            p = hermes_home / name
+            if p.exists():
+                tf.add(str(p), arcname=name, recursive=True)
     return buf.getvalue(), filename
 
 
@@ -882,11 +896,14 @@ async def api_pilot_backup_restore(request: Request) -> Response:
     # Security: allowlist + path traversal check.
     for m in members:
         name = m.name
-        if name.startswith("/") or ".." in name.split("/"):
+        if name.startswith("/") or ".." in name.split("/") or "\x00" in name:
             return JSONResponse({"ok": False, "error": f"rejected path: {name}"}, status_code=400)
-        # Bare filename only (no sub-dirs).
-        base = Path(name).name
-        if base not in _BACKUP_ALLOWLIST or name != base:
+        if m.isdir():
+            # Directory entries are fine if they're an allowed top-level dir.
+            if name.rstrip("/") not in _BACKUP_DIRS:
+                return JSONResponse({"ok": False, "error": f"rejected directory: {name}"}, status_code=400)
+            continue
+        if not _member_allowed(name):
             return JSONResponse({"ok": False, "error": f"rejected file: {name}"}, status_code=400)
 
     gateway: Gateway | None = getattr(request.app.state, "gateway", None)
@@ -906,11 +923,14 @@ async def api_pilot_backup_restore(request: Request) -> Response:
             tmp_path = Path(tmpdir)
             buf2 = io.BytesIO(raw_bytes)
             with tarfile.open(fileobj=buf2, mode="r:gz") as tf:
-                tf.extractall(tmp_path)  # noqa: S202  # already allowlisted above
+                tf.extractall(tmp_path, filter="data")  # noqa: S202  # already allowlisted above
             for m in members:
+                if m.isdir():
+                    continue
                 name = m.name
                 src = tmp_path / name
                 dest = hermes_home / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
                 src.replace(dest)
                 restored_files.append(name)
     except Exception as exc:  # noqa: BLE001
