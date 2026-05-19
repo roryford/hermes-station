@@ -247,9 +247,7 @@ async def test_gateway_restart_flag_off_returns_404(
     assert resp.json() == {"error": "not_found"}
 
 
-async def test_gateway_restart_unauthenticated_returns_401(
-    fake_data_dir: Path, monkeypatch
-) -> None:
+async def test_gateway_restart_unauthenticated_returns_401(fake_data_dir: Path, monkeypatch) -> None:
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
 
     from hermes_station.app import create_app

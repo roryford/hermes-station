@@ -66,7 +66,9 @@ def webui_password() -> str:
 @pytest.fixture(scope="session")
 def _playwright_instance() -> Iterator[object]:
     if sync_playwright is None:
-        pytest.skip("playwright is not installed — install with `uv pip install playwright pytest-playwright`")
+        pytest.skip(
+            "playwright is not installed — install with `uv pip install playwright pytest-playwright`"
+        )
     with sync_playwright() as pw:
         yield pw
 
@@ -117,8 +119,7 @@ def _storage_state_path(
         )
         if resp.status != 200:
             raise RuntimeError(
-                f"login POST failed: {resp.status} {resp.text()!r} — "
-                "check HERMES_STATION_E2E_PASSWORD"
+                f"login POST failed: {resp.status} {resp.text()!r} — check HERMES_STATION_E2E_PASSWORD"
             )
         context.storage_state(path=str(state_file))
     finally:
@@ -202,8 +203,7 @@ def station_page(page: "Page", base_url: str) -> "Page":
     # own scripts finish, so a presence check alone isn't enough.
     page.wait_for_selector(SECTION_BUTTON_SELECTOR, state="attached", timeout=10_000)
     page.wait_for_function(
-        "typeof window.switchPanel === 'function' && "
-        "typeof window.switchSettingsSection === 'function'",
+        "typeof window.switchPanel === 'function' && typeof window.switchSettingsSection === 'function'",
         timeout=10_000,
     )
     page.evaluate("() => window.switchPanel('settings')")
