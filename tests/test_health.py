@@ -301,14 +301,17 @@ def test_scheduler_block_configured_from_cron_jobs_list(tmp_path: Path) -> None:
 
 
 def test_scheduler_block_configured_from_cron_jobs_dict(tmp_path: Path) -> None:
-    """cron/jobs.json in dict format (keyed by job id) → job_count is len of dict."""
+    """cron/jobs.json in hermes-agent's actual format {"jobs": [...], "updated_at": "..."}."""
     import json
 
     from hermes_station.health import _scheduler_block
 
     cron_dir = tmp_path / "cron"
     cron_dir.mkdir()
-    (cron_dir / "jobs.json").write_text(json.dumps({"daily": {}, "hourly": {}}))
+    # cron/jobs.py writes {"jobs": [...], "updated_at": "..."} — NOT a job-keyed dict.
+    (cron_dir / "jobs.json").write_text(
+        json.dumps({"jobs": [{"id": "daily"}, {"id": "hourly"}], "updated_at": "2026-05-19T00:00:00+00:00"})
+    )
 
     class FakePaths:
         hermes_home = tmp_path

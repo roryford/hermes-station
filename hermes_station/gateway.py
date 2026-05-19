@@ -50,6 +50,7 @@ class Gateway:
         self._supervisor_task: asyncio.Task[None] | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
+        self._consecutive_crashes: int = 0
 
     @property
     def state_path(self) -> Path:
@@ -95,8 +96,16 @@ class Gateway:
                 break
 
         # Detect token/auth errors from a structured error field.
+        # hermes-agent writes exit_reason (top-level) and per-platform error_code /
+        # error_message nested under platforms.<name>; older/other keys are also
+        # scanned for forward-compat with any future schema additions.
         connection = "unknown"
-        error_blob = " ".join(str(raw.get(k, "")) for k in ("last_error", "error", "status_detail")).lower()
+        error_parts = [str(raw.get(k, "")) for k in ("last_error", "error", "status_detail", "exit_reason")]
+        for p_data in (raw.get("platforms") or {}).values():
+            if isinstance(p_data, dict):
+                error_parts.append(str(p_data.get("error_code") or ""))
+                error_parts.append(str(p_data.get("error_message") or ""))
+        error_blob = " ".join(error_parts).lower()
         if any(tok in error_blob for tok in ("token", "unauthorized", "401", "auth", "credential")):
             connection = "token_invalid"
         elif state == "running":
@@ -122,8 +131,13 @@ class Gateway:
             "is_running": self.is_running(),
             "is_healthy": self.is_healthy(),
         }
-        # Passthrough compact failure signals if hermes-agent wrote them.
-        # These are best-effort: absent keys are simply omitted.
+        # exit_reason is written by hermes-agent on exit; omit when null/absent.
+        exit_reason = raw.get("exit_reason")
+        if exit_reason is not None:
+            result["exit_reason"] = exit_reason
+        # Crash count tracked by the station supervisor (always present).
+        result["consecutive_crashes"] = self._consecutive_crashes
+        # Aspirational timestamp keys: passed through if hermes-agent ever writes them.
         for sig_key in ("last_auth_failure_at", "last_crash_at", "last_error_at"):
             val = raw.get(sig_key)
             if val is not None:
@@ -243,8 +257,14 @@ class Gateway:
                 return
             if ok:
                 logger.info("gateway exited cleanly; not restarting")
+                self._consecutive_crashes = 0
                 return
-            logger.warning("gateway failed/exited unexpectedly; retrying in %.1fs", backoff)
+            self._consecutive_crashes += 1
+            logger.warning(
+                "gateway failed/exited unexpectedly (crash #%d); retrying in %.1fs",
+                self._consecutive_crashes,
+                backoff,
+            )
             try:
                 await asyncio.sleep(backoff)
             except asyncio.CancelledError:

@@ -104,7 +104,8 @@ def _scheduler_block(paths: Any) -> dict[str, Any]:
             if isinstance(data, list):
                 job_count = len(data)
             elif isinstance(data, dict):
-                job_count = len(data)
+                # cron/jobs.py writes {"jobs": [...], "updated_at": "..."}
+                job_count = len(data.get("jobs", []))
     except (OSError, ValueError):
         pass
 
@@ -170,8 +171,17 @@ def _gateway_snapshot(app_state: Any) -> dict[str, Any]:
         "platform": snap.get("platform"),
         "connection": snap.get("connection", "unknown"),
     }
-    # Compact failure signals: only present when hermes-agent wrote them.
-    for sig_key in ("last_auth_failure_at", "last_crash_at", "last_error_at"):
+    # Compact failure signals: present when hermes-agent or the supervisor wrote them.
+    # exit_reason is written by hermes-agent on gateway exit/startup_failed.
+    # consecutive_crashes is tracked by the hermes-station supervisor.
+    # The three timestamp keys are aspirational — passed through if ever written.
+    for sig_key in (
+        "exit_reason",
+        "consecutive_crashes",
+        "last_auth_failure_at",
+        "last_crash_at",
+        "last_error_at",
+    ):
         if sig_key in snap:
             result[sig_key] = snap[sig_key]
     return result

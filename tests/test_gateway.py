@@ -325,6 +325,72 @@ class TestSnapshot:
         assert "last_auth_failure_at" not in snap
         assert "last_crash_at" not in snap
         assert "last_error_at" not in snap
+        assert "exit_reason" not in snap
+
+    def test_exit_reason_passthrough(self, tmp_path: Path) -> None:
+        gw = make_gateway(tmp_path)
+        _write_state(
+            gw,
+            {"gateway_state": "stopped", "exit_reason": "OpenRouter API key invalid"},
+        )
+        snap = gw.snapshot()
+        assert snap["exit_reason"] == "OpenRouter API key invalid"
+
+    def test_exit_reason_null_omitted(self, tmp_path: Path) -> None:
+        gw = make_gateway(tmp_path)
+        _write_state(gw, {"gateway_state": "stopped", "exit_reason": None})
+        snap = gw.snapshot()
+        assert "exit_reason" not in snap
+
+    def test_consecutive_crashes_zero_by_default(self, tmp_path: Path) -> None:
+        gw = make_gateway(tmp_path)
+        _write_state(gw, {"gateway_state": "running", "updated_at": _fresh_ts()})
+        snap = gw.snapshot()
+        assert snap["consecutive_crashes"] == 0
+
+    def test_consecutive_crashes_reflected_in_snapshot(self, tmp_path: Path) -> None:
+        """Counter is surfaced verbatim in the snapshot (supervisor sets it)."""
+        gw = make_gateway(tmp_path)
+        gw._consecutive_crashes = 3
+        _write_state(gw, {"gateway_state": "startup_failed"})
+        snap = gw.snapshot()
+        assert snap["consecutive_crashes"] == 3
+
+    def test_token_invalid_from_exit_reason(self, tmp_path: Path) -> None:
+        """exit_reason containing auth keywords → token_invalid connection."""
+        gw = make_gateway(tmp_path)
+        _write_state(
+            gw,
+            {"gateway_state": "stopped", "exit_reason": "All platforms failed: unauthorized"},
+        )
+        snap = gw.snapshot()
+        assert snap["connection"] == "token_invalid"
+
+    def test_token_invalid_from_platform_error_code(self, tmp_path: Path) -> None:
+        """Per-platform error_code containing auth keywords → token_invalid."""
+        gw = make_gateway(tmp_path)
+        _write_state(
+            gw,
+            {
+                "gateway_state": "stopped",
+                "platforms": {"telegram": {"state": "failed", "error_code": "unauthorized", "error_message": ""}},
+            },
+        )
+        snap = gw.snapshot()
+        assert snap["connection"] == "token_invalid"
+
+    def test_token_invalid_from_platform_error_message(self, tmp_path: Path) -> None:
+        """Per-platform error_message containing auth keywords → token_invalid."""
+        gw = make_gateway(tmp_path)
+        _write_state(
+            gw,
+            {
+                "gateway_state": "stopped",
+                "platforms": {"openrouter": {"state": "failed", "error_code": "api_error", "error_message": "401 Unauthorized"}},
+            },
+        )
+        snap = gw.snapshot()
+        assert snap["connection"] == "token_invalid"
 
     def test_is_running_and_is_healthy_included(self, tmp_path: Path) -> None:
         gw = make_gateway(tmp_path)
