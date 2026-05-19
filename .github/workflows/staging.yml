@@ -107,18 +107,65 @@ jobs:
 
       - name: wait for staging to serve new revision
         run: |
+          # Two-phase readiness check.
+          #
+          # Phase 1: /health reports the new image_revision SHA. This proves
+          # Railway has rolled the new container.
+          #
+          # Phase 2: probe the endpoints the e2e tests will hit and require
+          # multiple consecutive non-5xx responses. Empirically, Railway can
+          # serve /health on the new revision while still 502'ing on /login,
+          # /admin/, and /api/auth/status for several seconds — see the
+          # staging flake on 2db320e / 8dd2c1d (May 2026) which produced
+          # `assert 502 == 200` and `httpx.ReadTimeout` against exactly these
+          # endpoints.
+          set -e
           SHA="${{ github.sha }}"
+          REV=""
           for i in $(seq 1 90); do
             REV=$(curl -sf "$STAGING_URL/health" \
               | python3 -c "import sys,json; print(json.load(sys.stdin).get('versions',{}).get('image_revision',''))" 2>/dev/null || echo "")
             if [ "$REV" = "$SHA" ]; then
-              echo "staging serving $SHA after $((i * 5))s"
-              exit 0
+              echo "phase 1: staging on $SHA after $((i * 5))s"
+              break
             fi
             sleep 5
           done
-          echo "ERROR: staging did not serve new revision within 450s" >&2
-          exit 1
+          if [ "$REV" != "$SHA" ]; then
+            echo "ERROR: staging did not serve revision $SHA within 450s" >&2
+            exit 1
+          fi
+
+          probe_nonfivexx() {
+            local code
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$1" || echo "000")
+            case "$code" in
+              5*|000) return 1 ;;
+              *)      return 0 ;;
+            esac
+          }
+          for endpoint in /login /admin/ /api/auth/status; do
+            url="${STAGING_URL}${endpoint}"
+            consecutive=0
+            stable=0
+            for i in $(seq 1 60); do
+              if probe_nonfivexx "$url"; then
+                consecutive=$((consecutive + 1))
+                if [ "$consecutive" -ge 3 ]; then
+                  echo "phase 2: $endpoint stable (3 consecutive non-5xx after $((i * 2))s)"
+                  stable=1
+                  break
+                fi
+              else
+                consecutive=0
+              fi
+              sleep 2
+            done
+            if [ "$stable" -ne 1 ]; then
+              echo "ERROR: $endpoint did not stabilize within 120s" >&2
+              exit 1
+            fi
+          done
 
       - name: run e2e tests
         env:
