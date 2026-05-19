@@ -53,6 +53,7 @@ TOOLBELT: list[tuple[str, list[str]]] = [
     ("unzip", ["-v"]),
     ("zip", ["--version"]),
     ("rsync", ["--version"]),
+    ("himalaya", ["--version"]),
 ]
 
 
