@@ -103,6 +103,50 @@ def test_node_is_v24() -> None:
         pytest.skip(msg + " (host node, not container; skipping)")
 
 
+# ---------------------------------------------------------------------------
+# MCP server binaries — globally installed, root-owned, not writable to the
+# runtime user. See hermes_station/config.py MCP_SERVER_CATALOG.
+# ---------------------------------------------------------------------------
+
+MCP_BINARIES = ["mcp-server-filesystem", "mcp-server-github", "mcp-server-fetch"]
+
+
+@pytest.mark.parametrize("binary", MCP_BINARIES)
+def test_mcp_server_binary_on_path(binary: str) -> None:
+    """Each curated stdio MCP server must resolve via PATH so the catalog's
+    `command: <name>` entries work under hermes-agent's filtered env (PATH
+    propagates; NPM_CONFIG_CACHE/UV_TOOL_DIR no longer do)."""
+    path = shutil.which(binary)
+    if path is None:
+        msg = f"{binary!r} not on PATH"
+        if REQUIRE:
+            pytest.fail(msg)
+        pytest.skip(msg + " (set HERMES_STATION_REQUIRE_TOOLBELT=1 to fail instead)")
+
+
+@pytest.mark.parametrize("binary", MCP_BINARIES)
+def test_mcp_server_binary_resolves_outside_writable_state(binary: str) -> None:
+    """The resolved binary (and its real target) must live outside writable
+    runtime state. The whole point of switching off npx/uvx launchers was to
+    stop loading code from $HOME/.npm/_npx/... and similar writable caches.
+
+    Acceptable roots: /usr/bin, /usr/local/bin, /opt/uv-tools, /usr/lib/node_modules.
+    Rejected: any path under /data, /tmp, /home, /var, or /root.
+    """
+    path = shutil.which(binary)
+    if path is None:
+        if REQUIRE:
+            pytest.fail(f"{binary!r} not on PATH")
+        pytest.skip(f"{binary!r} not on PATH")
+    real = os.path.realpath(path)
+    forbidden_prefixes = ("/data/", "/tmp/", "/home/", "/var/", "/root/")
+    for prefix in forbidden_prefixes:
+        assert not real.startswith(prefix), (
+            f"{binary} resolves to {real!r} under writable {prefix!r} — "
+            "MCP server must live in a non-writable system location"
+        )
+
+
 def test_fd_symlink_resolves_to_fdfind() -> None:
     """The Debian binary is `fdfind`; the Dockerfile symlinks it to `fd`
     so docs/scripts/agents that call `fd` directly work."""

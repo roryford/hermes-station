@@ -53,7 +53,7 @@ def test_mcp_client_imports_are_available() -> None:
 
 def test_github_catalog_env_maps_token_to_personal_access_token() -> None:
     """The GitHub MCP server entry must map GITHUB_PERSONAL_ACCESS_TOKEN from
-    GITHUB_TOKEN so the Railway-injected token reaches the npx subprocess."""
+    GITHUB_TOKEN so the Railway-injected token reaches the MCP subprocess."""
     github = next(e for e in MCP_SERVER_CATALOG if e["name"] == "github")
     env = github.get("env", {})
     assert "GITHUB_PERSONAL_ACCESS_TOKEN" in env, (
@@ -62,6 +62,22 @@ def test_github_catalog_env_maps_token_to_personal_access_token() -> None:
     assert "${GITHUB_TOKEN}" in env["GITHUB_PERSONAL_ACCESS_TOKEN"], (
         "GITHUB_PERSONAL_ACCESS_TOKEN must be sourced from GITHUB_TOKEN"
     )
+
+
+def test_catalog_uses_direct_binary_commands_not_launchers() -> None:
+    """Regression guard: MCP servers must invoke direct PATH-resolved binaries,
+    not `npx -y` / `uvx --from` wrappers. The launchers stage their package
+    tree into a writable cache (npx → $HOME/.npm/_npx/, uvx → uv cache) and
+    execute code from there — see Dockerfile comment near `npm install -g`."""
+    forbidden = {"npx", "uvx"}
+    for entry in MCP_SERVER_CATALOG:
+        command = entry.get("command", "")
+        if not command:
+            continue  # URL-based entries (no command)
+        assert command not in forbidden, (
+            f"{entry['name']}: command={command!r} is a runtime-fetch launcher; "
+            "install the server globally in the Dockerfile and invoke its binary directly"
+        )
 
 
 # ---------------------------------------------------------------------------

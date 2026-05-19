@@ -11,6 +11,7 @@ from pathlib import Path
 
 from hermes_station.config import (
     apply_first_boot_seeds,
+    heal_mcp_server_launchers,
     load_yaml_config,
     normalize_config,
     seed_neutral_personality_default,
@@ -70,6 +71,152 @@ def test_normalize_preserves_well_formed_config() -> None:
 
     assert changes == []
     assert out == snapshot
+
+
+# ---------------------------------------------------------------------------
+# heal_mcp_server_launchers
+# ---------------------------------------------------------------------------
+
+
+def test_heal_rewrites_legacy_filesystem_npx_launcher() -> None:
+    config = {
+        "mcp_servers": {
+            "filesystem": {
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "@modelcontextprotocol/server-filesystem@2025.8.21",
+                    "/data/workspace",
+                ],
+                "enabled": True,
+            }
+        }
+    }
+
+    changes = heal_mcp_server_launchers(config)
+
+    assert len(changes) == 1
+    fs = config["mcp_servers"]["filesystem"]
+    assert fs["command"] == "mcp-server-filesystem"
+    assert fs["args"] == ["/data/workspace"]
+    # Other keys preserved.
+    assert fs["enabled"] is True
+
+
+def test_heal_rewrites_legacy_github_npx_launcher() -> None:
+    config = {
+        "mcp_servers": {
+            "github": {
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
+                "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"},
+                "enabled": False,
+            }
+        }
+    }
+
+    changes = heal_mcp_server_launchers(config)
+
+    assert len(changes) == 1
+    gh = config["mcp_servers"]["github"]
+    assert gh["command"] == "mcp-server-github"
+    assert gh["args"] == []
+    assert gh["env"]["GITHUB_PERSONAL_ACCESS_TOKEN"] == "${GITHUB_TOKEN}"
+    assert gh["enabled"] is False
+
+
+def test_heal_rewrites_legacy_fetch_uvx_launcher() -> None:
+    config = {
+        "mcp_servers": {
+            "fetch": {
+                "command": "uvx",
+                "args": ["--from", "mcp-server-fetch==2025.4.7", "mcp-server-fetch"],
+                "enabled": True,
+            }
+        }
+    }
+
+    changes = heal_mcp_server_launchers(config)
+
+    assert len(changes) == 1
+    fetch = config["mcp_servers"]["fetch"]
+    assert fetch["command"] == "mcp-server-fetch"
+    assert fetch["args"] == []
+    assert fetch["enabled"] is True
+
+
+def test_heal_leaves_user_customizations_alone() -> None:
+    """A hand-edited entry that doesn't match the prior-seed shape must
+    survive unchanged — better to leave operator overrides than silently
+    rewrite them."""
+    config = {
+        "mcp_servers": {
+            "filesystem": {
+                # Custom command — operator chose this deliberately.
+                "command": "node",
+                "args": ["/opt/my-fork/server.js", "/data/workspace"],
+                "enabled": True,
+            },
+            "github": {
+                # npx-launched but unpinned — not the prior seed shape.
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-github"],
+                "enabled": True,
+            },
+        }
+    }
+    snapshot = {k: dict(v) for k, v in config["mcp_servers"].items()}
+
+    changes = heal_mcp_server_launchers(config)
+
+    assert changes == []
+    assert config["mcp_servers"] == snapshot
+
+
+def test_heal_is_idempotent() -> None:
+    config = {
+        "mcp_servers": {
+            "filesystem": {
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "@modelcontextprotocol/server-filesystem@2025.8.21",
+                    "/data/workspace",
+                ],
+                "enabled": False,
+            }
+        }
+    }
+
+    first = heal_mcp_server_launchers(config)
+    second = heal_mcp_server_launchers(config)
+
+    assert len(first) == 1
+    assert second == []
+
+
+def test_heal_no_mcp_servers_block_is_noop() -> None:
+    config = {"model": {"provider": "anthropic"}}
+    assert heal_mcp_server_launchers(config) == []
+
+
+def test_normalize_runs_heal_mcp_step() -> None:
+    """heal_mcp_server_launchers must be invoked through normalize_config so
+    the on-disk lifespan path (which calls normalize_config) picks it up."""
+    config = {
+        "mcp_servers": {
+            "github": {
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
+                "enabled": True,
+            }
+        }
+    }
+
+    _, changes = normalize_config(config)
+
+    assert any("github" in c and "mcp-server-github" in c for c in changes)
+    assert config["mcp_servers"]["github"]["command"] == "mcp-server-github"
 
 
 # ---------------------------------------------------------------------------
