@@ -172,7 +172,7 @@ PYEOF
 # under /usr/lib/node_modules with symlinks at /usr/bin/, and uv with
 # UV_TOOL_BIN_DIR=/usr/local/bin does the same for fetch. All bins land
 # root-owned, not chmod'd writable, and PATH-resolves to a non-writable
-# location at runtime. See CONTRACT.md §4.4.
+# location at runtime. See CONTRACT.md §3.6.
 ARG MCP_SERVER_FILESYSTEM_VERSION=2025.8.21
 ARG MCP_SERVER_GITHUB_VERSION=2025.4.8
 ARG MCP_SERVER_FETCH_VERSION=2025.4.7
