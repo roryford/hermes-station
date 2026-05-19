@@ -72,3 +72,30 @@ container stop hs-test && container rm hs-test
 ### Expected results
 
 Full run: ~820 passed, 0 failed, 0 skipped (excluding `test_compat_realistic.py`).
+
+### Browser suite (Playwright)
+
+`tests/browser/` drives the pilot admin extension UI through a real browser.
+Auto-skips when `HERMES_STATION_E2E_URL` is unset, so it stays out of the
+default run. Container must be booted with `HERMES_STATION_PILOT_ADMIN_EXTENSION=1`.
+
+```bash
+# Boot container with the pilot flag (replaces step 2 above).
+container run -d --name hs-test -p 8787:8787 \
+  -e HERMES_WEBUI_PASSWORD=test-admin-pw \
+  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
+  -e OPENROUTER_API_KEY=local-fake-key \
+  -e HERMES_STATION_PILOT_ADMIN_EXTENSION=1 \
+  hermes-station:local
+
+# Install Chromium once (cached at $PLAYWRIGHT_BROWSERS_PATH).
+PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
+  uv run --with playwright python -m playwright install chromium
+
+# Run the suite — parallel-safe via pytest-xdist.
+PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
+HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
+HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+  uv run --with playwright --with pytest-playwright --with pytest-xdist \
+    pytest tests/browser/ --no-cov -n auto
+```

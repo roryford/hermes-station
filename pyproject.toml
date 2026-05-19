@@ -94,6 +94,9 @@ asyncio_mode = "auto"
 addopts = "--cov=hermes_station --cov-report=term-missing --cov-fail-under=85"
 markers = [
     "manual: opt-in tests that should be run by hand (e.g. bit-rot sentinels for hardcoded model identifiers)",
+    "browser: Playwright-driven tests that need a running container with the pilot admin extension enabled (HERMES_STATION_PILOT_ADMIN_EXTENSION=1)",
+    "serial: tests that mutate shared container state and must not run in parallel (use with @pytest.mark.xdist_group)",
+    "slow: long-running tests (e.g. the 10-minute browser soak); opt in with `-m slow`",
 ]
 
 [tool.coverage.run]
