@@ -216,6 +216,9 @@ def station_page(page: "Page", base_url: str) -> "Page":
     try:
         page.wait_for_load_state("networkidle", timeout=10_000)
     except Exception:
+        # networkidle can hang indefinitely if a long-poll endpoint stays
+        # open (e.g. /api/sessions stream). The wrap-presence wait below
+        # is the real correctness gate; swallow the timeout and proceed.
         pass
     # Confirm the extension's wrap of switchSettingsSection survived
     # webui's init (it would re-define the global if the script load order

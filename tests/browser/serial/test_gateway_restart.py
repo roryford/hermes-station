@@ -36,7 +36,9 @@ def test_dismissing_confirm_does_not_post(station_page) -> None:
     """
     page = station_page
     restart_url_seen: list[str] = []
-    page.on("request", lambda r: restart_url_seen.append(r.url) if r.url.endswith(RESTART_URL_SUFFIX) else None)
+    page.on(
+        "request", lambda r: restart_url_seen.append(r.url) if r.url.endswith(RESTART_URL_SUFFIX) else None
+    )
 
     # page.once → single-fire listener, in case the test reschedules clicks.
     page.once("dialog", lambda d: d.dismiss())
@@ -68,17 +70,22 @@ def test_accepting_confirm_posts_restart_and_re_polls(station_page) -> None:
     """
     page = station_page
     restart_responses: list[int] = []
-    status_after_restart: list[int] = []
-    state = {"restart_done": False}
+    # Track every status REQUEST (not response) so we can snapshot the count
+    # at the moment the restart POST completes. A response-based flag would
+    # race: a /status poll fired *before* the restart but whose response
+    # arrives *after* would be miscounted as a "follow-up" poll, masking
+    # a regression where admin.js:151's finally-block tick() was removed.
+    status_request_urls: list[str] = []
 
     def _on_response(resp) -> None:
         if resp.url.endswith(RESTART_URL_SUFFIX):
             restart_responses.append(resp.status)
-            state["restart_done"] = True
-        elif state["restart_done"] and resp.url.endswith(STATUS_URL_SUFFIX):
-            status_after_restart.append(resp.status)
 
     page.on("response", _on_response)
+    page.on(
+        "request",
+        lambda r: status_request_urls.append(r.url) if r.url.endswith(STATUS_URL_SUFFIX) else None,
+    )
     page.once("dialog", lambda d: d.accept())
 
     button = page.get_by_role("button", name=RESTART_BUTTON_TEXT)
@@ -96,6 +103,9 @@ def test_accepting_confirm_posts_restart_and_re_polls(station_page) -> None:
         f"restart POST returned {restart_responses}, expected [200]. "
         "Check /admin/api/pilot/gateway/restart on the running container."
     )
+    # Snapshot count of /status requests fired up to (and including) the
+    # restart-POST-complete moment. Anything beyond this is a true follow-up.
+    polls_before_followup = len(status_request_urls)
 
     # Button re-enables on the JS finally branch. Allow generous time for
     # the supervisor's await on the new gateway pid.
@@ -110,7 +120,9 @@ def test_accepting_confirm_posts_restart_and_re_polls(station_page) -> None:
     # The finally block calls tick(); a follow-up /status request must fire.
     # Allow a beat for the scheduled microtask + network round-trip.
     page.wait_for_timeout(2_000)
-    assert status_after_restart, (
-        "No /admin/api/pilot/status request fired after the restart completed. "
+    followup_polls = len(status_request_urls) - polls_before_followup
+    assert followup_polls >= 1, (
+        f"No new /admin/api/pilot/status request fired after the restart completed "
+        f"(saw {polls_before_followup} requests up to restart, {followup_polls} after). "
         "admin.js:151 finally-block tick() may have regressed."
     )
