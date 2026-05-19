@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
+import io
 import logging
 import os
+import sqlite3
+import tarfile
+import tempfile
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from hermes_station.admin._templates import templates as _templates
@@ -612,6 +618,316 @@ async def api_webui_action(request: Request) -> Response:
     return await _supervisor_action(request, "webui")
 
 
+def _usage_query_sync(db_path: Path, days: int) -> dict[str, Any]:
+    """Run usage SQL queries synchronously (to be called via asyncio.to_thread)."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        where = f"datetime(created_at) >= datetime('now', '-{days} days')"
+        cur = conn.execute(
+            f"""
+            SELECT
+                COALESCE(SUM(CASE WHEN actual_cost_usd IS NOT NULL THEN actual_cost_usd ELSE estimated_cost_usd END), 0) AS total_cost,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+                COALESCE(SUM(api_call_count), 0) AS api_calls,
+                COUNT(*) AS session_count,
+                SUM(CASE WHEN actual_cost_usd IS NULL AND estimated_cost_usd IS NOT NULL THEN 1 ELSE 0 END) AS estimated_count
+            FROM sessions
+            WHERE {where}
+            """
+        )
+        row = cur.fetchone()
+        summary: dict[str, Any] = {
+            "total_cost": float(row["total_cost"]) if row else 0.0,
+            "has_estimated": bool((row["estimated_count"] or 0) > 0) if row else False,
+            "input_tokens": int(row["input_tokens"] or 0) if row else 0,
+            "output_tokens": int(row["output_tokens"] or 0) if row else 0,
+            "cache_read_tokens": int(row["cache_read_tokens"] or 0) if row else 0,
+            "cache_write_tokens": int(row["cache_write_tokens"] or 0) if row else 0,
+            "api_calls": int(row["api_calls"] or 0) if row else 0,
+            "session_count": int(row["session_count"] or 0) if row else 0,
+        }
+
+        cur2 = conn.execute(
+            f"""
+            SELECT
+                COALESCE(source, 'unknown') AS source,
+                COALESCE(SUM(CASE WHEN actual_cost_usd IS NOT NULL THEN actual_cost_usd ELSE estimated_cost_usd END), 0) AS cost,
+                SUM(CASE WHEN actual_cost_usd IS NULL AND estimated_cost_usd IS NOT NULL THEN 1 ELSE 0 END) AS estimated_count,
+                COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens,
+                COALESCE(SUM(api_call_count), 0) AS api_calls,
+                COUNT(*) AS sessions
+            FROM sessions
+            WHERE {where}
+            GROUP BY COALESCE(source, 'unknown')
+            ORDER BY cost DESC
+            """
+        )
+        channels = [
+            {
+                "source": r["source"],
+                "cost": float(r["cost"]),
+                "estimated_count": int(r["estimated_count"] or 0),
+                "total_tokens": int(r["total_tokens"] or 0),
+                "api_calls": int(r["api_calls"] or 0),
+                "sessions": int(r["sessions"] or 0),
+            }
+            for r in cur2.fetchall()
+        ]
+
+        cur3 = conn.execute(
+            f"""
+            SELECT
+                COALESCE(model, 'unknown') AS model,
+                COALESCE(billing_provider, 'unknown') AS billing_provider,
+                COALESCE(SUM(CASE WHEN actual_cost_usd IS NOT NULL THEN actual_cost_usd ELSE estimated_cost_usd END), 0) AS cost,
+                SUM(CASE WHEN actual_cost_usd IS NULL AND estimated_cost_usd IS NOT NULL THEN 1 ELSE 0 END) AS estimated_count,
+                COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens,
+                COUNT(*) AS sessions
+            FROM sessions
+            WHERE {where}
+            GROUP BY COALESCE(model, 'unknown'), COALESCE(billing_provider, 'unknown')
+            ORDER BY cost DESC
+            """
+        )
+        models = [
+            {
+                "model": r["model"],
+                "billing_provider": r["billing_provider"],
+                "cost": float(r["cost"]),
+                "estimated_count": int(r["estimated_count"] or 0),
+                "total_tokens": int(r["total_tokens"] or 0),
+                "sessions": int(r["sessions"] or 0),
+            }
+            for r in cur3.fetchall()
+        ]
+    finally:
+        conn.close()
+
+    return {"summary": summary, "channels": channels, "models": models}
+
+
+async def api_pilot_usage(request: Request) -> Response:
+    """Usage summary from state.db for the pilot admin extension.
+
+    GET /admin/api/pilot/usage?days=7|30 (default 7).
+    Cached 60 s on request.app.state._usage_cache keyed by days.
+    Returns {no_db: true} when state.db is absent.
+    """
+    if not pilot_admin_extension_enabled():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if not await verify_webui_session(request):
+        if not is_authenticated(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    try:
+        days_raw = int(request.query_params.get("days", "7"))
+        if days_raw not in (7, 30):
+            days_raw = 7
+    except (ValueError, TypeError):
+        days_raw = 7
+    days = days_raw
+
+    paths = _paths(request)
+    db_path = paths.hermes_home / "state.db"
+    if not db_path.exists():
+        return JSONResponse({"no_db": True, "days": days})
+
+    # 60-second in-process cache.
+    cache = getattr(request.app.state, "_usage_cache", None)
+    if cache is None:
+        request.app.state._usage_cache = {}
+        cache = request.app.state._usage_cache
+
+    now = time.monotonic()
+    cached = cache.get(days)
+    if cached is not None and now - cached["ts"] < 60:
+        return JSONResponse(cached["payload"])
+
+    try:
+        result = await asyncio.to_thread(_usage_query_sync, db_path, days)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("usage query failed: %s", exc)
+        return JSONResponse({"error": "query failed", "details": str(exc)}, status_code=500)
+
+    payload: dict[str, Any] = {
+        "days": days,
+        "no_db": False,
+        "summary": result["summary"],
+        "channels": result["channels"],
+        "models": result["models"],
+    }
+    cache[days] = {"ts": now, "payload": payload}
+    return JSONResponse(payload)
+
+
+# Files allowed in backup archives (allowlist — no path traversal, no surprises).
+_BACKUP_ALLOWLIST = frozenset({".env", "config.yaml", "state.db", "gateway_state.json", "SOUL.md"})
+
+
+def _build_backup_sync(hermes_home: Path) -> tuple[bytes, str]:
+    """Build an in-memory tar.gz of the hermes_home files in the allowlist."""
+    buf = io.BytesIO()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    filename = f"hermes-station-backup-{timestamp}.tar.gz"
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name in sorted(_BACKUP_ALLOWLIST):
+            p = hermes_home / name
+            if not p.exists():
+                continue
+            tf.add(str(p), arcname=name)
+    return buf.getvalue(), filename
+
+
+async def api_pilot_backup_download(request: Request) -> Response:
+    """Download a tar.gz backup of the agent state directory.
+
+    POST /admin/api/pilot/backup/download
+    Stops the gateway, WAL-checkpoints state.db, builds tar.gz in memory,
+    restarts the gateway, streams the archive.
+    """
+    if not pilot_admin_extension_enabled():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if not await verify_webui_session(request):
+        if not is_authenticated(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    if not _same_origin_or_missing(request):
+        return JSONResponse({"ok": False, "error": "cross-origin request rejected"}, status_code=403)
+
+    gateway: Gateway | None = getattr(request.app.state, "gateway", None)
+    paths = _paths(request)
+    hermes_home = paths.hermes_home
+    db_path = hermes_home / "state.db"
+
+    if gateway is not None:
+        try:
+            await gateway.stop()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("backup: gateway stop failed: %s", exc)
+
+    try:
+        if db_path.exists():
+            def _wal_checkpoint() -> None:
+                conn = sqlite3.connect(str(db_path))
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                finally:
+                    conn.close()
+            await asyncio.to_thread(_wal_checkpoint)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("backup: WAL checkpoint failed: %s", exc)
+
+    try:
+        data, filename = await asyncio.to_thread(_build_backup_sync, hermes_home)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("backup: tar build failed: %s", exc)
+        if gateway is not None:
+            try:
+                await gateway.start()
+            except Exception as exc2:  # noqa: BLE001
+                logger.warning("backup: gateway restart after tar failure: %s", exc2)
+        return JSONResponse({"ok": False, "error": "backup build failed"}, status_code=500)
+
+    if gateway is not None:
+        try:
+            await gateway.start()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("backup: gateway start after backup: %s", exc)
+
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def api_pilot_backup_restore(request: Request) -> Response:
+    """Restore from an uploaded tar.gz backup.
+
+    POST /admin/api/pilot/backup/restore (multipart, field: backup_file)
+    """
+    if not pilot_admin_extension_enabled():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if not await verify_webui_session(request):
+        if not is_authenticated(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    if not _same_origin_or_missing(request):
+        return JSONResponse({"ok": False, "error": "cross-origin request rejected"}, status_code=403)
+
+    try:
+        form = await request.form()
+        upload = form.get("backup_file")
+        if upload is None or not hasattr(upload, "read"):
+            return JSONResponse({"ok": False, "error": "missing backup_file field"}, status_code=400)
+        raw_bytes = await upload.read()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"upload error: {exc}"}, status_code=400)
+
+    # Validate it's a real tar.gz.
+    try:
+        buf = io.BytesIO(raw_bytes)
+        with tarfile.open(fileobj=buf, mode="r:gz") as tf:
+            members = tf.getmembers()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"invalid archive: {exc}"}, status_code=400)
+
+    # Security: allowlist + path traversal check.
+    for m in members:
+        name = m.name
+        if name.startswith("/") or ".." in name.split("/"):
+            return JSONResponse({"ok": False, "error": f"rejected path: {name}"}, status_code=400)
+        # Bare filename only (no sub-dirs).
+        base = Path(name).name
+        if base not in _BACKUP_ALLOWLIST or name != base:
+            return JSONResponse({"ok": False, "error": f"rejected file: {name}"}, status_code=400)
+
+    gateway: Gateway | None = getattr(request.app.state, "gateway", None)
+    paths = _paths(request)
+    hermes_home = paths.hermes_home
+
+    if gateway is not None:
+        try:
+            await gateway.stop()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("restore: gateway stop failed: %s", exc)
+
+    restored_files: list[str] = []
+    error: str | None = None
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            buf2 = io.BytesIO(raw_bytes)
+            with tarfile.open(fileobj=buf2, mode="r:gz") as tf:
+                tf.extractall(tmp_path)  # noqa: S202  # already allowlisted above
+            for m in members:
+                name = m.name
+                src = tmp_path / name
+                dest = hermes_home / name
+                src.replace(dest)
+                restored_files.append(name)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("restore: extraction failed: %s", exc)
+        error = f"extraction failed: {exc}"
+
+    if gateway is not None:
+        try:
+            await gateway.start()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("restore: gateway start failed: %s", exc)
+
+    if error:
+        return JSONResponse({"ok": False, "error": error}, status_code=500)
+    return JSONResponse({"ok": True, "files": restored_files})
+
+
 async def _unimplemented(request: Request) -> Response:
     guard = require_admin(request)
     if guard is not None:
@@ -630,6 +946,9 @@ def admin_routes() -> list[Route]:
         Route("/admin/api/status", api_status, methods=["GET"]),
         Route("/admin/api/ping", api_ping, methods=["GET"]),
         Route("/admin/api/pilot/status", api_pilot_status, methods=["GET"]),
+        Route("/admin/api/pilot/usage", api_pilot_usage, methods=["GET"]),
+        Route("/admin/api/pilot/backup/download", api_pilot_backup_download, methods=["POST"]),
+        Route("/admin/api/pilot/backup/restore", api_pilot_backup_restore, methods=["POST"]),
         Route("/admin/api/pilot/gateway/restart", api_pilot_gateway_restart, methods=["POST"]),
         Route("/admin/api/provider/setup", api_provider_setup, methods=["POST"]),
         Route("/admin/api/channels", api_channels_get, methods=["GET"]),
