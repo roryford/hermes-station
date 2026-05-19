@@ -207,6 +207,18 @@ def station_page(page: "Page", base_url: str) -> "Page":
         timeout=10_000,
     )
     page.evaluate("() => window.switchPanel('settings')")
+    # webui's settings panel kicks off a flurry of /api/* loads on open and
+    # calls switchSettingsSection() on at least one of its own sections as
+    # part of init. Both routes pass through the extension's wrap and
+    # remove .active from #settingsPaneAdmin if we activated Station too
+    # early — the MutationObserver then halts polling. Wait for the
+    # initial network burst to settle before activating.
+    try:
+        page.wait_for_load_state("networkidle", timeout=10_000)
+    except Exception:
+        # networkidle can be flaky if a long-poll endpoint stays open; the
+        # subsequent activation + selector wait is the real correctness gate.
+        pass
     # Activate the station pane via the same code path webui's menu buttons
     # use. Clicking the button works too but adds a layer (visibility,
     # actionability checks) that has flaked under parallel load.
