@@ -99,7 +99,9 @@ def test_long_poll_soak_clean_and_steady(station_page) -> None:
     console_errors: list[str] = []
     page_errors: list[str] = []
 
-    page.on("request", lambda r: request_times.append(time.monotonic()) if _is_status_request(r.url) else None)
+    page.on(
+        "request", lambda r: request_times.append(time.monotonic()) if _is_status_request(r.url) else None
+    )
     page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" else None)
     page.on("pageerror", lambda e: page_errors.append(str(e)))
 
