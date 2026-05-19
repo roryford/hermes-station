@@ -1,0 +1,129 @@
+<div id="usage-data">
+
+{% if no_db %}
+<section class="card">
+    <div class="card-header"><h2>No data yet</h2></div>
+    <p class="muted">No usage data found — run a conversation first to populate <code>state.db</code>.</p>
+</section>
+
+{% else %}
+
+{# ── Summary row ───────────────────────────────────────────────────── #}
+<section class="card">
+    <div class="card-header">
+        <h2>Summary — last {{ days }} days</h2>
+        <span class="muted" style="font-size:0.8rem;">
+            {{ summary.session_count }} session{% if summary.session_count != 1 %}s{% endif %}
+            {% if cache_age > 0 %}&nbsp;·&nbsp;cached {{ cache_age }}s ago{% endif %}
+        </span>
+        <button type="button" class="btn small ghost"
+                hx-get="/admin/_partial/usage/data?days={{ days }}&nocache={{ "true" }}"
+                hx-target="#usage-data"
+                hx-swap="outerHTML">
+            Refresh
+        </button>
+    </div>
+    <dl class="kv">
+        <dt>Total cost</dt>
+        <dd><code>{{ summary.total_cost_str }}</code>{% if summary.has_estimated %}&nbsp;<span class="badge muted" title="Some sessions use estimated cost">~ est.</span>{% endif %}</dd>
+        <dt>Total tokens</dt>
+        <dd><code>{{ summary.total_tokens_str }}</code>
+            <span class="muted" style="font-size:0.82rem;">
+                (in&nbsp;{{ summary.input_tokens_str }}
+                &nbsp;·&nbsp;out&nbsp;{{ summary.output_tokens_str }}
+                &nbsp;·&nbsp;cache-read&nbsp;{{ summary.cache_read_tokens_str }}
+                &nbsp;·&nbsp;cache-write&nbsp;{{ summary.cache_write_tokens_str }})
+            </span>
+        </dd>
+        <dt>API calls</dt>
+        <dd><code>{{ summary.api_calls }}</code></dd>
+    </dl>
+</section>
+
+{# ── By channel ────────────────────────────────────────────────────── #}
+<section class="card">
+    <div class="card-header"><h2>By channel</h2></div>
+    {% if channels %}
+    <table>
+        <thead>
+            <tr>
+                <th>Channel</th>
+                <th>Cost</th>
+                <th>Tokens</th>
+                <th>API calls</th>
+                <th>Sessions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in channels %}
+            <tr>
+                <td><code>{{ row.source }}</code></td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <code>{{ row.cost_str }}</code>
+                        {% if row.bar_pct > 0 %}
+                        <div style="flex:1;min-width:60px;max-width:120px;background:var(--surface-2);border-radius:3px;height:6px;">
+                            <div style="width:{{ row.bar_pct }}%;background:var(--accent);border-radius:3px;height:6px;"></div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </td>
+                <td>{{ row.tokens_str }}</td>
+                <td>{{ row.api_calls }}</td>
+                <td>{{ row.sessions }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No channel data for this period.</p>
+    {% endif %}
+</section>
+
+{# ── By model ──────────────────────────────────────────────────────── #}
+<section class="card">
+    <div class="card-header"><h2>By model</h2></div>
+    {% if models %}
+    <table>
+        <thead>
+            <tr>
+                <th>Model</th>
+                <th>Provider</th>
+                <th>Cost</th>
+                <th>Tokens</th>
+                <th>Sessions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in models %}
+            <tr>
+                <td><code>{{ row.model }}</code></td>
+                <td><span class="badge muted">{{ row.billing_provider }}</span></td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <code>{{ row.cost_str }}</code>
+                        {% if row.bar_pct > 0 %}
+                        <div style="flex:1;min-width:60px;max-width:120px;background:var(--surface-2);border-radius:3px;height:6px;">
+                            <div style="width:{{ row.bar_pct }}%;background:var(--accent);border-radius:3px;height:6px;"></div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </td>
+                <td>{{ row.tokens_str }}</td>
+                <td>{{ row.sessions }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No model data for this period.</p>
+    {% endif %}
+</section>
+
+{% if has_estimated %}
+<p class="muted" style="font-size:0.82rem;margin-top:0.25rem;">~ = estimated cost (actual cost not recorded for those sessions).</p>
+{% endif %}
+
+{% endif %}
+
+</div>

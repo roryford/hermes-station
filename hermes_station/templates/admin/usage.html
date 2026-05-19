@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<h1>Usage</h1>
+<p class="muted" style="margin-top:0;">Token and cost telemetry from <code>state.db</code>. Costs marked <strong>~</strong> are estimates; actual costs are used when available.</p>
+
+<div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;">
+    <button type="button"
+            class="btn {% if days != 7 %}ghost{% endif %}"
+            hx-get="/admin/_partial/usage/data?days=7"
+            hx-target="#usage-data"
+            hx-swap="outerHTML"
+            hx-push-url="/admin/usage?days=7">
+        Last 7 days
+    </button>
+    <button type="button"
+            class="btn {% if days != 30 %}ghost{% endif %}"
+            hx-get="/admin/_partial/usage/data?days=30"
+            hx-target="#usage-data"
+            hx-swap="outerHTML"
+            hx-push-url="/admin/usage?days=30">
+        Last 30 days
+    </button>
+</div>
+
+<div id="usage-data"
+     hx-get="/admin/_partial/usage/data?days={{ days }}"
+     hx-trigger="load"
+     hx-swap="outerHTML">
+    <p class="muted">Loading…</p>
+</div>
+{% endblock %}
