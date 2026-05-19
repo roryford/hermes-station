@@ -1,0 +1,18 @@
+{% if success %}
+<div style="display:flex;align-items:center;gap:0.5rem;">
+    <span class="badge success">OK</span>
+    <span>{{ message }}</span>
+</div>
+{% if files %}
+<ul class="muted" style="margin:0.6rem 0 0 0;padding-left:1.4rem;font-size:0.85rem;">
+    {% for f in files %}
+    <li><code>{{ f }}</code></li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% else %}
+<div style="display:flex;align-items:center;gap:0.5rem;">
+    <span class="badge warning">Error</span>
+    <span style="color:#e8a0a0;">{{ message }}</span>
+</div>
+{% endif %}

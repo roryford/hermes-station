@@ -1,0 +1,39 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<h1>Backup</h1>
+<p class="muted" style="margin-top:0;">Download or restore a snapshot of your <code>.hermes/</code> configuration and state.</p>
+
+<div class="card" style="background:#3a1e1e;border-left:3px solid #e05252;margin-bottom:1.5rem;padding:0.9rem 1.2rem;">
+    <strong style="color:#e05252;">Security warning:</strong>
+    <span style="color:#e8a0a0;"> This backup contains your API keys and secrets. Store it securely and do not share it.</span>
+</div>
+
+<section class="card">
+    <div class="card-header">
+        <h2>Download backup</h2>
+    </div>
+    <p class="muted">Creates a <code>.tar.gz</code> snapshot of <code>.env</code>, <code>config.yaml</code>, <code>state.db</code>, <code>gateway_state.json</code>, and <code>SOUL.md</code>. The gateway is briefly stopped during the download.</p>
+    <form method="post" action="/admin/api/backup/download">
+        <button type="submit" class="btn">Download backup</button>
+    </form>
+</section>
+
+<section class="card" style="margin-top:1.5rem;">
+    <div class="card-header">
+        <h2>Restore from backup</h2>
+    </div>
+    <p class="muted">Upload a previously downloaded <code>.tar.gz</code> backup. Each file in the archive is atomically moved into <code>.hermes/</code> and the gateway is restarted.</p>
+    <form hx-post="/admin/api/backup/restore"
+          hx-target="#restore-result"
+          hx-swap="innerHTML"
+          hx-encoding="multipart/form-data">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+            <input type="file" name="backup_file" accept=".tar.gz" required
+                   style="color:var(--text);font-size:0.9rem;">
+            <button type="submit" class="btn">Restore</button>
+        </div>
+    </form>
+    <div id="restore-result" style="margin-top:1rem;"></div>
+</section>
+{% endblock %}
