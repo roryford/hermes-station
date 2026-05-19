@@ -92,10 +92,17 @@ container run -d --name hs-test -p 8787:8787 \
 PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
   uv run --with playwright python -m playwright install chromium
 
-# Run the suite — parallel-safe via pytest-xdist.
+# Stage 1: parallel-safe read-only tests via pytest-xdist.
 PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
 HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
 HERMES_STATION_E2E_PASSWORD=test-admin-pw \
   uv run --with playwright --with pytest-playwright --with pytest-xdist \
-    pytest tests/browser/ --no-cov -n auto
+    pytest tests/browser/ -m "not serial" --no-cov -n auto
+
+# Stage 2: serial-only mutation tests (gateway restart). Must run alone.
+PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
+HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
+HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+  uv run --with playwright --with pytest-playwright --with pytest-xdist \
+    pytest tests/browser/ -m serial --no-cov
 ```

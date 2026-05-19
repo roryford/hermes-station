@@ -207,22 +207,44 @@ def station_page(page: "Page", base_url: str) -> "Page":
         timeout=10_000,
     )
     page.evaluate("() => window.switchPanel('settings')")
-    # webui's settings panel kicks off a flurry of /api/* loads on open and
+    # webui's settings panel kicks off a flurry of /api/* loads on open AND
     # calls switchSettingsSection() on at least one of its own sections as
-    # part of init. Both routes pass through the extension's wrap and
-    # remove .active from #settingsPaneAdmin if we activated Station too
-    # early — the MutationObserver then halts polling. Wait for the
-    # initial network burst to settle before activating.
+    # part of init. The latter passes through the extension's wrap and
+    # clears our pane's .active if we activated too early. Wait for the
+    # initial network burst to settle so init completes before we touch
+    # the pane state.
     try:
         page.wait_for_load_state("networkidle", timeout=10_000)
     except Exception:
-        # networkidle can be flaky if a long-poll endpoint stays open; the
-        # subsequent activation + selector wait is the real correctness gate.
+        # networkidle can hang indefinitely if a long-poll endpoint stays
+        # open (e.g. /api/sessions stream). The wrap-presence wait below
+        # is the real correctness gate; swallow the timeout and proceed.
         pass
-    # Activate the station pane via the same code path webui's menu buttons
-    # use. Clicking the button works too but adds a layer (visibility,
-    # actionability checks) that has flaked under parallel load.
-    page.evaluate("() => window.switchSettingsSection('station')")
+    # Confirm the extension's wrap of switchSettingsSection survived
+    # webui's init (it would re-define the global if the script load order
+    # races); the wrap source contains "activateStation".
+    page.wait_for_function(
+        """() => typeof window.switchSettingsSection === 'function'
+              && window.switchSettingsSection.toString().includes('activateStation')""",
+        timeout=5_000,
+    )
+    # Activate the station pane by setting the DOM classes directly. This
+    # mirrors activateStation() in extension/admin.js but bypasses
+    # window.switchSettingsSection — even with the wrap confirmed present,
+    # invoking it can be brittle if webui re-clobbers between our check
+    # and our call. Setting classes directly fires the same MutationObserver
+    # (admin.js:206) that starts polling. Tests that need to exercise the
+    # wrap call switchSettingsSection() themselves.
+    page.evaluate(
+        """() => {
+          document.querySelectorAll('#settingsMenu .side-menu-item').forEach((it) => {
+            it.classList.toggle('active', it.dataset.settingsSection === 'station');
+          });
+          document.querySelectorAll('.settings-main .settings-pane').forEach((p) => {
+            p.classList.toggle('active', p.id === 'settingsPaneAdmin');
+          });
+        }"""
+    )
     page.wait_for_selector(f"{STATION_PANE_SELECTOR}.active", state="attached", timeout=10_000)
     return page
 
