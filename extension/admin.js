@@ -40,7 +40,20 @@
 
   // webui's switchSettingsSection has a hardcoded allowlist of 6 sections; passing 'station'
   // falls back to 'conversation'. We override it so our section integrates as a peer.
-  const _origSwitch = window.switchSettingsSection;
+  //
+  // We must defend against three webui patterns that have clobbered prior wraps:
+  //   1. panels.js declares `function switchSettingsSection(...)` at the top level, creating
+  //      a non-configurable global. We therefore cannot install a getter/setter accessor.
+  //   2. panels.js later does `switchSettingsSection = function (name) { _origSwitch(name); ... }`
+  //      which captures whatever value is current at that moment. If we wrap before that line
+  //      runs (script order), webui's wrap replaces ours.
+  //   3. webui's async settings init reassigns the global again after DOMContentLoaded.
+  //
+  // Strategy: install our wrap, then make the property non-writable. Subsequent assignments
+  // (`window.switchSettingsSection = ...`) become silent no-ops in sloppy mode, so our wrap
+  // stays in front. We capture whatever was assigned just before our IIFE ran as _delegate
+  // so non-station calls still fall through to webui's real implementation.
+  let _delegate = window.switchSettingsSection;
   function activateStation() {
     document.querySelectorAll("#settingsMenu .side-menu-item").forEach((it) => {
       it.classList.toggle("active", it.dataset.settingsSection === SECTION_ID);
@@ -49,14 +62,30 @@
       p.classList.toggle("active", p.id === "settingsPaneAdmin");
     });
   }
-  window.switchSettingsSection = function (name) {
+  function wrappedSwitchSettingsSection(name) {
     if (name === SECTION_ID) { activateStation(); return; }
     // Switching to a non-station section: webui's original only knows its 6 sections,
     // so it won't clear our .active. Clear it ourselves.
     pane.classList.remove("active");
     btn.classList.remove("active");
-    if (typeof _origSwitch === "function") return _origSwitch.apply(this, arguments);
-  };
+    if (typeof _delegate === "function") return _delegate.apply(this, arguments);
+  }
+  try {
+    // The existing global was created via `function` declaration in panels.js, so it is
+    // non-configurable. We can't install an accessor, but we CAN flip writable from true
+    // to false on a non-configurable data property — that's an allowed descriptor change.
+    Object.defineProperty(window, "switchSettingsSection", {
+      value: wrappedSwitchSettingsSection,
+      writable: false,
+      configurable: false,
+      enumerable: true,
+    });
+  } catch (_e) {
+    // Fallback for runtimes where the property is freshly configurable (e.g. tests, or
+    // future webui versions that switch to `let`/`const`). A plain assignment installs
+    // the wrap but offers no clobber defense — webui upgrades may reintroduce the bug.
+    window.switchSettingsSection = wrappedSwitchSettingsSection;
+  }
   btn.addEventListener("click", () => window.switchSettingsSection(SECTION_ID));
 
   async function fetchStatus() {
