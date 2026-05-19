@@ -61,8 +61,8 @@ WORKDIR /app
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
 # hermes-webui is fetched at build time because it has no pyproject.toml,
 # so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
-ARG HERMES_WEBUI_VERSION=v0.51.89
-ARG HERMES_WEBUI_SHA=e6be01c4dd84a5f2a146adc3727f0e458508dc13
+ARG HERMES_WEBUI_VERSION=v0.51.92
+ARG HERMES_WEBUI_SHA=71c70352c113c57bef959b751e276c38b2c6caf1
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
