@@ -10,9 +10,11 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from collections.abc import Iterator
+
 from starlette.datastructures import UploadFile
 from starlette.requests import Request
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from hermes_station.admin._templates import templates as _templates
@@ -71,8 +73,6 @@ async def backup_page(request: Request) -> Response:
 async def backup_download(request: Request) -> Response:
     """POST /admin/api/backup/download — stream a tar.gz of hermes_home."""
     if not is_authenticated(request):
-        from starlette.responses import JSONResponse
-
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     paths: Paths = request.app.state.paths
@@ -97,7 +97,7 @@ async def backup_download(request: Request) -> Response:
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     filename = f"hermes-station-backup-{timestamp}.tar.gz"
 
-    def _iter() -> bytes:
+    def _iter() -> Iterator[bytes]:
         yield archive_bytes
 
     return StreamingResponse(
@@ -110,8 +110,6 @@ async def backup_download(request: Request) -> Response:
 async def backup_restore(request: Request) -> Response:
     """POST /admin/api/backup/restore — upload a tar.gz and restore hermes_home."""
     if not is_authenticated(request):
-        from starlette.responses import JSONResponse
-
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     paths: Paths = request.app.state.paths
@@ -143,20 +141,42 @@ async def backup_restore(request: Request) -> Response:
             status_code=400,
         )
 
-    # 2. Path traversal check.
-    for member in members:
-        if member.name.startswith("/") or ".." in member.name:
+    # 2. Path traversal check + allowlist.
+    #
+    # Defense in depth: tarfile's filter="data" (used below at extract time)
+    # already rejects absolute paths, ".." traversal, symlinks, hardlinks, and
+    # device files. We additionally restrict restore to the same flat set of
+    # filenames produced by _build_archive — no subdirectories, no arbitrary
+    # filenames — so a crafted archive cannot drop unexpected files into
+    # hermes_home even if the data filter ever loosens.
+    allowed = set(_INCLUDE_FILES)
+    file_members = [m for m in members if m.isfile()]
+    for member in file_members:
+        if (
+            member.name.startswith("/")
+            or ".." in member.name.split("/")
+            or "\x00" in member.name
+            or member.name not in allowed
+        ):
             return _templates.TemplateResponse(
                 request,
                 "admin/_backup_result.html",
                 {
                     "success": False,
-                    "message": f"Archive contains unsafe path: {member.name!r}",
+                    "message": f"Archive contains unexpected entry: {member.name!r}",
                 },
                 status_code=400,
             )
 
-    member_names = [m.name for m in members]
+    if not file_members:
+        return _templates.TemplateResponse(
+            request,
+            "admin/_backup_result.html",
+            {"success": False, "message": "Archive contains no restorable files."},
+            status_code=400,
+        )
+
+    member_names = [m.name for m in file_members]
 
     # 3. Stop the gateway.
     if gateway is not None:

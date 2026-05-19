@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import gzip
 import io
 import tarfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
-import pytest
 from starlette.applications import Starlette
 
 from hermes_station.admin.backup import (
@@ -275,7 +273,7 @@ async def test_restore_path_traversal_absolute_rejected(fake_data_dir: Path, adm
             files={"backup_file": ("backup.tar.gz", archive, "application/gzip")},
         )
     assert resp.status_code == 400
-    assert "unsafe path" in resp.text
+    assert "unexpected entry" in resp.text
 
 
 async def test_restore_path_traversal_dotdot_rejected(fake_data_dir: Path, admin_password: str) -> None:
@@ -296,7 +294,69 @@ async def test_restore_path_traversal_dotdot_rejected(fake_data_dir: Path, admin
             files={"backup_file": ("backup.tar.gz", archive, "application/gzip")},
         )
     assert resp.status_code == 400
-    assert "unsafe path" in resp.text
+    assert "unexpected entry" in resp.text
+
+
+async def test_restore_non_allowlisted_file_rejected(fake_data_dir: Path, admin_password: str, tmp_path: Path) -> None:
+    """A crafted archive with an unexpected (non-allowlisted) filename must be rejected."""
+    hermes_home = tmp_path / ".hermes"
+    hermes_home.mkdir()
+
+    archive = _make_tar_gz({"evil.py": "print('pwned')"})
+
+    app = _build_app(hermes_home=hermes_home)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/api/backup/restore",
+            files={"backup_file": ("backup.tar.gz", archive, "application/gzip")},
+        )
+
+    assert resp.status_code == 400
+    assert "unexpected entry" in resp.text
+    # Nothing should have been written.
+    assert not (hermes_home / "evil.py").exists()
+
+
+async def test_restore_subdir_filename_rejected(fake_data_dir: Path, admin_password: str, tmp_path: Path) -> None:
+    """Even a 'safe' subdirectory path is rejected — restore is strictly flat-allowlist."""
+    hermes_home = tmp_path / ".hermes"
+    hermes_home.mkdir()
+
+    archive = _make_tar_gz({"subdir/config.yaml": "model: {}"})
+
+    app = _build_app(hermes_home=hermes_home)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/api/backup/restore",
+            files={"backup_file": ("backup.tar.gz", archive, "application/gzip")},
+        )
+
+    assert resp.status_code == 400
+    assert "unexpected entry" in resp.text
+
+
+async def test_restore_empty_archive_rejected(fake_data_dir: Path, admin_password: str, tmp_path: Path) -> None:
+    """An archive with no restorable files is rejected (rather than silently no-op)."""
+    hermes_home = tmp_path / ".hermes"
+    hermes_home.mkdir()
+
+    archive = _make_tar_gz({})
+
+    app = _build_app(hermes_home=hermes_home)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.post(
+            "/admin/api/backup/restore",
+            files={"backup_file": ("backup.tar.gz", archive, "application/gzip")},
+        )
+
+    assert resp.status_code == 400
+    assert "no restorable files" in resp.text
 
 
 async def test_restore_success(fake_data_dir: Path, admin_password: str, tmp_path: Path) -> None:
