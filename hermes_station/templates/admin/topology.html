@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+{% block title %}hermes-station · {{ title }}{% endblock %}
+{% block content %}
+<style>
+.topology-diagram {
+    font-family: monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    background: var(--surface-alt, #f6f7f9);
+    border: 1px solid var(--border, #dde1e7);
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text, #1a1d23);
+}
+</style>
+
+<h1>Topology</h1>
+<p class="muted" style="margin-top:0;">How this container is structured: what runs where, what talks to what, and what each part of the filesystem does.</p>
+
+<section class="card">
+    <div class="card-header">
+        <h2>Process topology</h2>
+    </div>
+    <pre class="topology-diagram">
+                  ┌─────────────────────────────────────────┐
+                  │         hermes-station container         │
+                  │                                          │
+  Browser ──────▶ │  hermes-station (control plane :8787)   │
+  Admin           │       ├── /admin   (this UI)             │
+  WebUI ─────────▶│       └── /        (proxy to WebUI)      │
+                  │                    │                     │
+                  │  hermes-webui   (:8788, internal)        │
+                  │       └── Jinja2 chat UI                 │
+                  │                                          │
+                  │  hermes-agent  (gateway subprocess)      │
+                  │       ├── MCP servers                    │
+                  │       ├── channel listeners              │
+                  │       └── /data/.hermes/state.db         │
+                  └─────────────────────────────────────────┘
+                           │             │
+               External APIs         Channels
+              (OpenRouter, etc.)  (Telegram, Slack…)
+    </pre>
+</section>
+
+<section class="card">
+    <div class="card-header">
+        <h2>Filesystem layout</h2>
+    </div>
+    <dl class="kv">
+        <dt><code>{{ paths.hermes_home }}/</code></dt>
+        <dd>Agent home directory (all persisted state)</dd>
+        <dt><code>{{ paths.env_path }}</code></dt>
+        <dd>API keys and secrets (written by /admin Settings)</dd>
+        <dt><code>{{ paths.config_path }}</code></dt>
+        <dd>Provider, model, channel, and feature config</dd>
+        <dt><code>{{ paths.hermes_home }}/state.db</code></dt>
+        <dd>SQLite: all sessions, usage, memory (WAL mode)</dd>
+        <dt><code>{{ paths.hermes_home }}/gateway_state.json</code></dt>
+        <dd>Gateway runtime state (connection, PID, uptime)</dd>
+        <dt><code>{{ paths.hermes_home }}/SOUL.md</code></dt>
+        <dd>Agent persona and instructions</dd>
+        <dt><code>{{ paths.webui_state_dir }}/</code></dt>
+        <dd>WebUI state: sessions, signing key</dd>
+        <dt><code>{{ paths.workspace_dir }}/</code></dt>
+        <dd>User workspace files</dd>
+    </dl>
+</section>
+
+<section class="card">
+    <div class="card-header">
+        <h2>Port map</h2>
+    </div>
+    <dl class="kv">
+        <dt><code>$PORT</code> <span class="muted">(default 8787)</span></dt>
+        <dd><code>0.0.0.0</code> — Public: hermes-station (proxy + admin)</dd>
+        <dt><code>8788</code></dt>
+        <dd><code>127.0.0.1</code> — Internal: hermes-webui (never public)</dd>
+    </dl>
+</section>
+
+<section class="card">
+    <div class="card-header">
+        <h2>Data flow</h2>
+    </div>
+    <p>When you send a chat message in the WebUI, it travels from your browser to hermes-webui (the chat frontend on port 8788), which forwards it as an API call to hermes-agent. hermes-agent selects the appropriate LLM, sends the request to the configured provider (e.g. OpenRouter, Anthropic, OpenAI), and streams the response back through hermes-webui to your browser.</p>
+    <p>Channel messages (Telegram, Slack, Discord) arrive at listeners running inside hermes-agent. Each listener receives an inbound message, passes it through the same LLM pipeline, and sends the response back via the channel's outbound API. hermes-station is not in this path — it only manages the gateway process lifecycle.</p>
+    <p>hermes-station owns the container orchestration layer: it starts and supervises hermes-webui and the hermes-agent gateway, exposes the admin UI, manages configuration files, and proxies all non-admin traffic to hermes-webui. hermes-agent owns the AI layer: model selection, MCP server connections, channel integrations, session memory, and tool execution. Configuration flows one way — hermes-station writes config.yaml and .env, and hermes-agent reads them on startup.</p>
+</section>
+{% endblock %}
