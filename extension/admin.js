@@ -53,6 +53,18 @@
   // (`window.switchSettingsSection = ...`) become silent no-ops in sloppy mode, so our wrap
   // stays in front. We capture whatever was assigned just before our IIFE ran as _delegate
   // so non-station calls still fall through to webui's real implementation.
+  // User-intent flag, decoupled from the .active class. Polling lifecycle is gated on
+  // _userOpenedStation rather than the pane's .active class because webui's settings
+  // init calls switchSettingsSection('conversation') at the end of its async load
+  // (panels.js:5695), which routes through our wrap and clears .active — even when
+  // the user is actively viewing Station. Class-based gating raced that init and
+  // caused the gateway-restart test to flake (~1/4) by halting polling forever.
+  //
+  // The wrap CAN'T distinguish "user clicked Conversation" from "webui's init called
+  // switchSettingsSection('conversation')" — they look identical. So we flip the flag
+  // on a different signal: real click events on #settingsMenu menu items. webui's
+  // init does not synthesize click events, only real user navigation does.
+  let _userOpenedStation = false;
   let _delegate = window.switchSettingsSection;
   function activateStation() {
     document.querySelectorAll("#settingsMenu .side-menu-item").forEach((it) => {
@@ -63,9 +75,15 @@
     });
   }
   function wrappedSwitchSettingsSection(name) {
-    if (name === SECTION_ID) { activateStation(); return; }
+    if (name === SECTION_ID) {
+      _userOpenedStation = true;
+      activateStation();
+      start();
+      return;
+    }
     // Switching to a non-station section: webui's original only knows its 6 sections,
-    // so it won't clear our .active. Clear it ourselves.
+    // so it won't clear our .active. Clear it ourselves (visual correctness only —
+    // polling lifecycle no longer depends on this class).
     pane.classList.remove("active");
     btn.classList.remove("active");
     if (typeof _delegate === "function") return _delegate.apply(this, arguments);
@@ -87,6 +105,23 @@
     window.switchSettingsSection = wrappedSwitchSettingsSection;
   }
   btn.addEventListener("click", () => window.switchSettingsSection(SECTION_ID));
+
+  // Delegated click listener on the settings menu: real user clicks on menu items
+  // flip _userOpenedStation. webui's async init does NOT synthesize click events,
+  // so its switchSettingsSection('conversation') call at the end of loadSettingsPanel
+  // cannot reach this handler — only genuine user navigation does. This is the
+  // signal that distinguishes "user navigated away" from "webui init ran".
+  menu.addEventListener("click", (ev) => {
+    const target = ev.target && ev.target.closest ? ev.target.closest("[data-settings-section]") : null;
+    if (!target) return;
+    if (target.dataset.settingsSection === SECTION_ID) {
+      _userOpenedStation = true;
+      start();
+    } else {
+      _userOpenedStation = false;
+      stop();
+    }
+  });
 
   async function fetchStatus() {
     if (typeof window.api === "function") return await window.api("/admin/api/pilot/status");
@@ -204,7 +239,9 @@
   }
 
   let timer = null, failCount = 0, toastedThisBurst = false;
-  const isActive = () => pane.classList.contains("active") && document.visibilityState === "visible";
+  // Polling lifecycle is gated on user intent + visibility, NOT on the pane's
+  // .active class. See _userOpenedStation comment above for the rationale.
+  const isActive = () => _userOpenedStation && document.visibilityState === "visible";
 
   async function tick() {
     if (!isActive()) return;
@@ -232,7 +269,11 @@
   function start() { if (!timer) tick(); }
   function stop() { if (timer) { clearTimeout(timer); timer = null; } }
 
-  new MutationObserver(() => { isActive() ? start() : stop(); }).observe(pane, { attributes: true, attributeFilter: ["class"] });
+  // No MutationObserver on .active: webui's settings init clears .active on its
+  // own schedule (panels.js:5695 calls switchSettingsSection('conversation') at
+  // the tail of loadSettingsPanel), which would falsely halt polling. Start/stop
+  // is driven entirely by user-intent transitions in wrappedSwitchSettingsSection
+  // and the menu click delegate, plus the visibilitychange listener below.
   document.addEventListener("visibilitychange", () => { isActive() ? start() : stop(); });
   if (isActive()) start();
 })();

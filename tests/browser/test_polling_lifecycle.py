@@ -41,12 +41,20 @@ def _is_status_request(url: str) -> bool:
 
 @pytest.mark.browser
 def test_polling_stops_when_pane_loses_active(station_page) -> None:
-    """After switching away from Station, no further /admin/api/pilot/status
-    requests fire.
+    """After the user navigates away from Station, no further
+    /admin/api/pilot/status requests fire.
 
-    Catches MutationObserver / visibilitychange wiring regressions in
-    extension/admin.js:177-208. A leak here would flood the bridge and
-    surface as a slow-creep load problem on long-lived sessions.
+    Polling lifecycle is gated on a _userOpenedStation flag (admin.js) that
+    flips true on real menu clicks for the station button and false on real
+    menu clicks for any other section. The flag is NOT driven by the pane's
+    .active class, because webui's settings init calls
+    switchSettingsSection('conversation') at the end of loadSettingsPanel
+    which would falsely halt polling if we still gated on .active.
+
+    This test simulates a real user click on the Conversation menu item
+    rather than calling window.switchSettingsSection('conversation') via
+    JS — only real click events flip _userOpenedStation false, because
+    webui's init does not synthesize clicks.
     """
     page = station_page
     requests: list[str] = []
@@ -61,10 +69,14 @@ def test_polling_stops_when_pane_loses_active(station_page) -> None:
         "Either the initial render didn't tick or the 5s schedule misfired."
     )
 
-    # Phase 2: switch away. Our switchSettingsSection wrap should clear
-    # .active on the pane, the MutationObserver should fire, and stop()
-    # should clear the timer.
-    page.evaluate("() => window.switchSettingsSection('conversation')")
+    # Phase 2: simulate a real user click on the Conversation menu item.
+    # Real clicks bubble to the delegated handler in admin.js which flips
+    # _userOpenedStation=false and calls stop(). Calling
+    # switchSettingsSection('conversation') via JS would NOT halt polling
+    # under the post-fix design, because the wrap can't distinguish that
+    # call from webui's own init call. The click signal is what
+    # disambiguates user intent from webui internals.
+    page.click('#settingsMenu .side-menu-item[data-settings-section="conversation"]')
 
     # Grace window: any request already in flight when we switched away
     # will still land. POLL_MS is the worst case for a scheduled tick that
