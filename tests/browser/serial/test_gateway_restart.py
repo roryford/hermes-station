@@ -68,7 +68,7 @@ def test_accepting_confirm_posts_restart_and_re_polls(station_page) -> None:
     """
     page = station_page
     restart_responses: list[int] = []
-    status_after_restart: list[float] = []
+    status_after_restart: list[int] = []
     state = {"restart_done": False}
 
     def _on_response(resp) -> None:
