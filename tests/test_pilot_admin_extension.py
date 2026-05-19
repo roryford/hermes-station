@@ -153,7 +153,7 @@ async def test_status_flag_on_returns_schema(fake_data_dir: Path, admin_password
 
     # Top-level shape.
     assert data["ok"] is True
-    for key in ("gateway", "webui", "provider", "channels", "memory"):
+    for key in ("gateway", "webui", "provider", "channels", "memory", "versions"):
         assert key in data, f"missing top-level key {key!r}"
 
     # Per-field types (best-effort — null is permitted on compose failure).
@@ -180,6 +180,10 @@ async def test_status_flag_on_returns_schema(fake_data_dir: Path, admin_password
         assert "provider" in data["memory"]
         assert "ready" in data["memory"]
         assert isinstance(data["memory"]["ready"], bool)
+    if data["versions"] is not None:
+        assert isinstance(data["versions"], dict)
+        for k in ("station", "webui", "hermes"):
+            assert k in data["versions"]
 
 
 async def test_status_concurrency_safe_under_mid_write(
@@ -212,6 +216,7 @@ async def test_status_concurrency_safe_under_mid_write(
     assert "provider" in data
     assert "channels" in data
     assert "memory" in data
+    assert "versions" in data
 
 
 # ─────────────────────────────────────────────────── gateway restart endpoint

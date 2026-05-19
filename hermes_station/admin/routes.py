@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from typing import Any
 from urllib.parse import urlsplit
+
+import hermes_station
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
@@ -281,6 +285,31 @@ def _pilot_compose_memory(request: Request) -> dict[str, Any]:
     return {"provider": provider_name, "ready": ready}
 
 
+def _pilot_compose_versions(request: Request) -> dict[str, Any]:
+    """Versions of the three components shipped in this container.
+
+    - ``station``: hermes-station's own package version.
+    - ``webui``: the hermes-webui tag baked in at image build time, surfaced via
+      the ``HERMES_WEBUI_VERSION`` env var the Dockerfile sets on the final stage.
+    - ``hermes``: hermes-agent's installed package version.
+
+    Any field that can't be resolved degrades to ``None`` rather than failing
+    the whole compose.
+    """
+    station = getattr(hermes_station, "__version__", None) or None
+    if station == "unknown":
+        station = None
+
+    webui = os.environ.get("HERMES_WEBUI_VERSION") or None
+
+    try:
+        hermes = _pkg_version("hermes-agent")
+    except PackageNotFoundError:
+        hermes = None
+
+    return {"station": station, "webui": webui, "hermes": hermes}
+
+
 async def api_pilot_status(request: Request) -> Response:
     """Read-only status snapshot for the pilot admin extension.
 
@@ -333,6 +362,12 @@ async def api_pilot_status(request: Request) -> Response:
     except Exception as exc:  # noqa: BLE001
         logger.info("pilot status: memory compose failed: %s", exc)
         payload["memory"] = None
+
+    try:
+        payload["versions"] = _pilot_compose_versions(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("pilot status: versions compose failed: %s", exc)
+        payload["versions"] = None
 
     return JSONResponse(payload)
 
