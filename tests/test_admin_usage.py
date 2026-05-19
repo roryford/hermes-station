@@ -364,6 +364,41 @@ async def test_usage_data_cache_expires(
     assert count_after_second > count_after_first
 
 
+async def test_usage_data_invalid_days_param_does_not_crash(
+    fake_data_dir: Path, admin_password: str
+) -> None:
+    """A non-integer days param falls back to the default (7) instead of 500."""
+    hermes_home = fake_data_dir / ".hermes"
+    app = _build_app(hermes_home)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await _login(client, admin_password)
+        resp = await client.get("/admin/_partial/usage/data?days=garbage")
+    assert resp.status_code == 200
+
+
+async def test_usage_data_nocache_bypasses_cache(
+    fake_data_dir: Path, admin_password: str
+) -> None:
+    """nocache=true forces a fresh query even within TTL."""
+    hermes_home = fake_data_dir / ".hermes"
+    _make_state_db(hermes_home)
+    app = _build_app(hermes_home)
+    transport = httpx.ASGITransport(app=app)
+    fake_data = {"no_db": False, "summary": {"total_cost": 0.0, "input_tokens": 0,
+        "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0,
+        "api_calls": 0, "session_count": 0, "has_estimated": False},
+        "channels": [], "models": [], "max_channel_cost": 0.0, "max_model_cost": 0.0}
+    with patch("hermes_station.admin.usage.asyncio.to_thread", return_value=fake_data) as mock_thread:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await _login(client, admin_password)
+            await client.get("/admin/_partial/usage/data?days=7")
+            count_after_first = mock_thread.call_count
+            await client.get("/admin/_partial/usage/data?days=7&nocache=true")
+            count_after_second = mock_thread.call_count
+    assert count_after_second > count_after_first
+
+
 async def test_usage_data_days_30_param(fake_data_dir: Path, admin_password: str) -> None:
     """days=30 query param is accepted without error, and the summary label says 30."""
     hermes_home = fake_data_dir / ".hermes"

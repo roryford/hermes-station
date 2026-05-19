@@ -17,7 +17,7 @@
             {% if cache_age > 0 %}&nbsp;·&nbsp;cached {{ cache_age }}s ago{% endif %}
         </span>
         <button type="button" class="btn small ghost"
-                hx-get="/admin/_partial/usage/data?days={{ days }}&nocache={{ "true" }}"
+                hx-get="/admin/_partial/usage/data?days={{ days }}&nocache=true"
                 hx-target="#usage-data"
                 hx-swap="outerHTML">
             Refresh

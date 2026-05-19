@@ -227,13 +227,19 @@ def _enrich_models(models: list[dict[str, Any]], max_cost: float) -> list[dict[s
 # ──────────────────────────────────────────────────────────── handlers
 
 
+def _parse_days(request: Request) -> int:
+    try:
+        days = int(request.query_params.get("days", 7))
+    except (TypeError, ValueError):
+        days = 7
+    return days if days in (7, 30) else 7
+
+
 async def usage_page(request: Request) -> Response:
     guard = require_admin(request)
     if guard is not None:
         return guard
-    days = int(request.query_params.get("days", 7))
-    if days not in (7, 30):
-        days = 7
+    days = _parse_days(request)
     return _templates.TemplateResponse(
         request,
         "admin/usage.html",
@@ -246,11 +252,13 @@ async def usage_data(request: Request) -> Response:
     if not is_authenticated(request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-    days = int(request.query_params.get("days", 7))
-    if days not in (7, 30):
-        days = 7
+    days = _parse_days(request)
+    nocache = request.query_params.get("nocache") == "true"
 
-    data, ts = _get_cached(request, days)
+    if nocache:
+        data, ts = None, 0.0
+    else:
+        data, ts = _get_cached(request, days)
     age = time.monotonic() - ts if ts else None
     if data is None or age is None or age >= _CACHE_TTL:
         db_file = _db_path(request)
