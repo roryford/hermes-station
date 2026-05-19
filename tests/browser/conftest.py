@@ -228,23 +228,16 @@ def station_page(page: "Page", base_url: str) -> "Page":
               && window.switchSettingsSection.toString().includes('activateStation')""",
         timeout=5_000,
     )
-    # Activate the station pane by setting the DOM classes directly. This
-    # mirrors activateStation() in extension/admin.js but bypasses
-    # window.switchSettingsSection — even with the wrap confirmed present,
-    # invoking it can be brittle if webui re-clobbers between our check
-    # and our call. Setting classes directly fires the same MutationObserver
-    # (admin.js:206) that starts polling. Tests that need to exercise the
-    # wrap call switchSettingsSection() themselves.
-    page.evaluate(
-        """() => {
-          document.querySelectorAll('#settingsMenu .side-menu-item').forEach((it) => {
-            it.classList.toggle('active', it.dataset.settingsSection === 'station');
-          });
-          document.querySelectorAll('.settings-main .settings-pane').forEach((p) => {
-            p.classList.toggle('active', p.id === 'settingsPaneAdmin');
-          });
-        }"""
-    )
+    # Activate the station pane by invoking the wrapped switchSettingsSection.
+    # PR #85 made the wrap non-writable so webui can no longer clobber it, and
+    # the post-#85 fix decoupled polling lifecycle from the .active class onto
+    # a _userOpenedStation flag. That flag flips true only when the wrap is
+    # called with 'station' (or when a real click on the menu button fires).
+    # Setting DOM classes directly would leave _userOpenedStation false and
+    # polling would never start, so we MUST go through the wrap (or click the
+    # button). Calling switchSettingsSection('station') is the most direct
+    # path and is now safe per #85.
+    page.evaluate("() => window.switchSettingsSection('station')")
     page.wait_for_selector(f"{STATION_PANE_SELECTOR}.active", state="attached", timeout=10_000)
     return page
 
