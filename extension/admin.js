@@ -304,12 +304,12 @@
 
       // Daily cost sparkline.
       const daily = _usageData.daily || [];
-      if (daily.length > 1) {
+      if (daily.length > 0) {
         const sparkWrap = document.createElement("div"); sparkWrap.className = "admin-usage-sparkline";
         const maxCost = Math.max.apply(null, daily.map(function(d) { return d.cost; }).concat([0.000001]));
         const chartH = 48;
         const barW = 8, barGap = 2;
-        const svgW = daily.length * (barW + barGap);
+        const svgW = daily.length * barW + (daily.length - 1) * barGap;
         const svgEl = document.createElementNS(svgNS, "svg");
         svgEl.setAttribute("viewBox", "0 0 " + svgW + " " + chartH);
         svgEl.setAttribute("preserveAspectRatio", "none");
