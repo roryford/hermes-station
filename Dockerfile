@@ -222,6 +222,9 @@ ENV HOME=/data \
 
 EXPOSE 8787
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -sf http://localhost:8787/health || exit 1
+
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hermes-entrypoint"]
 CMD ["python", "-m", "hermes_station"]
 
