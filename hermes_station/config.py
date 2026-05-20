@@ -524,7 +524,8 @@ def seed_default_mcp_servers(path: Path, *, catalog: list[dict[str, Any]] | None
 # code from writable npx/_npx caches under /data.
 #
 # Detection is conservative: only entries whose `command` is `npx` or `uvx`
-# AND whose `args[1]` (or `args[0]` for fetch) names the expected package
+# AND whose `args[1]` names the expected package (e.g. npx: ["-y", "<pkg>@X", ...],
+# uvx fetch: ["--from", "mcp-server-fetch==X", "mcp-server-fetch"])
 # get rewritten. Any other args layout is treated as a user customization
 # and left alone.
 _MCP_LEGACY_LAUNCHERS: dict[str, dict[str, Any]] = {
