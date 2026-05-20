@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import gzip
 import io
 import sqlite3
 import tarfile
 from pathlib import Path
 
 import httpx
-import pytest
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -23,7 +21,9 @@ async def _login(client: httpx.AsyncClient, password: str) -> None:
 class _FakeGateway:
     """Records stop/start calls. Optionally raises."""
 
-    def __init__(self, *, stop_raises: Exception | None = None, start_raises: Exception | None = None) -> None:
+    def __init__(
+        self, *, stop_raises: Exception | None = None, start_raises: Exception | None = None
+    ) -> None:
         self.stops = 0
         self.starts = 0
         self.stop_raises = stop_raises
@@ -67,9 +67,7 @@ def _build_valid_archive(files: dict[str, bytes]) -> bytes:
 # ── download: unauthenticated ─────────────────────────────────────────────────
 
 
-async def test_backup_download_401_when_not_authenticated(
-    fake_data_dir: Path, monkeypatch
-) -> None:
+async def test_backup_download_401_when_not_authenticated(fake_data_dir: Path, monkeypatch) -> None:
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
 
     from hermes_station.app import create_app
@@ -190,9 +188,7 @@ async def test_backup_download_skips_missing_files(
 # ── restore: unauthenticated ──────────────────────────────────────────────────
 
 
-async def test_backup_restore_401_when_not_authenticated(
-    fake_data_dir: Path, monkeypatch
-) -> None:
+async def test_backup_restore_401_when_not_authenticated(fake_data_dir: Path, monkeypatch) -> None:
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
 
     from hermes_station.app import create_app
@@ -220,7 +216,11 @@ async def test_backup_restore_missing_file_returns_error(
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         await _login(client, admin_password)
         # POST without a file.
-        r = await client.post("/admin/api/pilot/backup/restore", content=b"", headers={"content-type": "application/octet-stream"})
+        r = await client.post(
+            "/admin/api/pilot/backup/restore",
+            content=b"",
+            headers={"content-type": "application/octet-stream"},
+        )
 
     # Missing backup_file field → 400 or error JSON.
     assert r.status_code in (400, 422)
@@ -334,10 +334,12 @@ async def test_backup_restore_success_calls_gateway_stop_and_start(
     hermes_home = fake_data_dir / ".hermes"
     _seed_files(hermes_home)
 
-    good_archive = _build_valid_archive({
-        "config.yaml": b"provider: openrouter\n",
-        "SOUL.md": b"# Soul\n",
-    })
+    good_archive = _build_valid_archive(
+        {
+            "config.yaml": b"provider: openrouter\n",
+            "SOUL.md": b"# Soul\n",
+        }
+    )
 
     fake_gw = _FakeGateway()
 
