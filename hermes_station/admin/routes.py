@@ -620,6 +620,7 @@ async def api_webui_action(request: Request) -> Response:
 
 def _usage_query_sync(db_path: Path, days: int) -> dict[str, Any]:
     """Run usage SQL queries synchronously (to be called via asyncio.to_thread)."""
+    assert days in (7, 30), f"days must be 7 or 30, got {days!r}"
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
@@ -881,7 +882,10 @@ async def api_pilot_backup_restore(request: Request) -> Response:
         upload = form.get("backup_file")
         if upload is None or not hasattr(upload, "read"):
             return JSONResponse({"ok": False, "error": "missing backup_file field"}, status_code=400)
-        raw_bytes = await upload.read()
+        _MAX_UPLOAD = 100 * 1024 * 1024  # 100 MB
+        raw_bytes = await upload.read(_MAX_UPLOAD + 1)
+        if len(raw_bytes) > _MAX_UPLOAD:
+            return JSONResponse({"ok": False, "error": "upload exceeds 100 MB limit"}, status_code=413)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": f"upload error: {exc}"}, status_code=400)
 

@@ -437,7 +437,7 @@
   function buildTopologyCard() {
     const tc = card("Topology");
     const pre = document.createElement("pre");
-    pre.style.cssText = "font-size:0.75rem;line-height:1.4;overflow-x:auto;background:rgba(0,0,0,0.15);border-radius:4px;padding:0.75rem;";
+    pre.className = "admin-topology-pre";
     pre.textContent = [
       "┌─────────────────────────────────────────┐",
       "│         hermes-station container         │",

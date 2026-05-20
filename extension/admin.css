@@ -18,3 +18,4 @@
 .admin-btn { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-button, 6px); padding: 4px 12px; font-size: var(--font-size-sm, 12px); cursor: pointer; }
 .admin-btn:hover:not(:disabled) { background: var(--surface-hover, var(--surface)); border-color: var(--strong, var(--border)); }
 .admin-btn:disabled { opacity: 0.5; cursor: wait; }
+.admin-topology-pre { font-size: var(--font-size-xs, 11px); line-height: 1.4; overflow-x: auto; background: rgba(0,0,0,0.15); border-radius: var(--radius-card, 4px); padding: var(--space-3, 12px); }
