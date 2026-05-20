@@ -276,13 +276,65 @@
       const s = _usageData.summary || {};
       const totalCost = s.total_cost || 0;
       const totalTokens = (s.input_tokens || 0) + (s.output_tokens || 0);
+      const cacheRead = s.cache_read_tokens || 0;
+      const cacheWrite = s.cache_write_tokens || 0;
       const prefix = s.has_estimated ? "~" : "";
+
+      // Summary row: cost + tokens + API calls.
       const summary = document.createElement("div"); summary.className = "admin-usage-summary";
       summary.textContent = "Cost: " + prefix + "$" + totalCost.toFixed(4) + "  Tokens: " + fmtTokens(totalTokens) + "  API calls: " + (s.api_calls || 0);
       body.appendChild(summary);
-      if (s.has_estimated) {
-        const fn = document.createElement("div"); fn.className = "admin-usage-footnote"; fn.textContent = "~ estimated"; body.appendChild(fn);
+
+      // Cache token breakdown row (only if any cache tokens were used).
+      if (cacheRead > 0 || cacheWrite > 0) {
+        const cacheRow = document.createElement("div"); cacheRow.className = "admin-usage-cache";
+        cacheRow.textContent = "Cache: " + fmtTokens(cacheRead) + " read  " + fmtTokens(cacheWrite) + " write";
+        body.appendChild(cacheRow);
       }
+
+      // Estimated vs actual session breakdown.
+      if (s.has_estimated) {
+        const total = s.session_count || 0;
+        const est = s.estimated_sessions || 0;
+        const actual = total - est;
+        const fn = document.createElement("div"); fn.className = "admin-usage-footnote";
+        fn.textContent = "~ includes estimated cost  (" + actual + " actual, " + est + " estimated)";
+        body.appendChild(fn);
+      }
+
+      // Daily cost sparkline.
+      const daily = _usageData.daily || [];
+      if (daily.length > 1) {
+        const sparkWrap = document.createElement("div"); sparkWrap.className = "admin-usage-sparkline";
+        const maxCost = Math.max.apply(null, daily.map(function(d) { return d.cost; }).concat([0.000001]));
+        const chartH = 48;
+        const barW = 8, barGap = 2;
+        const svgW = daily.length * (barW + barGap);
+        const svgEl = document.createElementNS(svgNS, "svg");
+        svgEl.setAttribute("viewBox", "0 0 " + svgW + " " + chartH);
+        svgEl.setAttribute("preserveAspectRatio", "none");
+        svgEl.setAttribute("aria-hidden", "true");
+        svgEl.setAttribute("class", "admin-usage-spark-svg");
+        daily.forEach(function(d, i) {
+          const barH = Math.max(2, Math.round((d.cost / maxCost) * (chartH - 4)));
+          const x = i * (barW + barGap);
+          const y = chartH - barH;
+          const rect = document.createElementNS(svgNS, "rect");
+          rect.setAttribute("x", String(x));
+          rect.setAttribute("y", String(y));
+          rect.setAttribute("width", String(barW));
+          rect.setAttribute("height", String(barH));
+          rect.setAttribute("rx", "2");
+          rect.setAttribute("class", "admin-usage-spark-bar");
+          const title = document.createElementNS(svgNS, "title");
+          title.textContent = d.day + ": $" + d.cost.toFixed(4);
+          rect.appendChild(title);
+          svgEl.appendChild(rect);
+        });
+        sparkWrap.appendChild(svgEl);
+        body.appendChild(sparkWrap);
+      }
+
       const channels = _usageData.channels || [];
       if (channels.length) {
         const ch = document.createElement("div"); ch.className = "admin-usage-group";
