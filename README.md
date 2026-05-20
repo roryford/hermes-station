@@ -187,6 +187,10 @@ Both upstreams move fast (hermes-agent: weekly, hermes-webui: several releases/d
 
 See `renovate.json5` for the schedule and `.github/workflows/ci.yml` for the gate.
 
+### Ops runbook
+
+See [`docs/ops-runbook.md`](docs/ops-runbook.md) for production operational procedures: upgrading a live deployment, backup and restore, migrating to a new Railway project, provider key rotation, and recovering from a bad config.
+
 ### Cutting a release
 
 See [`docs/release-runbook.md`](docs/release-runbook.md) for the full flow: version bump, tag, image publish, and the manual Railway redeploy step (with the `--from-source` flag that's a frequent gotcha).
