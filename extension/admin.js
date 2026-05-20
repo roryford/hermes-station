@@ -266,6 +266,9 @@
     } else if (!_usageData || _usageData._error) {
       const e = document.createElement("div"); e.className = "admin-empty"; e.textContent = "Failed to load usage data.";
       body.appendChild(e);
+    } else if (_usageData.schema_old) {
+      const e = document.createElement("div"); e.className = "admin-empty"; e.textContent = "Usage data unavailable — update hermes-agent to enable cost tracking.";
+      body.appendChild(e);
     } else if (_usageData.no_db) {
       const e = document.createElement("div"); e.className = "admin-empty"; e.textContent = "No usage data yet — start a conversation first.";
       body.appendChild(e);
@@ -432,43 +435,9 @@
     return bc;
   }
 
-  // ── Topology card ─────────────────────────────────────────────────────────
-
-  function buildTopologyCard() {
-    const tc = card("Topology");
-    const pre = document.createElement("pre");
-    pre.className = "admin-topology-pre";
-    pre.textContent = [
-      "┌─────────────────────────────────────────┐",
-      "│         hermes-station container         │",
-      "│                                          │",
-      "│  hermes-station  :8787 (public)          │",
-      "│    ├── /admin   admin UI                 │",
-      "│    └── /        → hermes-webui           │",
-      "│                                          │",
-      "│  hermes-webui    :8788 (internal)        │",
-      "│                                          │",
-      "│  hermes-agent    gateway subprocess      │",
-      "│    ├── MCP servers                       │",
-      "│    ├── channel listeners                 │",
-      "│    └── /data/.hermes/state.db            │",
-      "└─────────────────────────────────────────┘",
-      "         │                   │",
-      "   External APIs          Channels",
-      "  (OpenRouter…)      (Telegram, Slack…)",
-    ].join("\n");
-    tc.appendChild(pre);
-    appendDl(tc, [
-      ["/data/.hermes/", "agent state (config, secrets, DB)"],
-      ["/data/webui/", "WebUI sessions & signing key"],
-      ["/data/workspace/", "user workspace files"],
-    ]);
-    return tc;
-  }
-
   function render(data) {
     pane.replaceChildren();
-    const g = data.gateway || {}, w = data.webui || {}, p = data.provider || {}, m = data.memory || {}, v = data.versions || {};
+    const g = data.gateway || {}, p = data.provider || {}, m = data.memory || {}, v = data.versions || {};
     const gw = card("Gateway");
     appendDl(gw, [["State", titleCase(g.state)], ["PID", fmt(g.pid)], ["Uptime", fmtUptime(g.uptime_s)], ["Platform", fmt(g.platform)], ["Connection", fmt(g.connection)]]);
     const actions = document.createElement("div"); actions.className = "admin-card-actions";
@@ -480,7 +449,6 @@
     actions.appendChild(restartBtn);
     gw.appendChild(actions);
     pane.appendChild(gw);
-    const wc = card("WebUI"); appendDl(wc, [["State", titleCase(w.state)], ["PID", fmt(w.pid)]]); pane.appendChild(wc);
     const pc = card("Provider"); appendDl(pc, [["Name", fmt(p.name)], ["Model", fmt(p.model)]]); pane.appendChild(pc);
     const cc = card("Channels"); renderChannels(cc, data.channels); pane.appendChild(cc);
     const mc = card("Memory");
@@ -491,7 +459,6 @@
     pane.appendChild(vc);
     pane.appendChild(buildUsageCard());
     pane.appendChild(buildBackupCard());
-    pane.appendChild(buildTopologyCard());
   }
 
   let timer = null, failCount = 0, toastedThisBurst = false;

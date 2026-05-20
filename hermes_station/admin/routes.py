@@ -751,6 +751,9 @@ async def api_pilot_usage(request: Request) -> Response:
 
     try:
         result = await asyncio.to_thread(_usage_query_sync, db_path, days)
+    except sqlite3.OperationalError as exc:
+        logger.warning("usage query failed (schema mismatch?): %s", exc)
+        return JSONResponse({"days": days, "no_db": False, "schema_old": True})
     except Exception as exc:  # noqa: BLE001
         logger.warning("usage query failed: %s", exc)
         return JSONResponse({"error": "query failed", "details": str(exc)}, status_code=500)
