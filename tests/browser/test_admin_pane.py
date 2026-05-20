@@ -16,12 +16,12 @@ import pytest
 from .conftest import SECTION_BUTTON_SELECTOR, STATION_PANE_SELECTOR
 
 DASH = "—"
-EXPECTED_CARD_TITLES = ["Gateway", "WebUI", "Provider", "Channels", "Memory"]
+EXPECTED_CARD_TITLES = ["Gateway", "WebUI", "Provider", "Channels", "Memory", "Versions"]
 
 
 @pytest.mark.browser
 def test_admin_pane_renders_all_cards(station_page) -> None:
-    """All five status cards appear with at least one non-DASH value each.
+    """All six status cards appear with at least one non-DASH value each.
 
     Catches regressions in render() (extension/admin.js:155-175) and in the
     /admin/api/pilot/status backend contract that feeds it.
