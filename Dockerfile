@@ -56,6 +56,25 @@ RUN set -eux; \
     install -m 0755 /tmp/yq /usr/local/bin/yq; \
     rm /tmp/yq
 
+# himalaya (Rust email CLI) — not in Debian repos; pinned upstream.
+# Bump version + both sha256s together.
+ARG HIMALAYA_VERSION=v1.1.0
+ARG HIMALAYA_SHA256_AMD64=9b18796d2da11c01847ebea1943ea464352dd019814d2318e1819c5e99c54063
+ARG HIMALAYA_SHA256_ARM64=e11d5e10ba7cd40843a13882b3f131b4b2a1538a9b8cdf5474c4d3e3b75d870e
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) hm_arch=x86_64-linux; hm_sha="$HIMALAYA_SHA256_AMD64" ;; \
+      arm64) hm_arch=aarch64-linux; hm_sha="$HIMALAYA_SHA256_ARM64" ;; \
+      *) echo "unsupported arch for himalaya: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 \
+         -o /tmp/himalaya.tgz "https://github.com/pimalaya/himalaya/releases/download/${HIMALAYA_VERSION}/himalaya.${hm_arch}.tgz"; \
+    echo "${hm_sha}  /tmp/himalaya.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/himalaya.tgz -C /tmp himalaya; \
+    install -m 0755 /tmp/himalaya /usr/local/bin/himalaya; \
+    rm /tmp/himalaya.tgz /tmp/himalaya
+
 WORKDIR /app
 
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
