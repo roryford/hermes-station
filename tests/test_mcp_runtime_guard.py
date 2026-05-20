@@ -135,7 +135,9 @@ def test_command_not_on_path_produces_no_warning(monkeypatch: pytest.MonkeyPatch
     assert warnings == []
 
 
-def test_command_resolves_to_nonwritable_system_path_no_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_command_resolves_to_nonwritable_system_path_no_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A binary installed in a root-owned, non-writable directory should pass."""
     # Create a fake binary under a directory the test user cannot write to.
     # We mock os.access to return False for all write checks.
@@ -249,9 +251,7 @@ def test_validate_readiness_npx_server_adds_warning_row(
     assert "npx" in row.reason
 
 
-def test_validate_readiness_safe_command_no_row(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_validate_readiness_safe_command_no_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A command on a non-writable system path should not produce any mcp: row."""
     monkeypatch.delenv("HERMES_STATION_STRICT_MCP_LAUNCHERS", raising=False)
     # Mock shutil.which and os.access to simulate a safe, system-owned binary.
@@ -271,9 +271,7 @@ def test_validate_readiness_safe_command_no_row(
     assert mcp_keys == []
 
 
-def test_validate_readiness_strict_mode_ready_false(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_validate_readiness_strict_mode_ready_false(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HERMES_STATION_STRICT_MCP_LAUNCHERS", "1")
     config = {
         "mcp_servers": {
