@@ -52,50 +52,103 @@ docker run --rm -p 8787:8787 \
 
 ## Running tests
 
-### Unit suite (no container needed)
+The full test matrix is documented in [`CLAUDE.md`](CLAUDE.md). This section covers the quick summary and Docker-specific notes for contributors who don't have the Apple `container` CLI.
+
+### Quick unit run (no container needed)
 
 ```bash
-pytest -q
+uv run pytest tests/ --ignore=tests/fixtures --ignore=tests/test_compat_realistic.py -q
 ```
 
 All tests are hermetic — no ambient services, ports, or filesystem state required. Coverage is enforced at 85%.
 
-### E2e and smoke tests (requires a running container)
+### Full suite (container required)
 
-Boot a container first:
+Both Apple `container` and Docker are supported for the runtime container. Use whichever you have:
+
+**Build:**
+
+| Apple `container` | Docker |
+|---|---|
+| `container build -t hermes-station:local .` | `docker build -t hermes-station:local .` |
+| `container build --target test -t hermes-station:test .` | `docker build --target test -t hermes-station:test .` |
+
+**Boot the runtime container:**
 
 ```bash
-docker run -d --name hs-local -p 8788:8787 \
-  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
+# Apple container
+container run -d --name hs-test -p 8787:8787 \
   -e HERMES_WEBUI_PASSWORD=test-admin-pw \
-  ghcr.io/roryford/hermes-station:latest
+  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
+  -e OPENROUTER_API_KEY=local-fake-key \
+  hermes-station:local
+
+# Docker
+docker run -d --name hs-test -p 8787:8787 \
+  -e HERMES_WEBUI_PASSWORD=test-admin-pw \
+  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
+  -e OPENROUTER_API_KEY=local-fake-key \
+  hermes-station:local
 ```
 
-Then run:
+Poll until healthy: `curl -s http://127.0.0.1:8787/health`
+
+**Run host-side tests (unit + e2e + login smoke):**
 
 ```bash
-HERMES_STATION_E2E_URL=http://127.0.0.1:8788 \
-  HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  pytest tests/test_e2e_admin.py tests/test_login_smoke.py -q
+HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
+HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
+uv run pytest tests/ \
+  --ignore=tests/fixtures \
+  --ignore=tests/test_compat_realistic.py \
+  --ignore=tests/test_container_toolbelt.py \
+  --ignore=tests/test_plugin_manifests.py \
+  -v --no-cov
 ```
 
-### Container toolbelt tests (run inside the image)
+**Run in-container tests (toolbelt + plugin manifests):**
 
-These verify that required binaries (`tesseract`, `fd`, `node`, etc.) are present in the built image. They must run inside the container:
+> **Apple `container` note:** `host.containers.internal` does not resolve; use `192.168.64.1` to reach host-forwarded ports from inside a container.
 
 ```bash
-docker build --target test -t hermes-station:test .
-docker run --rm hermes-station:test pytest tests/test_container_toolbelt.py -q
+# Apple container
+container run --rm \
+  -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
+  -e HERMES_STATION_E2E_URL=http://192.168.64.1:8787 \
+  -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
+  hermes-station:test \
+  python -m pytest tests/test_container_toolbelt.py tests/test_plugin_manifests.py -v --no-cov
+
+# Docker (Mac/Windows — Docker Desktop)
+docker run --rm \
+  -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
+  -e HERMES_STATION_E2E_URL=http://host.docker.internal:8787 \
+  -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
+  hermes-station:test \
+  python -m pytest tests/test_container_toolbelt.py tests/test_plugin_manifests.py -v --no-cov
 ```
 
-### Full local verification
+> **Docker Linux note:** `host.docker.internal` is not injected on Linux without `--add-host`. Use `--add-host=host-gateway:$(ip route | awk '/default/ {print $3}')` and replace `host.docker.internal` with `host-gateway`.
 
-`scripts/dx-verify.sh` runs all three tiers in sequence: unit tests, image build, container health checks, toolbelt tests, and e2e tests.
+**Cleanup:**
+
+```bash
+# Apple container
+container stop hs-test && container rm hs-test
+
+# Docker
+docker stop hs-test && docker rm hs-test
+```
+
+See [`CLAUDE.md`](CLAUDE.md) for the full step-by-step matrix including the Playwright browser suite. See [`docs/troubleshooting.md`](docs/troubleshooting.md) for common failure modes.
 
 ## Compat fixtures
 
 - `tests/fixtures/data-fresh/` — generated programmatically by conftest; no manual step needed.
-- `tests/fixtures/data-realistic/` — gitignored. See [`tests/fixtures/README.md`](tests/fixtures/README.md) for how to populate it from a real Railway volume for realistic compat testing.
+- `tests/fixtures/data-realistic/` — gitignored. See [`docs/fixtures.md`](docs/fixtures.md) for the full workflow to generate it from a real Railway volume.
 
 ## Linting and formatting
 
@@ -115,12 +168,12 @@ hermes-agent and hermes-webui are pinned to exact versions in `pyproject.toml` a
 
 1. Fork the repo and create a branch: `git checkout -b my-fix`
 2. Make your changes
-3. Run `pytest -q` and `ruff check hermes_station tests` locally (see [Running tests](#running-tests))
+3. Run `uv run pytest tests/ --ignore=tests/fixtures --ignore=tests/test_compat_realistic.py -q` and `ruff check hermes_station tests` locally (see [Running tests](#running-tests))
 4. Push your branch and open a PR against `main`
 
 ## PR checklist
 
-- [ ] `pytest -q` passes locally
+- [ ] `uv run pytest tests/ --ignore=tests/fixtures --ignore=tests/test_compat_realistic.py -q` passes locally
 - [ ] `ruff check` and `ruff format --check` pass
 - [ ] If you changed the admin API contract, update `docs/CONTRACT.md`
 - [ ] If you changed env vars, update `docs/configuration.md`
