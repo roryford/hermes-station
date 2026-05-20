@@ -218,7 +218,7 @@
 
   function render(data) {
     pane.replaceChildren();
-    const g = data.gateway || {}, w = data.webui || {}, p = data.provider || {}, m = data.memory || {};
+    const g = data.gateway || {}, w = data.webui || {}, p = data.provider || {}, m = data.memory || {}, v = data.versions || {};
     const gw = card("Gateway");
     appendDl(gw, [["State", titleCase(g.state)], ["PID", fmt(g.pid)], ["Uptime", fmtUptime(g.uptime_s)], ["Platform", fmt(g.platform)], ["Connection", fmt(g.connection)]]);
     const actions = document.createElement("div"); actions.className = "admin-card-actions";
@@ -236,6 +236,9 @@
     const mc = card("Memory");
     appendDl(mc, [["Provider", fmt(m.provider)], ["Ready", m.ready === true ? "Yes" : (m.ready === false ? "No" : DASH)]]);
     pane.appendChild(mc);
+    const vc = card("Versions");
+    appendDl(vc, [["Station", fmt(v.station)], ["WebUI", fmt(v.webui)], ["Hermes", fmt(v.hermes)]]);
+    pane.appendChild(vc);
   }
 
   let timer = null, failCount = 0, toastedThisBurst = false;
