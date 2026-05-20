@@ -25,10 +25,10 @@ by the ASGI lifespan handler in `hermes_station/app.py`.
   │   └─ /*         HTTP proxy → hermes-webui
   │
   ├─ asyncio Task: gateway supervisor  [Gateway._supervise]
-  │   └─ asyncio Task: start_gateway()  [hermes-agent in-process]
+  │   └─ asyncio Task: start_gateway()  [hermes-agent in-process, Gateway.task]
   │
-  └─ asyncio subprocess: hermes-webui  [WebUIProcess._supervise]
-      └─ python server.py  (stdlib http.server, port 8788)
+  └─ asyncio Task: webui supervisor  [WebUIProcess._supervise]
+      └─ asyncio subprocess: python server.py  (stdlib http.server, port 8788)
 ```
 
 ### Control plane
@@ -69,15 +69,16 @@ that runs as a supervised `asyncio.Task` in the same event loop as uvicorn.
 `Gateway` owns two asyncio tasks:
 
 - **Supervisor** (`_supervise`): wraps `start_gateway()` in a loop; on an
-  unexpected exit it increments a crash counter and retries after exponential
-  backoff (base 5 s, cap 60 s). A clean exit (`ok=True`) stops the loop without
-  restarting. The supervisor is cancelled on `stop()`.
+  unexpected exit it increments a crash counter (for logging/observability) and
+  retries after exponential backoff (base 5 s, cap 60 s). A clean exit
+  (`ok=True`) stops the loop without restarting. The supervisor is cancelled on
+  `stop()`.
 - **Heartbeat** (`_refresh_updated_at`): every 30 s, if `gateway_state.json`
   shows `gateway_state == "running"`, it rewrites `updated_at` with the current
   UTC timestamp. This keeps hermes-webui's stale-gateway check (which flags
   states older than 120 s) from triggering in the in-process deployment model.
 
-**Signal handling:** `start_gateway` registers its own `SIGINT`/`SIGTERM`
+**Signal handling:** `start_gateway` registers its own `SIGINT`/`SIGTERM`/`SIGUSR1`
 handlers via `loop.add_signal_handler`. The supervisor temporarily replaces
 `loop.add_signal_handler` with a no-op for the duration of each `_run_once()`
 call and restores it afterward, preventing the gateway from clobbering uvicorn's
@@ -291,9 +292,10 @@ MCP servers (filesystem, GitHub, fetch) are pre-cached during the image build
 under `/opt/mcp-cache` (owned by `hermes`, mode `a+rX`). They are installed
 globally by `npm` and `uv tool install` at build time and invoked read-only at
 runtime. Executing MCP binaries from a writable cache directory (e.g. `~/.npm`)
-would allow the agent to overwrite its own tools; `/opt/mcp-cache` is writable
-only by the `hermes` user and its subdirectory layout is set by the build, not
-the runtime.
+would allow the agent to overwrite its own tools. `/opt/mcp-cache` is owned by
+the `hermes` user (unlike site-packages and `/app`, which have write bits
+stripped); it remains writable at runtime so that npm/uv caching continues to
+work, and its pre-populated subdirectory layout is set by the build.
 
 ### HTTP security headers
 
