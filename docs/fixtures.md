@@ -21,10 +21,27 @@ The test file auto-skips when `tests/fixtures/data-realistic/.hermes/` does not 
 
 ### Step 1 — take a snapshot of the live Railway volume
 
+The Railway CLI does not support direct file download — `railway run` executes a
+command inside the service container but provides no way to retrieve files it
+creates. To pull a snapshot from a live Railway deployment, use the **Railway
+dashboard volume browser** (Project → your service → Volumes → Browse) to
+download the `/data` directory, or use `railway shell` to get an interactive
+session and pipe the tarball to stdout:
+
 ```bash
-# Pull a tarball of /data from the running hermes-station service on Railway
-railway run --service hermes-station tar -czf /tmp/data.tgz -C / data
+# Opens an interactive shell in the running hermes-station service on Railway
+railway shell --service hermes-station
+
+# Inside the Railway shell, stream the tarball to a local file via SSH-style redirection:
+# (run this from the railway shell, piping to a local terminal session)
+tar -czf - -C / data > /tmp/data.tgz
+# Then exit the shell and retrieve /tmp/data.tgz via the volume browser,
+# or use `railway shell` with a here-document to pipe to stdout and redirect locally.
 ```
+
+> **Practical tip:** The simplest approach for a Railway-hosted deployment is to
+> use the Railway dashboard's volume browser to download the `/data` volume
+> contents, then unpack locally and pass the result to the sanitize script.
 
 Alternatively, if you are running hermes-station locally:
 
@@ -54,12 +71,12 @@ The script performs eight steps automatically:
 
 1. Extracts the tarball to a staging area, auto-detecting whether the archive root is `/data`, `./data`, or bare contents.
 2. Copies only the three directories governed by `docs/CONTRACT.md`: `.hermes/`, `webui/`, `workspace/`. Everything else (`.cache/`, `.npm/`, `.local/`, `lost+found/`, user content) is discarded.
-3. **Scrubs secrets** in `.hermes/.env` — all values become `PLACEHOLDER_<KEY>` (keys are preserved so config parsing still works).
-4. **Scrubs** `.hermes/pairing/*.json`, `.hermes/platforms/pairing/*.json`, and `.hermes/auth.json` — all values become `"PLACEHOLDER"`.
-5. **Deletes** PII directories: `sessions/`, `memories/`, `logs/`, `sandboxes/`, `bin/`, `cache/`, `cron/` (each directory is kept but emptied). `workspace/` is emptied entirely.
-6. **Deletes** SQLite databases and their WAL/SHM sidecars (`state.db`, `memory_store.db`, `kanban.db`) and regenerable runtime state (`gateway.lock`, `gateway.pid`, `gateway_state.json`, `processes.json`, `gateway/`).
-7. Replaces `webui/.signing_key` with 32 random bytes (the test only checks that the file persists, not its value). Clears `webui/sessions/`.
-8. Writes a `MANIFEST.txt` to the fixture root recording what was scrubbed and when.
+3. **Scrubs secrets**: replaces all values in `.hermes/.env` with `PLACEHOLDER_<KEY>` (keys are preserved so config parsing still works), and replaces all values in `.hermes/pairing/*.json`, `.hermes/platforms/pairing/*.json`, and `.hermes/auth.json` with `"PLACEHOLDER"`.
+4. **Deletes** PII directories: `sessions/`, `memories/`, `logs/`, `sandboxes/`, `bin/`, `cache/`, `cron/` (each directory is kept but emptied). `workspace/` is emptied entirely.
+5. **Deletes** SQLite databases and their WAL/SHM sidecars (`state.db`, `memory_store.db`, `kanban.db`) and regenerable runtime state (`gateway.lock`, `gateway.pid`, `gateway_state.json`, `processes.json`). Also deletes the `.hermes/gateway/` subdirectory (per-platform gateway state, regenerated on boot).
+6. Replaces `webui/.signing_key` with 32 random bytes (the test only checks that the file persists, not its value). Clears `webui/sessions/`.
+7. Writes a `MANIFEST.txt` to the fixture root recording what was scrubbed and when.
+8. Prints the sanitized fixture size on disk.
 
 ### Step 3 — manual review
 
@@ -96,6 +113,7 @@ tests/fixtures/data-realistic/
     cron/                 # emptied
     # state.db, memory_store.db, kanban.db — DELETED
     # gateway.lock, gateway.pid, gateway_state.json, processes.json — DELETED
+    # gateway/ — DELETED (per-platform runtime state; regenerated on boot)
   webui/
     .signing_key          # replaced with 32 random bytes
     sessions/             # emptied

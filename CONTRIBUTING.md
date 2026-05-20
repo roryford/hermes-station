@@ -145,6 +145,20 @@ docker stop hs-test && docker rm hs-test
 
 See [`CLAUDE.md`](CLAUDE.md) for the full step-by-step matrix including the Playwright browser suite. See [`docs/troubleshooting.md`](docs/troubleshooting.md) for common failure modes.
 
+### Full DX verification (single command)
+
+`scripts/dx-verify.sh` runs the complete local verification pipeline in one shot: lint, typecheck, unit tests, container build, health assertions, and the full in-container test suite. Use it before opening a PR to confirm nothing is broken end-to-end:
+
+```bash
+bash scripts/dx-verify.sh
+```
+
+Pass `--screenshots` to also regenerate the UI screenshots:
+
+```bash
+bash scripts/dx-verify.sh --screenshots
+```
+
 ## Compat fixtures
 
 - `tests/fixtures/data-fresh/` — generated programmatically by conftest; no manual step needed.
