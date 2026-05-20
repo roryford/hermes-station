@@ -15,3 +15,13 @@ docs/screenshots
 docs/*.png
 docs/*.jpg
 renovate.json5
+
+# Root markdown docs not COPYed in Dockerfile (README.md IS copied — keep it)
+CONTRIBUTING.md
+GETTING_STARTED.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+
+# Developer tooling not needed in image
+Makefile
+.pre-commit-config.yaml
