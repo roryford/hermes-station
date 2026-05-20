@@ -14,13 +14,11 @@ Covers:
 from __future__ import annotations
 
 import os
-import stat
 from pathlib import Path
 
 import httpx
 import pytest
 
-from hermes_station.config import Paths
 from hermes_station.readiness import (
     MCPServerWarning,
     check_mcp_runtime_safety,
