@@ -11,8 +11,6 @@ from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from typing import Any
 from urllib.parse import urlsplit
 
-import hermes_station
-
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
@@ -296,8 +294,11 @@ def _pilot_compose_versions(request: Request) -> dict[str, Any]:
     Any field that can't be resolved degrades to ``None`` rather than failing
     the whole compose.
     """
-    station = getattr(hermes_station, "__version__", None) or None
-    if station == "unknown":
+    try:
+        station = _pkg_version("hermes-station") or None
+        if station == "unknown":
+            station = None
+    except PackageNotFoundError:
         station = None
 
     webui = os.environ.get("HERMES_WEBUI_VERSION") or None

@@ -186,6 +186,17 @@ async def test_status_flag_on_returns_schema(fake_data_dir: Path, admin_password
             assert k in data["versions"]
 
 
+def test_versions_station_unknown_sentinel_becomes_none(monkeypatch) -> None:
+    """When _pkg_version returns 'unknown', station must be normalised to None."""
+    from hermes_station.admin import routes as _routes
+
+    monkeypatch.setattr(_routes, "_pkg_version", lambda _name: "unknown")
+
+    result = _routes._pilot_compose_versions(None)  # type: ignore[arg-type]
+
+    assert result["station"] is None
+
+
 async def test_status_concurrency_safe_under_mid_write(
     fake_data_dir: Path, admin_password: str, monkeypatch
 ) -> None:
