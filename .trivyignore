@@ -46,23 +46,41 @@ CVE-2026-6357
 CVE-2026-3219
 CVE-2026-1703
 
-# ── Long-standing Debian bookworm CVEs with no backport ──────────────────────
-# These have been open in Debian bookworm for 2+ years with no security
-# backport scheduled. The packages are required runtime deps (ffmpeg, tesseract,
-# poppler-utils). Removing them would break core Hermes Agent capabilities.
+# ── Long-standing Debian CVEs with no backport ───────────────────────────────
+# These have no upstream fix available in the Debian security repos.
+# The packages are required runtime deps (ffmpeg, tesseract, poppler-utils,
+# curl). Removing them would break core Hermes Agent capabilities.
 
-# libaom3 — AV1 codec used by ffmpeg; no Debian bookworm fix for either CVE
+# libaom3 — AV1 codec used by ffmpeg; no Debian fix
 CVE-2023-39616
 CVE-2023-6879
 
-# libmfx1 — Intel Media SDK acceleration for ffmpeg; no Debian bookworm fix
+# libmfx1 — Intel Media SDK acceleration for ffmpeg; no Debian fix
 CVE-2023-45221
 
-# zlib1g — compression library; no Debian bookworm fix for this variant
+# zlib1g — compression library; no Debian fix for this variant
 CVE-2023-45853
 
-# libharfbuzz0b — text shaping; no Debian bookworm fix
+# libharfbuzz0b — text shaping; no Debian fix
 CVE-2023-25193
 
-# libldap-2.5-0 — LDAP client library; no Debian bookworm fix
+# libldap-2.5-0 — LDAP client library; no Debian fix
 CVE-2023-2953
+
+# libssh2-1 — SSH2 client library (transitive dep of curl); no Debian fix
+CVE-2026-7598
+
+# sqlite3 / libsqlite3-0 — integer overflow; no Debian fix available
+CVE-2025-7458
+
+# ffmpeg / libav* — integer overflow via CENC subsample data; no upstream fix
+CVE-2026-40962
+
+# libmbedcrypto7 — Mbed TLS (transitive dep of libcurl); no Debian fix
+CVE-2026-34875
+CVE-2026-34873
+CVE-2025-47917
+
+# Mesa (libglx-mesa0, libgl1-mesa-dri, libgbm1, libglapi-mesa) —
+# pulled in transitively by ffmpeg/VA-API; no Debian fix
+CVE-2026-40393
