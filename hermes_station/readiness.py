@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import shutil
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -282,6 +283,141 @@ def _dir_writable(path: Path) -> bool:
         return False
 
 
+# Known unsafe launcher commands: even if the launcher binary itself is
+# system-owned, what it executes at runtime is staged into a writable cache
+# directory (e.g. npx → $HOME/.npm/_npx/, uvx → uv cache, pipx → ~/.local/…).
+_UNSAFE_LAUNCHERS: frozenset[str] = frozenset({"npx", "uvx", "pipx"})
+
+
+def _path_writable_by_runtime_user(resolved: Path) -> bool:
+    """Return True iff *resolved* or any ancestor up to / is writable by the current user.
+
+    Uses ``os.access(path, os.W_OK)`` which honors the effective UID/GID — the
+    same identity the MCP subprocess will run as. Walks from ``resolved``'s
+    parent up to ``/`` so a file installed under a writable directory (e.g.
+    ``/data/.local/bin/tool``) is caught even when the file itself is read-only.
+    """
+    # Check the file itself first (handles world-writable binaries).
+    try:
+        if os.access(str(resolved), os.W_OK):
+            return True
+    except OSError:
+        pass
+    # Walk ancestors.
+    current = resolved.parent
+    seen: set[Path] = set()
+    while True:
+        if current in seen:
+            break
+        seen.add(current)
+        try:
+            if os.access(str(current), os.W_OK):
+                return True
+        except OSError:
+            pass
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return False
+
+
+@dataclass
+class MCPServerWarning:
+    """Structured warning for a single enabled MCP server with a runtime-safety issue."""
+
+    name: str
+    command: str
+    reason: str
+    is_error: bool  # True when HERMES_STATION_STRICT_MCP_LAUNCHERS=1
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "command": self.command,
+            "reason": self.reason,
+            "is_error": self.is_error,
+        }
+
+
+def check_mcp_runtime_safety(
+    config: dict[str, Any],
+    *,
+    strict: bool = False,
+) -> list[MCPServerWarning]:
+    """Inspect enabled MCP server entries in *config* for runtime-safety issues.
+
+    For each enabled entry in ``mcp_servers:``:
+
+    1. If ``command`` is a known unsafe launcher (``npx``, ``uvx``, ``pipx``),
+       emit a warning regardless of the resolved binary location.
+    2. Otherwise resolve ``command`` via ``shutil.which`` (using the process
+       PATH — same environment the MCP subprocess will see) and walk its
+       ancestors to check if any ancestor is writable by the current user.
+
+    Returns a list of :class:`MCPServerWarning` objects.  ``is_error`` is set
+    on each item when *strict* is True (i.e.
+    ``HERMES_STATION_STRICT_MCP_LAUNCHERS=1``).
+    """
+    servers = config.get("mcp_servers")
+    if not isinstance(servers, dict):
+        return []
+
+    warnings: list[MCPServerWarning] = []
+    for name, entry in servers.items():
+        if not isinstance(entry, dict):
+            continue
+        if not entry.get("enabled"):
+            continue
+        # URL-based (remote HTTP/SSE) servers have no local command to inspect.
+        command = entry.get("command")
+        if not command or not isinstance(command, str):
+            continue
+        command = command.strip()
+        if not command:
+            continue
+
+        base_name = Path(command).name
+
+        # 1. Known unsafe launcher — always warn.
+        if base_name in _UNSAFE_LAUNCHERS:
+            warnings.append(
+                MCPServerWarning(
+                    name=name,
+                    command=command,
+                    reason=(
+                        f"MCP server {name!r} uses launcher {command!r} which executes "
+                        f"code staged into a writable cache at runtime; "
+                        f"replace with a globally-installed binary (see docs/CONTRACT.md §3.6)"
+                    ),
+                    is_error=strict,
+                )
+            )
+            continue
+
+        # 2. Resolve command and check write boundary.
+        resolved_str = shutil.which(command)
+        if resolved_str is None:
+            # Command not found on PATH — nothing to check for writability.
+            continue
+        resolved = Path(resolved_str)
+        if _path_writable_by_runtime_user(resolved):
+            warnings.append(
+                MCPServerWarning(
+                    name=name,
+                    command=command,
+                    reason=(
+                        f"MCP server {name!r} command {command!r} resolves to {resolved_str!r} "
+                        f"which is reachable from a writable path; "
+                        f"install the binary to a root-owned location (see docs/CONTRACT.md §3.6)"
+                    ),
+                    is_error=strict,
+                )
+            )
+
+    return warnings
+
+
 # Module-level paths — exposed so tests can monkeypatch them in-process.
 # The Dockerfile writes the build SHA into _BUILD_REVISION_FILE at image
 # build time (Track B). _WEBUI_VERSION_FILE is shipped inside the upstream
@@ -395,6 +531,7 @@ def validate_readiness(
     env_values: dict[str, str] | None,
 ) -> Readiness:
     """Compute the full readiness report. Pure (modulo /etc + env reads)."""
+    from hermes_station.config import strict_mcp_launchers_enabled
 
     config = config or {}
     env_values = env_values or {}
@@ -447,6 +584,18 @@ def validate_readiness(
     rows["image_gen"] = _check_image_gen(config, env_values)
     rows["github"] = _check_github(config, env_values)
     rows["memory:holographic"] = _check_memory(config, paths)
+
+    # MCP runtime safety: writable-path and unsafe-launcher checks.
+    strict = strict_mcp_launchers_enabled()
+    mcp_warnings = check_mcp_runtime_safety(config, strict=strict)
+    for w in mcp_warnings:
+        # Key: mcp:<server-name> so it's namespaced and easy to filter.
+        key = f"mcp:{w.name}"
+        rows[key] = CapabilityRow(
+            intended=True,
+            ready=not w.is_error,
+            reason=w.reason,
+        )
 
     # Versions.
     versions = {
@@ -508,7 +657,9 @@ def validate_readiness(
 
 __all__ = [
     "CapabilityRow",
+    "MCPServerWarning",
     "Readiness",
+    "check_mcp_runtime_safety",
     "validate_readiness",
 ]
 

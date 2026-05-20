@@ -289,6 +289,32 @@ def _pilot_compose_memory(request: Request) -> dict[str, Any]:
     return {"provider": provider_name, "ready": ready}
 
 
+def _pilot_compose_mcp_servers(request: Request) -> list[dict[str, Any]]:
+    """MCP server safety-warning rows from the cached readiness report.
+
+    Returns entries whose readiness key is namespaced under ``mcp:<name>``.
+    Each entry carries ``name``, ``command``, ``reason``, and ``is_error``
+    so the station panel can surface the correct severity indicator.
+    """
+    readiness = getattr(request.app.state, "readiness", None)
+    if readiness is None:
+        return []
+    rows = []
+    for key, row in readiness.readiness.items():
+        if not key.startswith("mcp:"):
+            continue
+        name = key.split(":", 1)[1]
+        rows.append(
+            {
+                "name": name,
+                "ready": bool(row.ready),
+                "reason": row.reason or None,
+                "is_error": not bool(row.ready),
+            }
+        )
+    return rows
+
+
 def _pilot_compose_versions(request: Request) -> dict[str, Any]:
     """Versions of the three components shipped in this container.
 
@@ -375,6 +401,12 @@ async def api_pilot_status(request: Request) -> Response:
     except Exception as exc:  # noqa: BLE001
         logger.info("pilot status: versions compose failed: %s", exc)
         payload["versions"] = None
+
+    try:
+        payload["mcp_servers"] = _pilot_compose_mcp_servers(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("pilot status: mcp_servers compose failed: %s", exc)
+        payload["mcp_servers"] = None
 
     return JSONResponse(payload)
 

@@ -94,6 +94,22 @@ def pilot_admin_extension_enabled() -> bool:
     return raw.strip().lower() in _PILOT_TRUTHY
 
 
+def strict_mcp_launchers_enabled() -> bool:
+    """Return True iff strict MCP launcher checking is enabled.
+
+    When set, the gateway status reflects an error state (rather than a warning)
+    when any enabled MCP server uses a writable-path command or a known unsafe
+    launcher (npx, uvx, pipx).
+
+    Reads ``HERMES_STATION_STRICT_MCP_LAUNCHERS`` from ``os.environ`` on every
+    call (no caching — tests may monkeypatch mid-run). Default is False.
+    """
+    raw = os.environ.get("HERMES_STATION_STRICT_MCP_LAUNCHERS")
+    if raw is None:
+        return False
+    return raw.strip().lower() in _PILOT_TRUTHY
+
+
 def load_env_file(path: Path) -> dict[str, str]:
     """Read `$HERMES_HOME/.env` per CONTRACT.md §4.1.
 
