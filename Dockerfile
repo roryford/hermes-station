@@ -58,9 +58,9 @@ RUN set -eux; \
 
 # himalaya (Rust email CLI) — not in Debian repos; pinned upstream.
 # Bump version + both sha256s together.
-ARG HIMALAYA_VERSION=v1.1.0
-ARG HIMALAYA_SHA256_AMD64=9b18796d2da11c01847ebea1943ea464352dd019814d2318e1819c5e99c54063
-ARG HIMALAYA_SHA256_ARM64=e11d5e10ba7cd40843a13882b3f131b4b2a1538a9b8cdf5474c4d3e3b75d870e
+ARG HIMALAYA_VERSION=v1.2.0
+ARG HIMALAYA_SHA256_AMD64=e04e6382e3e664ef34b01afa1a2216113194a2975d2859727647b22d9b36d4e4
+ARG HIMALAYA_SHA256_ARM64=643020b220991fac67726f3be11310fcf806e757feadbbab3efbddd713597872
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
