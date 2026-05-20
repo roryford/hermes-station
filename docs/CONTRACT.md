@@ -135,16 +135,19 @@ The container runs as a non-root user (`hermes`, uid 10000). All application sou
 | Path | Mode at runtime | Rationale |
 |---|---|---|
 | `/data/` (entire tree) | **read-write** (owned by `hermes`) | All legitimate agent state lives here |
-| `/opt/mcp-cache/` | **read-write** (owned by `hermes`) | npm and uv tool caches updated at runtime |
 | `<site-packages>/` | **read-only** | hermes-agent source — must not be self-modified |
 | `/opt/hermes-webui/` | **read-only** | WebUI source — must not be self-modified |
 | `/app/` | **read-only** | hermes-station source — must not be self-modified |
+| `/opt/uv-tools/` | **read-only** | uv-installed MCP server env (`mcp-server-fetch`) |
+| `/usr/lib/node_modules/` | **read-only** | npm-installed MCP servers (`mcp-server-filesystem`, `mcp-server-github`) |
 
 **Why non-root matters:** `chmod a-w` alone does not stop a root process — Linux's `DAC_OVERRIDE` capability lets root bypass file permission checks. Running as a non-root user (uid 10000) is what actually enforces the restriction. The image pre-compiles `/app` with `python -m compileall` so the agent process does not need to write `__pycache__` entries at runtime.
 
 **User site-packages:** Because `HOME=/data`, Python's user site-packages path (`~/.local/lib/python3.13/site-packages`) would otherwise fall inside the writable `/data` tree, letting the agent shadow system packages. `PYTHONNOUSERSITE=1` is set in the container ENV to disable user site-packages entirely.
 
-**Volume mount caveat:** bind-mounted volumes (e.g. `-v /host/data:/data`) inherit the host directory's ownership, overriding any `chown` done in the image layer. The container entrypoint (`/usr/local/bin/hermes-entrypoint`) runs briefly as root, executes `chown -R 10000 /data` to recursively fix ownership across the entire data tree (including existing files from previous root-owned deployments), then drops to the `hermes` user via `gosu` before exec'ing the app. `/opt/mcp-cache` is not a volume mount so its ownership is set correctly at build time.
+**Volume mount caveat:** bind-mounted volumes (e.g. `-v /host/data:/data`) inherit the host directory's ownership, overriding any `chown` done in the image layer. The container entrypoint (`/usr/local/bin/hermes-entrypoint`) runs briefly as root, executes `chown -R 10000 /data` to recursively fix ownership across the entire data tree (including existing files from previous root-owned deployments), then drops to the `hermes` user via `gosu` before exec'ing the app.
+
+**Why MCP servers are pre-installed globally, not run via `npx`/`uvx`:** Both launchers stage their package tree into a writable cache (`npx` → `$NPM_CONFIG_CACHE/_npx/<hash>/`, defaulting to `$HOME/.npm/_npx/` which lands under `/data/.npm/` when `HOME=/data`; `uvx` → uv cache). The MCP subprocess then loads its JS/Python entrypoint from a path the runtime user can write to — i.e. live helper code executing from writable state. The Dockerfile pre-installs the curated servers via `npm install -g` (→ `/usr/bin/mcp-server-{filesystem,github}`) and `uv tool install` with `UV_TOOL_DIR=/opt/uv-tools` (→ `/usr/local/bin/mcp-server-fetch`). Both targets are root-owned and read-only to `hermes`. The `MCP_SERVER_CATALOG` in `hermes_station/config.py` references these binaries by PATH-resolved name, and `heal_mcp_server_launchers` migrates any pre-existing `npx`/`uvx` entries in `/data/.hermes/config.yaml` on load.
 
 **`.env` and secrets** live at `/data/.hermes/.env` (inside `/data`), which is writable. The control plane is the only writer; the agent reads credentials from there at boot. See §4.1 and [`secrets.md`](./secrets.md).
 

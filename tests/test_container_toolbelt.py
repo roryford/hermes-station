@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -102,6 +103,78 @@ def test_node_is_v24() -> None:
         if REQUIRE:
             pytest.fail(msg)
         pytest.skip(msg + " (host node, not container; skipping)")
+
+
+# ---------------------------------------------------------------------------
+# MCP server binaries — globally installed, root-owned, not writable to the
+# runtime user. See hermes_station/config.py MCP_SERVER_CATALOG.
+# ---------------------------------------------------------------------------
+
+MCP_BINARIES = ["mcp-server-filesystem", "mcp-server-github", "mcp-server-fetch"]
+
+
+@pytest.mark.parametrize("binary", MCP_BINARIES)
+def test_mcp_server_binary_on_path(binary: str) -> None:
+    """Each curated stdio MCP server must resolve via PATH so the catalog's
+    `command: <name>` entries work under hermes-agent's filtered env (PATH
+    propagates; NPM_CONFIG_CACHE/UV_TOOL_DIR no longer do)."""
+    path = shutil.which(binary)
+    if path is None:
+        msg = f"{binary!r} not on PATH"
+        if REQUIRE:
+            pytest.fail(msg)
+        pytest.skip(msg + " (set HERMES_STATION_REQUIRE_TOOLBELT=1 to fail instead)")
+
+
+# Runtime user the container drops to via gosu (Dockerfile: `useradd -u 10000`).
+# Pinned numerically so the test exercises the same identity as production
+# even if the local image hasn't created the `hermes` account yet.
+HERMES_UID = 10000
+
+
+def _writable_to_hermes(path: str) -> bool:
+    """True iff a process running as uid HERMES_UID could write to `path`.
+
+    Covers the three permission-bit paths that grant write to the runtime
+    user: file owner is hermes, world-writable, or group-writable when the
+    group's gid matches hermes. We deliberately ignore supplementary groups
+    (the hermes user has none — `useradd -M` with no `-G`).
+    """
+    st = os.stat(path)
+    if st.st_uid == HERMES_UID:
+        return True
+    if st.st_mode & stat.S_IWOTH:
+        return True
+    if st.st_gid == HERMES_UID and (st.st_mode & stat.S_IWGRP):
+        return True
+    return False
+
+
+@pytest.mark.parametrize("binary", MCP_BINARIES)
+def test_mcp_server_binary_resolves_outside_writable_state(binary: str) -> None:
+    """The resolved binary AND every ancestor directory up to / must be
+    non-writable to the runtime hermes user. The point of switching off
+    npx/uvx launchers was to stop loading code from $HOME/.npm/_npx/...
+    and similar writable caches — so verify by permission, not by an
+    allowlist of paths (a future bad path outside any allowlist could
+    still be writable)."""
+    path = shutil.which(binary)
+    if path is None:
+        if REQUIRE:
+            pytest.fail(f"{binary!r} not on PATH")
+        pytest.skip(f"{binary!r} not on PATH")
+    real = os.path.realpath(path)
+    current = real
+    while True:
+        assert not _writable_to_hermes(current), (
+            f"{binary} resolves to {real!r}; ancestor {current!r} is writable "
+            f"to runtime user (uid {HERMES_UID}) — MCP code tree is reachable "
+            "from writable state"
+        )
+        parent = os.path.dirname(current)
+        if parent == current:  # reached '/'
+            break
+        current = parent
 
 
 def test_fd_symlink_resolves_to_fdfind() -> None:

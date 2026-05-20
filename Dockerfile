@@ -178,41 +178,41 @@ for rel, content in MANIFESTS.items():
         print(f"restored: {dest}")
 PYEOF
 
-# Pre-cache the curated stdio MCP servers so first-toggle isn't a 30s npm/uv
-# fetch. Versions are pinned and surfaced in hermes_station/config.py
+# Install the curated stdio MCP servers as global, root-owned binaries on
+# PATH. Versions are pinned and surfaced in hermes_station/config.py
 # (MCP_SERVER_CATALOG) — bumping is one ARG change here + one literal change
 # in config.py, kept in lockstep.
 #
-# Caches go to /opt/mcp-cache/{npm,uv} (HOME-independent) so the runtime
-# (HOME=/data) finds them via NPM_CONFIG_CACHE + UV_CACHE_DIR (set below).
-# Budget: ~100MB npm + ~80MB uv = ~180MB image growth.
+# Why globals (not npx/uvx)? Both launchers stage their package tree into
+# writable cache dirs (npx: $NPM_CONFIG_CACHE/_npx/<hash>/, defaulting to
+# $HOME/.npm/_npx/ which is /data/.npm/_npx/ under HERMES_HOME). The MCP
+# subprocess then loads JS/Python from a path the runtime user can write
+# to — code-execution from writable state. `npm install -g` puts binaries
+# under /usr/lib/node_modules with symlinks at /usr/bin/, and uv with
+# UV_TOOL_BIN_DIR=/usr/local/bin does the same for fetch. All bins land
+# root-owned, not chmod'd writable, and PATH-resolves to a non-writable
+# location at runtime. See CONTRACT.md §3.6.
 ARG MCP_SERVER_FILESYSTEM_VERSION=2025.8.21
 ARG MCP_SERVER_GITHUB_VERSION=2025.4.8
 ARG MCP_SERVER_FETCH_VERSION=2025.4.7
-ENV NPM_CONFIG_CACHE=/opt/mcp-cache/npm \
-    UV_CACHE_DIR=/opt/mcp-cache/uv \
-    UV_TOOL_DIR=/opt/mcp-cache/uv-tools
 RUN set -eux; \
-    mkdir -p "$NPM_CONFIG_CACHE" "$UV_CACHE_DIR" "$UV_TOOL_DIR"; \
-    # `npm install -g` puts each server under /usr/lib/node_modules, but the
-    # MCP config in this repo invokes them via `npx -y --package=…` which
-    # checks the npm cache first. So we just prime the npm cache by running
-    # npx once for each — server doesn't have to actually start, the package
-    # is downloaded before the binary is invoked. Failure modes (`--help`
-    # missing, args missing) are fine since the package fetch is the goal.
-    npx -y --package=@modelcontextprotocol/server-filesystem@${MCP_SERVER_FILESYSTEM_VERSION} \
-        -- mcp-server-filesystem /tmp >/dev/null 2>&1 & sleep 8; kill %1 2>/dev/null || true; wait || true; \
-    npx -y --package=@modelcontextprotocol/server-github@${MCP_SERVER_GITHUB_VERSION} \
-        -- mcp-server-github >/dev/null 2>&1 & sleep 8; kill %1 2>/dev/null || true; wait || true; \
-    # `uv tool install` puts the env into UV_TOOL_DIR persistently — much
-    # cleaner than `uvx` which builds a fresh env per run. The runtime can
-    # then `uvx --from mcp-server-fetch==X` and uv reuses the installed env.
-    uv tool install "mcp-server-fetch==${MCP_SERVER_FETCH_VERSION}"; \
-    chmod -R a+rX /opt/mcp-cache; \
-    # Clear the default uv cache that leaked to /root/.cache during tool installs.
-    # All persistent MCP caches live under /opt/mcp-cache (UV_CACHE_DIR above).
-    rm -rf /root/.cache/uv; \
-    echo "MCP cache warmed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
+    npm install -g --no-audit --no-fund \
+        "@modelcontextprotocol/server-filesystem@${MCP_SERVER_FILESYSTEM_VERSION}" \
+        "@modelcontextprotocol/server-github@${MCP_SERVER_GITHUB_VERSION}"; \
+    # uv tool install puts the env in UV_TOOL_DIR and links bins into
+    # UV_TOOL_BIN_DIR. /opt/uv-tools is root-owned and not chowned to
+    # hermes later in this Dockerfile, so the installed env (and the
+    # symlinked entrypoint) stay read-only to the runtime user.
+    UV_CACHE_DIR=/tmp/uv-cache \
+    UV_TOOL_DIR=/opt/uv-tools \
+    UV_TOOL_BIN_DIR=/usr/local/bin \
+        uv tool install "mcp-server-fetch==${MCP_SERVER_FETCH_VERSION}"; \
+    rm -rf /tmp/uv-cache /root/.cache/uv /root/.npm; \
+    # Sanity: bins must resolve to a non-writable location.
+    test -x /usr/bin/mcp-server-filesystem; \
+    test -x /usr/bin/mcp-server-github; \
+    test -x /usr/local/bin/mcp-server-fetch; \
+    echo "MCP servers installed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
 
 # Pilot admin extension bundle. Copied above the source layer so an edit to
 # hermes_station/ doesn't invalidate the extension layer, and so an extension
@@ -262,10 +262,10 @@ LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 
 # Harden: prevent the agent from modifying its own application code at runtime.
 # Pre-compile /app so Python doesn't need __pycache__ write access, then strip
-# write bits from site-packages, the webui source, and the app source tree.
-# /data (all agent state) and /opt/mcp-cache (npm/uv tool caches) stay writable.
-# Running as a non-root user is what makes the chmod effective — root has
-# DAC_OVERRIDE and ignores file permission bits.
+# write bits from site-packages, the webui source, the app source tree, and
+# the uv-tools MCP env. /data (all agent state) stays writable. Running as a
+# non-root user is what makes the chmod effective — root has DAC_OVERRIDE
+# and ignores file permission bits.
 #
 # /data is NOT chowned here: bind-mounted volumes ignore image-layer ownership,
 # so the entrypoint script fixes /data ownership at container start before
@@ -273,8 +273,7 @@ LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
     && python3 -m compileall -q /app \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
-    && chown -R hermes /opt/mcp-cache \
-    && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app \
+    && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app /opt/uv-tools \
     && printf '#!/bin/sh\nset -e\nchown -R 10000 /data\nexec gosu hermes "$@"\n' \
          > /usr/local/bin/hermes-entrypoint \
     && chmod +x /usr/local/bin/hermes-entrypoint

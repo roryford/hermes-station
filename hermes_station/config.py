@@ -423,12 +423,8 @@ MCP_SERVER_CATALOG: list[dict[str, Any]] = [
             "$HERMES_WORKSPACE_DIR (`/data/workspace`) — the model cannot "
             "escape it."
         ),
-        "command": "npx",
-        "args": [
-            "-y",
-            "@modelcontextprotocol/server-filesystem@2025.8.21",
-            "/data/workspace",
-        ],
+        "command": "mcp-server-filesystem",
+        "args": ["/data/workspace"],
         "env": {},
         "needs": [],
     },
@@ -439,8 +435,8 @@ MCP_SERVER_CATALOG: list[dict[str, Any]] = [
             "Generic HTTP(S) fetcher with HTML→Markdown conversion. Useful "
             "for ad-hoc page reads when no purpose-built tool fits."
         ),
-        "command": "uvx",
-        "args": ["--from", "mcp-server-fetch==2025.4.7", "mcp-server-fetch"],
+        "command": "mcp-server-fetch",
+        "args": [],
         "env": {},
         "needs": [],
     },
@@ -452,8 +448,8 @@ MCP_SERVER_CATALOG: list[dict[str, Any]] = [
             "GITHUB_TOKEN from your `gh auth login` / Railway env — no extra "
             "credential entry."
         ),
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
+        "command": "mcp-server-github",
+        "args": [],
         "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"},
         "needs": ["GITHUB_TOKEN"],
     },
@@ -522,6 +518,91 @@ def seed_default_mcp_servers(path: Path, *, catalog: list[dict[str, Any]] | None
     return added
 
 
+# Old-style MCP launcher shapes that earlier versions of `seed_default_mcp_servers`
+# wrote to disk. `heal_mcp_server_launchers` rewrites these in place to the
+# current shape (direct, PATH-resolved binaries) so the runtime stops invoking
+# code from writable npx/_npx caches under /data.
+#
+# Detection is conservative: only entries whose `command` is `npx` or `uvx`
+# AND whose `args[1]` names the expected package (e.g. npx: ["-y", "<pkg>@X", ...],
+# uvx fetch: ["--from", "mcp-server-fetch==X", "mcp-server-fetch"])
+# get rewritten. Any other args layout is treated as a user customization
+# and left alone.
+_MCP_LEGACY_LAUNCHERS: dict[str, dict[str, Any]] = {
+    "filesystem": {
+        "old_command": "npx",
+        "old_package_prefix": "@modelcontextprotocol/server-filesystem@",
+        "old_package_arg_index": 1,
+        "new_command": "mcp-server-filesystem",
+        "preserve_trailing_args_from_index": 2,
+    },
+    "github": {
+        "old_command": "npx",
+        "old_package_prefix": "@modelcontextprotocol/server-github@",
+        "old_package_arg_index": 1,
+        "new_command": "mcp-server-github",
+        "preserve_trailing_args_from_index": None,
+    },
+    "fetch": {
+        "old_command": "uvx",
+        "old_package_prefix": "mcp-server-fetch==",
+        "old_package_arg_index": 1,
+        "new_command": "mcp-server-fetch",
+        "preserve_trailing_args_from_index": None,
+    },
+}
+
+
+def heal_mcp_server_launchers(config: dict[str, Any]) -> list[str]:
+    """Rewrite legacy npx/uvx MCP launchers to direct binary invocations.
+
+    Mutates `config["mcp_servers"]` in place. Returns a list of human-readable
+    change descriptions (empty when nothing matched, so callers can skip the
+    disk write).
+
+    Why this exists: prior images launched MCP servers via `npx -y <pkg>` and
+    `uvx --from <pkg>`. Both stage the package tree into a writable cache and
+    execute JS/Python from a path the runtime user can write to. The Dockerfile
+    now installs these as global, root-owned binaries; this migration brings
+    pre-existing /data/.hermes/config.yaml files along. User customizations
+    (custom args, non-default `enabled`) are preserved — we only rewrite the
+    exact prior-seed shape.
+    """
+    servers = config.get("mcp_servers")
+    if not isinstance(servers, dict):
+        return []
+    changes: list[str] = []
+    for name, spec in _MCP_LEGACY_LAUNCHERS.items():
+        entry = servers.get(name)
+        if not isinstance(entry, dict):
+            continue
+        cmd = entry.get("command")
+        args = entry.get("args")
+        if cmd != spec["old_command"] or not isinstance(args, list):
+            continue
+        idx = spec["old_package_arg_index"]
+        if len(args) <= idx:
+            continue
+        package_arg = args[idx]
+        if not isinstance(package_arg, str) or not package_arg.startswith(spec["old_package_prefix"]):
+            continue
+        # Trailing args after the package spec are positional flags the user
+        # may have customized (e.g. filesystem's workspace path). Preserve them.
+        new_args: list[Any]
+        tail_index = spec["preserve_trailing_args_from_index"]
+        if tail_index is None:
+            new_args = []
+        else:
+            new_args = list(args[tail_index:])
+        entry["command"] = spec["new_command"]
+        entry["args"] = new_args
+        changes.append(
+            f"rewrote mcp_servers.{name} from {spec['old_command']} launcher to "
+            f"{spec['new_command']} (was {package_arg!r})"
+        )
+    return changes
+
+
 def normalize_config(config: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Heal common config-shape drift in-place. Returns (config, changes).
 
@@ -533,6 +614,10 @@ def normalize_config(config: dict[str, Any]) -> tuple[dict[str, Any], list[str]]
     2. A stray top-level `env_passthrough:` key with a blank/null value,
        the broken sibling of `terminal.env_passthrough` that older versions
        used to write. It does nothing but clutter the file.
+
+    Also runs `heal_mcp_server_launchers` so legacy npx/uvx MCP entries get
+    rewritten to direct binaries — see that function for the security
+    motivation.
 
     Idempotent: a second call on the result yields an empty changes list.
     Does NOT seed defaults — see the `seed_*` functions for that.
@@ -553,6 +638,8 @@ def normalize_config(config: dict[str, Any]) -> tuple[dict[str, Any], list[str]]
         if is_blank:
             del config["env_passthrough"]
             changes.append("removed blank top-level env_passthrough key")
+
+    changes.extend(heal_mcp_server_launchers(config))
 
     return config, changes
 

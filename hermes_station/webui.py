@@ -56,10 +56,6 @@ _WEBUI_ENV_PASSTHROUGH = frozenset(
         "LC_CTYPE",
         "TMPDIR",
         "TERM",
-        # MCP cache dirs set by the Dockerfile
-        "NPM_CONFIG_CACHE",
-        "UV_CACHE_DIR",
-        "UV_TOOL_DIR",
         # Auth — forwarded explicitly so Railway env var is honoured when set
         "HERMES_WEBUI_PASSWORD",
         # Extension delivery (Layer A: passthrough; Layer B fills these in).
