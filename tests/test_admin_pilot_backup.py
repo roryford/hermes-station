@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import gzip
 import io
 import sqlite3
 import tarfile
 from pathlib import Path
 
 import httpx
-import pytest
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
