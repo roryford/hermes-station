@@ -381,7 +381,7 @@ hermes-station ships some capabilities as **pilots** — opt-in, flag-gated, and
 
 | Pilot | Flag | Introduced | Endpoints |
 |---|---|---|---|
-| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status`, `/admin/api/pilot/gateway/restart` |
+| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status`, `/admin/api/pilot/gateway/restart`, `/admin/api/pilot/usage`, `/admin/api/pilot/backup/download`, `/admin/api/pilot/backup/restore` |
 
 **Graduation dispositions.**
 
