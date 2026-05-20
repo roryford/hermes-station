@@ -143,6 +143,8 @@ async def test_usage_7d_aggregation(fake_data_dir: Path, admin_password: str, mo
     assert s["has_estimated"] is True  # one row has estimated only
     assert s["session_count"] == 2
     assert s["api_calls"] == 42  # 30 + 12
+    # estimated_sessions: 1 row has estimated cost only
+    assert s["estimated_sessions"] == 1
 
     # By channel: webui and telegram
     ch_names = {c["source"] for c in data["channels"]}
@@ -153,6 +155,23 @@ async def test_usage_7d_aggregation(fake_data_dir: Path, admin_password: str, mo
     model_names = {m["model"] for m in data["models"]}
     assert "gpt-4o" in model_names
     assert "claude-3" in model_names
+
+    # Daily rollup: 2 rows on 2 different days within the 7d window
+    assert "daily" in data
+    daily = data["daily"]
+    assert isinstance(daily, list)
+    assert len(daily) == 2
+    day_keys = {d["day"] for d in daily}
+    assert "2026-05-19" in day_keys
+    assert "2026-05-18" in day_keys
+    # Each entry has the expected fields
+    for entry in daily:
+        assert "day" in entry
+        assert "cost" in entry
+        assert "total_tokens" in entry
+        assert "api_calls" in entry
+    # Rows are ordered oldest-first
+    assert daily[0]["day"] < daily[1]["day"]
 
 
 async def test_usage_30d_includes_old_row(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
@@ -174,6 +193,14 @@ async def test_usage_30d_includes_old_row(fake_data_dir: Path, admin_password: s
     s = data["summary"]
     assert s["session_count"] == 3
     assert pytest.approx(s["total_cost"], abs=1e-6) == 0.14
+
+    # Daily rollup for 30d: 3 rows across 3 different days
+    daily = data["daily"]
+    assert len(daily) == 3
+    day_keys = {d["day"] for d in daily}
+    assert "2026-04-25" in day_keys
+    # Ordered oldest-first
+    assert daily[0]["day"] == "2026-04-25"
 
 
 async def test_usage_invalid_days_defaults_to_7(

@@ -705,10 +705,36 @@ def _usage_query_sync(db_path: Path, days: int) -> dict[str, Any]:
             }
             for r in cur3.fetchall()
         ]
+
+        cur4 = conn.execute(
+            f"""
+            SELECT
+                date(created_at) AS day,
+                COALESCE(SUM(CASE WHEN actual_cost_usd IS NOT NULL THEN actual_cost_usd ELSE estimated_cost_usd END), 0) AS cost,
+                COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens,
+                COALESCE(SUM(api_call_count), 0) AS api_calls
+            FROM sessions
+            WHERE {where}
+            GROUP BY date(created_at)
+            ORDER BY day ASC
+            """
+        )
+        daily = [
+            {
+                "day": r["day"],
+                "cost": float(r["cost"]),
+                "total_tokens": int(r["total_tokens"] or 0),
+                "api_calls": int(r["api_calls"] or 0),
+            }
+            for r in cur4.fetchall()
+        ]
     finally:
         conn.close()
 
-    return {"summary": summary, "channels": channels, "models": models}
+    # Add estimated_sessions count to summary for data-quality display.
+    summary["estimated_sessions"] = int(row["estimated_count"] or 0) if row else 0
+
+    return {"summary": summary, "channels": channels, "models": models, "daily": daily}
 
 
 async def api_pilot_usage(request: Request) -> Response:
@@ -764,6 +790,7 @@ async def api_pilot_usage(request: Request) -> Response:
         "summary": result["summary"],
         "channels": result["channels"],
         "models": result["models"],
+        "daily": result["daily"],
     }
     cache[days] = {"ts": now, "payload": payload}
     return JSONResponse(payload)
