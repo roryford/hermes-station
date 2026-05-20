@@ -203,9 +203,10 @@ volume and restarting.
 
 ## 4. Provider key rotation
 
-hermes-station supports zero-downtime key rotation for all provider and service
-keys. The `.env` file takes precedence over Railway env vars, so the running
-process sees the new key immediately after the save without a container restart.
+hermes-station supports low-disruption key rotation for all provider and service
+keys. The `.env` file takes precedence over Railway env vars. Saving a new value
+via the Secrets page rewrites `.env` atomically and triggers an automatic gateway
+restart so the new key takes effect — no container redeploy required.
 
 ### Rotate a key via the admin UI
 
@@ -263,20 +264,16 @@ is unreachable.
 If the control plane itself is crashing (Railway shows repeated restarts), the
 most common cause is a corrupt `config.yaml`. Reset it:
 
-1. In the Railway dashboard, open the service's **Variables** tab.
-2. Set `HERMES_CONFIG_RESET=1` temporarily.
-
-   hermes-station does not have a built-in reset flag — instead, use
-   `railway run` (or Railway's shell access if available) to get a shell on
+1. Use `railway run` (or Railway's shell access if available) to get a shell on
    the running volume and rename the bad file:
 
    ```bash
    mv /data/.hermes/config.yaml /data/.hermes/config.yaml.bak
    ```
 
-3. Restart the service. The boot-time seeders will write a fresh `config.yaml`
+2. Restart the service. The boot-time seeders will write a fresh `config.yaml`
    from env var defaults (provider auto-seed, memory defaults, etc.).
-4. Re-enter any config that was in the renamed file.
+3. Re-enter any config that was in the renamed file.
 
 ### Reset secrets (.env)
 
