@@ -100,10 +100,10 @@ container run --rm \
 ```bash
 docker run --rm \
   -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
-  -e HERMES_STATION_E2E_URL=http://host-gateway:8787 \
+  -e HERMES_STATION_E2E_URL=http://host.docker.internal:8787 \
   -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
   -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
-  --add-host=host-gateway:host-gateway \
+  --add-host=host.docker.internal:host-gateway \
   hermes-station:test \
   python -m pytest tests/test_container_toolbelt.py tests/test_plugin_manifests.py -v --no-cov
 ```
