@@ -149,6 +149,15 @@ The container runs as a non-root user (`hermes`, uid 10000). All application sou
 
 **Why MCP servers are pre-installed globally, not run via `npx`/`uvx`:** Both launchers stage their package tree into a writable cache (`npx` → `$NPM_CONFIG_CACHE/_npx/<hash>/`, defaulting to `$HOME/.npm/_npx/` which lands under `/data/.npm/` when `HOME=/data`; `uvx` → uv cache). The MCP subprocess then loads its JS/Python entrypoint from a path the runtime user can write to — i.e. live helper code executing from writable state. The Dockerfile pre-installs the curated servers via `npm install -g` (→ `/usr/bin/mcp-server-{filesystem,github}`) and `uv tool install` with `UV_TOOL_DIR=/opt/uv-tools` (→ `/usr/local/bin/mcp-server-fetch`). Both targets are root-owned and read-only to `hermes`. The `MCP_SERVER_CATALOG` in `hermes_station/config.py` references these binaries by PATH-resolved name, and `heal_mcp_server_launchers` migrates any pre-existing `npx`/`uvx` entries in `/data/.hermes/config.yaml` on load.
 
+**MCP write-boundary check (runtime guard):** At boot, `hermes_station/readiness.py` inspects every **enabled** `mcp_servers:` entry in `config.yaml` via `check_mcp_runtime_safety()`:
+
+1. If `command` is a known unsafe launcher (`npx`, `uvx`, `pipx`), a warning row is emitted regardless of the launcher's own install location — the executed payload is always staged into a writable cache.
+2. Otherwise, the command is resolved via `shutil.which` (using the process PATH) and its ancestor tree is walked with `os.access(W_OK)`. A writable ancestor triggers a warning row.
+
+Each affected server produces a `mcp:<name>` key in the readiness dict (e.g. `mcp:my-server`) with `intended=True`, `ready=True` (warning), and a human-readable `reason`. The `/admin/api/pilot/status` endpoint aggregates these into the `mcp_servers` list so the station panel can surface them.
+
+**Strict mode (`HERMES_STATION_STRICT_MCP_LAUNCHERS=1`):** When this env var is set, affected servers have `ready=False` (error state), which causes `Readiness.any_intended_not_ready()` to return `True` and the `/health` endpoint to report `status: "degraded"`. The gateway is not prevented from starting — the error is a status signal only. Operators should fix the underlying configuration (migrate to globally-installed binaries) and restart.
+
 **`.env` and secrets** live at `/data/.hermes/.env` (inside `/data`), which is writable. The control plane is the only writer; the agent reads credentials from there at boot. See §4.1 and [`secrets.md`](./secrets.md).
 
 ---
