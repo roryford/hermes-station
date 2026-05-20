@@ -42,9 +42,10 @@ jobs:
         run: |
           grep -c -- "--retry-all-errors" Dockerfile | awk '{ if ($1 < 3) { print "Retry wrapper missing on at least one curl"; exit 1 } }'
 
-  build-images:
-    name: build images
+  build-and-smoke:
+    name: build images + smoke + e2e + scan
     runs-on: ubuntu-latest
+    needs: [unit]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -80,32 +81,6 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
           sbom: false
-
-      - name: save images
-        run: docker save hermes-station:ci hermes-station:ci-test | zstd -T0 -3 > /tmp/ci-images.tar.zst
-
-      - name: upload images
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ci-images
-          path: /tmp/ci-images.tar.zst
-          retention-days: 1
-
-  smoke:
-    name: smoke + e2e + scan
-    runs-on: ubuntu-latest
-    needs: [unit, build-images]
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: download images
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: ci-images
-          path: /tmp
-
-      - name: load images
-        run: zstd -d /tmp/ci-images.tar.zst --stdout | docker load
 
       - name: scan image (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
