@@ -50,14 +50,11 @@ def _make_state_db(hermes_home: Path) -> Path:
         """,
         [
             # Row with actual cost — within last 7 days
-            ("2026-05-19T10:00:00", "webui", "gpt-4o", "openai",
-             0.08, None, 8000, 2000, 0, 0, 30),
+            ("2026-05-19T10:00:00", "webui", "gpt-4o", "openai", 0.08, None, 8000, 2000, 0, 0, 30),
             # Row with estimated cost only — within last 7 days
-            ("2026-05-18T08:00:00", "telegram", "claude-3", "anthropic",
-             None, 0.04, 4000, 1000, 0, 0, 12),
+            ("2026-05-18T08:00:00", "telegram", "claude-3", "anthropic", None, 0.04, 4000, 1000, 0, 0, 12),
             # Old row — outside 7 days (25 days ago) but within 30 days
-            ("2026-04-25T10:00:00", "webui", "gpt-4o", "openai",
-             0.02, None, 2000, 500, 0, 0, 5),
+            ("2026-04-25T10:00:00", "webui", "gpt-4o", "openai", 0.02, None, 2000, 500, 0, 0, 5),
         ],
     )
     conn.commit()
@@ -68,9 +65,7 @@ def _make_state_db(hermes_home: Path) -> Path:
 # ── unauthenticated ───────────────────────────────────────────────────────────
 
 
-async def test_usage_401_when_not_authenticated(
-    fake_data_dir: Path, monkeypatch
-) -> None:
+async def test_usage_401_when_not_authenticated(fake_data_dir: Path, monkeypatch) -> None:
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
 
     from hermes_station.app import create_app
@@ -86,9 +81,7 @@ async def test_usage_401_when_not_authenticated(
 # ── flag off ──────────────────────────────────────────────────────────────────
 
 
-async def test_usage_404_when_flag_off(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_usage_404_when_flag_off(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     monkeypatch.delenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", raising=False)
 
     from hermes_station.app import create_app
@@ -105,9 +98,7 @@ async def test_usage_404_when_flag_off(
 # ── no_db ─────────────────────────────────────────────────────────────────────
 
 
-async def test_usage_no_db_returns_no_db_true(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_usage_no_db_returns_no_db_true(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     """state.db absent → {no_db: true}."""
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
 
@@ -128,9 +119,7 @@ async def test_usage_no_db_returns_no_db_true(
 # ── with data ─────────────────────────────────────────────────────────────────
 
 
-async def test_usage_7d_aggregation(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_usage_7d_aggregation(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     """7d window: 2 rows. Summary cost = 0.08 + 0.04 = 0.12 (approx)."""
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
     hermes_home = fake_data_dir / ".hermes"
@@ -166,9 +155,7 @@ async def test_usage_7d_aggregation(
     assert "claude-3" in model_names
 
 
-async def test_usage_30d_includes_old_row(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_usage_30d_includes_old_row(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     """30d window: all 3 rows included."""
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
     hermes_home = fake_data_dir / ".hermes"
@@ -206,9 +193,7 @@ async def test_usage_invalid_days_defaults_to_7(
     assert r.json()["days"] == 7
 
 
-async def test_usage_cache_hit(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_usage_cache_hit(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     """Second identical request within 60s returns cached payload."""
     monkeypatch.setenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", "1")
     hermes_home = fake_data_dir / ".hermes"

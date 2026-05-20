@@ -828,12 +828,14 @@ async def api_pilot_backup_download(request: Request) -> Response:
 
     try:
         if db_path.exists():
+
             def _wal_checkpoint() -> None:
                 conn = sqlite3.connect(str(db_path))
                 try:
                     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                 finally:
                     conn.close()
+
             await asyncio.to_thread(_wal_checkpoint)
     except Exception as exc:  # noqa: BLE001
         logger.warning("backup: WAL checkpoint failed: %s", exc)
