@@ -265,6 +265,14 @@ def _seed_himalaya_config(env: Mapping[str, str]) -> None:
     Mirrors _seed_gh_cli_hosts: written on every call so credential rotations
     in Railway are picked up on container restart without manual intervention.
     No-ops silently when either var is absent or empty.
+
+    After a successful write, EMAIL_PASSWORD is popped from os.environ so the
+    in-process agent (which shares this process's environment) cannot read it
+    via env dumps or "what's in my environment" prompts. The credential is
+    still on disk for himalaya in /data/.config/himalaya/config.toml, which
+    the agent's uid can read — see docs/configuration.md §"Email (himalaya)
+    config auto-seed" for the residual exposure. EMAIL_ADDRESS is left in
+    place because it isn't sensitive and other code may want to read it.
     """
     email = (env.get("EMAIL_ADDRESS") or "").strip()
     password = (env.get("EMAIL_PASSWORD") or "").strip()
@@ -275,6 +283,7 @@ def _seed_himalaya_config(env: Mapping[str, str]) -> None:
     himalaya_dir = home / ".config" / "himalaya"
     himalaya_dir.mkdir(parents=True, exist_ok=True)
     _write_secret_file(himalaya_dir / "config.toml", _himalaya_backend_config(email, password, display_name))
+    os.environ.pop("EMAIL_PASSWORD", None)
 
 
 def _seed_gh_cli_hosts(token: str) -> None:

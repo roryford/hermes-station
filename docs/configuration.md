@@ -101,6 +101,8 @@ If `EMAIL_DISPLAY_NAME` is set, it is written as `display-name` in the config, p
 
 The config is written on every boot (not first-boot-only) so credential changes in Railway take effect after the next container restart.
 
+**Credential containment.** After the config file is written, `EMAIL_PASSWORD` is popped from `os.environ` so the in-process agent cannot read it via env dumps or "what's in my environment" prompts. `EMAIL_ADDRESS` is left in place because it isn't sensitive. The password still lives on disk at `/data/.config/himalaya/config.toml` (mode 0600), which is readable by the agent's uid — that residual exposure is structural and would require running himalaya as a different uid or behind a separate Railway service to fully close. The env-pop closes the easy accidental-leak vector.
+
 Implemented in `_seed_himalaya_config` / `_himalaya_backend_config` in `hermes_station/config.py`; the spec is pinned by [`tests/test_himalaya_config.py`](../tests/test_himalaya_config.py).
 
 ## Build metadata

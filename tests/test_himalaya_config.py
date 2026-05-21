@@ -6,8 +6,11 @@ atomic write with mode 0o600, and config.toml content shape.
 
 from __future__ import annotations
 
+import os
 import stat
 from pathlib import Path
+
+import pytest
 
 from hermes_station.config import _himalaya_backend_config, _seed_himalaya_config
 
@@ -177,3 +180,51 @@ def test_overwrites_on_second_call(tmp_path: Path) -> None:
     cfg = (tmp_path / ".config" / "himalaya" / "config.toml").read_text()
     assert "b@example.com" in cfg
     assert "a@gmail.com" not in cfg
+
+
+# ---------------------------------------------------------------------------
+# Env-pop behaviour: after a successful write, EMAIL_PASSWORD must be removed
+# from os.environ so the in-process agent cannot read it from env dumps.
+# EMAIL_ADDRESS is not sensitive and must stay in place.
+# ---------------------------------------------------------------------------
+
+
+def test_pops_email_password_from_os_environ_after_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("EMAIL_ADDRESS", "me@gmail.com")
+    monkeypatch.setenv("EMAIL_PASSWORD", "supersecret")
+    _seed_himalaya_config(os.environ)
+    assert "EMAIL_PASSWORD" not in os.environ
+    # File still has the credential — himalaya needs it.
+    cfg = (tmp_path / ".config" / "himalaya" / "config.toml").read_text()
+    assert 'backend.auth.raw = "supersecret"' in cfg
+
+
+def test_does_not_pop_email_address(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("EMAIL_ADDRESS", "me@gmail.com")
+    monkeypatch.setenv("EMAIL_PASSWORD", "pw")
+    _seed_himalaya_config(os.environ)
+    assert os.environ.get("EMAIL_ADDRESS") == "me@gmail.com"
+    assert "EMAIL_PASSWORD" not in os.environ
+
+
+def test_does_not_pop_when_no_write_happened(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Password set but address missing → no file write, no pop.
+    monkeypatch.delenv("EMAIL_ADDRESS", raising=False)
+    monkeypatch.setenv("EMAIL_PASSWORD", "still-here")
+    _seed_himalaya_config(os.environ)
+    assert os.environ.get("EMAIL_PASSWORD") == "still-here"
+
+
+def test_pop_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Second call with the password already gone must not raise."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("EMAIL_ADDRESS", "me@gmail.com")
+    monkeypatch.setenv("EMAIL_PASSWORD", "pw")
+    _seed_himalaya_config(os.environ)
+    # Password is gone; second call sees no password → noop, no error.
+    _seed_himalaya_config(os.environ)
+    assert "EMAIL_PASSWORD" not in os.environ
