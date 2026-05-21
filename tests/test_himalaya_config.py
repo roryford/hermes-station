@@ -114,12 +114,14 @@ def test_plural_folder_aliases_not_singular() -> None:
 
 
 def test_display_name_written_from_env(tmp_path: Path) -> None:
-    _seed_himalaya_config({
-        "EMAIL_ADDRESS": "me@gmail.com",
-        "EMAIL_PASSWORD": "pw",
-        "EMAIL_DISPLAY_NAME": "My Bot",
-        "HOME": str(tmp_path),
-    })
+    _seed_himalaya_config(
+        {
+            "EMAIL_ADDRESS": "me@gmail.com",
+            "EMAIL_PASSWORD": "pw",
+            "EMAIL_DISPLAY_NAME": "My Bot",
+            "HOME": str(tmp_path),
+        }
+    )
     cfg = (tmp_path / ".config" / "himalaya" / "config.toml").read_text()
     assert 'display-name = "My Bot"' in cfg
 
