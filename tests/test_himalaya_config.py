@@ -6,11 +6,8 @@ atomic write with mode 0o600, and config.toml content shape.
 
 from __future__ import annotations
 
-import os
 import stat
 from pathlib import Path
-
-import pytest
 
 from hermes_station.config import _himalaya_backend_config, _seed_himalaya_config
 
@@ -86,6 +83,21 @@ def test_display_name_omitted_when_empty() -> None:
 def test_display_name_omitted_when_not_passed() -> None:
     cfg = _himalaya_backend_config("me@gmail.com", "pw")
     assert "display-name" not in cfg
+
+
+def test_password_with_double_quote_is_escaped() -> None:
+    cfg = _himalaya_backend_config("user@example.com", 'p@ss"word')
+    assert r'backend.auth.raw = "p@ss\"word"' in cfg
+
+
+def test_password_with_backslash_is_escaped() -> None:
+    cfg = _himalaya_backend_config("user@example.com", "p\\ass")
+    assert r'backend.auth.raw = "p\\ass"' in cfg
+
+
+def test_display_name_with_quote_is_escaped() -> None:
+    cfg = _himalaya_backend_config("user@example.com", "pw", 'My "Bot"')
+    assert r'display-name = "My \"Bot\""' in cfg
 
 
 def test_plural_folder_aliases_not_singular() -> None:

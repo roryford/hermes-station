@@ -195,6 +195,11 @@ _GMAIL_DOMAINS = frozenset({"gmail.com", "googlemail.com"})
 _ICLOUD_DOMAINS = frozenset({"icloud.com", "me.com", "mac.com"})
 
 
+def _toml_escape(value: str) -> str:
+    """Escape a string for embedding inside TOML double-quoted values."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _himalaya_backend_config(email: str, password: str, display_name: str = "") -> str:
     """Return a himalaya config.toml body for the given email/password pair.
 
@@ -222,28 +227,30 @@ def _himalaya_backend_config(email: str, password: str, display_name: str = "") 
         folder_drafts = "Drafts"
         folder_trash = "Trash"
 
-    display_name_line = f'\ndisplay-name = "{display_name}"' if display_name else ""
+    e_email = _toml_escape(email)
+    e_password = _toml_escape(password)
+    display_name_line = f'\ndisplay-name = "{_toml_escape(display_name)}"' if display_name else ""
 
     return f"""\
 [accounts.default]
-email = "{email}"{display_name_line}
+email = "{e_email}"{display_name_line}
 default = true
 
 backend.type = "imap"
 backend.host = "{imap_host}"
 backend.port = 993
 backend.encryption.type = "tls"
-backend.login = "{email}"
+backend.login = "{e_email}"
 backend.auth.type = "password"
-backend.auth.raw = "{password}"
+backend.auth.raw = "{e_password}"
 
 message.send.backend.type = "smtp"
 message.send.backend.host = "{smtp_host}"
 message.send.backend.port = 587
 message.send.backend.encryption.type = "start-tls"
-message.send.backend.login = "{email}"
+message.send.backend.login = "{e_email}"
 message.send.backend.auth.type = "password"
-message.send.backend.auth.raw = "{password}"
+message.send.backend.auth.raw = "{e_password}"
 
 folder.aliases.inbox = "INBOX"
 folder.aliases.sent = "{folder_sent}"
