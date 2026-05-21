@@ -75,13 +75,32 @@ RUN set -eux; \
     install -m 0755 /tmp/himalaya /usr/local/bin/himalaya; \
     rm /tmp/himalaya.tgz /tmp/himalaya
 
+# tirith (Rust terminal-security binary) — not in Debian repos; pinned upstream.
+# Bump version + both sha256s together.
+ARG TIRITH_VERSION=v0.3.1
+ARG TIRITH_SHA256_AMD64=571e6a300e4c444293476537a322666069e561c7f05283d6650f5b8ef83db3ac
+ARG TIRITH_SHA256_ARM64=0462fe5083b4c72c45a8de918d5413e21d17aa8077aa7dbe53c0876b112847bb
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) tr_arch=x86_64-unknown-linux-gnu; tr_sha="$TIRITH_SHA256_AMD64" ;; \
+      arm64) tr_arch=aarch64-unknown-linux-gnu; tr_sha="$TIRITH_SHA256_ARM64" ;; \
+      *) echo "unsupported arch for tirith: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 \
+         -o /tmp/tirith.tgz "https://github.com/sheeki03/tirith/releases/download/${TIRITH_VERSION}/tirith-${tr_arch}.tar.gz"; \
+    echo "${tr_sha}  /tmp/tirith.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/tirith.tgz -C /tmp tirith; \
+    install -m 0755 /tmp/tirith /usr/local/bin/tirith; \
+    rm /tmp/tirith.tgz /tmp/tirith
+
 WORKDIR /app
 
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
 # hermes-webui is fetched at build time because it has no pyproject.toml,
 # so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
-ARG HERMES_WEBUI_VERSION=v0.51.95
-ARG HERMES_WEBUI_SHA=9c983e693aed0cc502507bfa9ec78f56e398c43f
+ARG HERMES_WEBUI_VERSION=v0.51.103
+ARG HERMES_WEBUI_SHA=7057c94277803d120fbb24a4fe95ea67432ec8ff
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
