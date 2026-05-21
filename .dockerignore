@@ -1,6 +1,7 @@
 .git
 .github
 .venv
+.claude
 .tmp-*
 __pycache__
 *.py[cod]
