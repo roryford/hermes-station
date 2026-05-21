@@ -168,6 +168,7 @@ def seed_env_file_to_os(path: Path, config_path: Path | None = None) -> None:
         os.environ.pop("_HERMES_FORCE_GITHUB_TOKEN", None)
         os.environ.pop("_HERMES_FORCE_GH_TOKEN", None)
     _seed_gh_cli_hosts(os.environ.get("GH_TOKEN") or github_token)
+    _seed_himalaya_config(os.environ)
 
 
 def _disabled_secret_keys(config_path: Path) -> list[str]:
@@ -188,6 +189,85 @@ def _disabled_secret_keys(config_path: Path) -> list[str]:
     if not isinstance(raw, list):
         return []
     return [str(k).strip() for k in raw if str(k).strip()]
+
+
+_GMAIL_DOMAINS = frozenset({"gmail.com", "googlemail.com"})
+_ICLOUD_DOMAINS = frozenset({"icloud.com", "me.com", "mac.com"})
+
+
+def _himalaya_backend_config(email: str, password: str, display_name: str = "") -> str:
+    """Return a himalaya config.toml body for the given email/password pair.
+
+    IMAP/SMTP settings are inferred from the email domain. Falls back to
+    generic `imap.<domain>` / `smtp.<domain>` for unknown providers.
+    """
+    domain = email.split("@", 1)[-1].lower() if "@" in email else ""
+
+    if domain in _GMAIL_DOMAINS:
+        imap_host = "imap.gmail.com"
+        smtp_host = "smtp.gmail.com"
+        folder_sent = "[Gmail]/Sent Mail"
+        folder_drafts = "[Gmail]/Drafts"
+        folder_trash = "[Gmail]/Trash"
+    elif domain in _ICLOUD_DOMAINS:
+        imap_host = "imap.mail.me.com"
+        smtp_host = "smtp.mail.me.com"
+        folder_sent = "Sent Messages"
+        folder_drafts = "Drafts"
+        folder_trash = "Deleted Messages"
+    else:
+        imap_host = f"imap.{domain}" if domain else "imap.example.com"
+        smtp_host = f"smtp.{domain}" if domain else "smtp.example.com"
+        folder_sent = "Sent"
+        folder_drafts = "Drafts"
+        folder_trash = "Trash"
+
+    display_name_line = f'\ndisplay-name = "{display_name}"' if display_name else ""
+
+    return f"""\
+[accounts.default]
+email = "{email}"{display_name_line}
+default = true
+
+backend.type = "imap"
+backend.host = "{imap_host}"
+backend.port = 993
+backend.encryption.type = "tls"
+backend.login = "{email}"
+backend.auth.type = "password"
+backend.auth.raw = "{password}"
+
+message.send.backend.type = "smtp"
+message.send.backend.host = "{smtp_host}"
+message.send.backend.port = 587
+message.send.backend.encryption.type = "start-tls"
+message.send.backend.login = "{email}"
+message.send.backend.auth.type = "password"
+message.send.backend.auth.raw = "{password}"
+
+folder.aliases.inbox = "INBOX"
+folder.aliases.sent = "{folder_sent}"
+folder.aliases.drafts = "{folder_drafts}"
+folder.aliases.trash = "{folder_trash}"
+"""
+
+
+def _seed_himalaya_config(env: Mapping[str, str]) -> None:
+    """Write ~/.config/himalaya/config.toml from EMAIL_ADDRESS + EMAIL_PASSWORD.
+
+    Mirrors _seed_gh_cli_hosts: written on every call so credential rotations
+    in Railway are picked up on container restart without manual intervention.
+    No-ops silently when either var is absent or empty.
+    """
+    email = (env.get("EMAIL_ADDRESS") or "").strip()
+    password = (env.get("EMAIL_PASSWORD") or "").strip()
+    if not email or not password:
+        return
+    display_name = (env.get("EMAIL_DISPLAY_NAME") or "").strip()
+    home = Path(env.get("HOME", "/data"))
+    himalaya_dir = home / ".config" / "himalaya"
+    himalaya_dir.mkdir(parents=True, exist_ok=True)
+    _write_secret_file(himalaya_dir / "config.toml", _himalaya_backend_config(email, password, display_name))
 
 
 def _seed_gh_cli_hosts(token: str) -> None:

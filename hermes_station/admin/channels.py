@@ -108,7 +108,7 @@ CHANNEL_ENV_KEYS: tuple[str, ...] = tuple(
     for entry in CHANNEL_CATALOG
     for key in (entry["primary_key"], entry["secondary_key"], entry.get("disable_key", ""))
     if key
-)
+) + ("EMAIL_DISPLAY_NAME",)
 
 
 _WHATSAPP_ON = {"1", "true", "yes", "on"}
