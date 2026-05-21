@@ -45,6 +45,9 @@ All of these follow the warn-and-continue rule: if the capability is referenced 
 | `BRAVE_API_KEY` | Brave web search backend |
 | `GITHUB_TOKEN` / `GH_TOKEN` | `gh` CLI inside terminals, GitHub MCP server |
 | `FAL_KEY` | Image generation (fal.ai backend) |
+| `EMAIL_ADDRESS` | Email channel (himalaya IMAP/SMTP) |
+| `EMAIL_PASSWORD` | Email channel — app password, not account password |
+| `EMAIL_DISPLAY_NAME` | Optional display name for outgoing email (`"Name" <address>`) |
 
 The authoritative key names live in `hermes_station/admin/provider.py` (LLM providers) and `hermes_station/admin/channels.py` (Discord and other channels). When in doubt, those files win.
 
@@ -79,6 +82,26 @@ Rules:
 - **No-clobber is absolute.** If `config.yaml` has *any* `model:` block — even a partial one like `model: {name: foo}` with no `provider` — the seeder skips and logs why. Operators who edited the file get to keep their state.
 - **Always logs.** One INFO line per boot describing the outcome (seeded / skipped-because-already-set / skipped-because-no-keys / skipped-because-empty), so `railway logs` makes the chosen path obvious.
 - **Drift detection.** If `model.provider` is configured but its env var is missing *and* a different provider's key is present, a single WARNING is emitted at boot pointing the operator at `/admin/settings` to switch.
+
+### Email (himalaya) config auto-seed
+
+When `EMAIL_ADDRESS` and `EMAIL_PASSWORD` are both set, hermes-station writes `~/.config/himalaya/config.toml` on every container start — no manual config-file editing required. This mirrors the `_seed_gh_cli_hosts` pattern so Railway credential rotations are picked up on restart without manual intervention.
+
+IMAP/SMTP settings are inferred from the email domain:
+
+| Domain | IMAP host | SMTP host | Folder quirks |
+|---|---|---|---|
+| `gmail.com`, `googlemail.com` | `imap.gmail.com` | `smtp.gmail.com` | `[Gmail]/Sent Mail`, `[Gmail]/Drafts`, `[Gmail]/Trash` |
+| `icloud.com`, `me.com`, `mac.com` | `imap.mail.me.com` | `smtp.mail.me.com` | `Sent Messages`, `Deleted Messages` |
+| anything else | `imap.<domain>` | `smtp.<domain>` | `Sent`, `Drafts`, `Trash` |
+
+All entries use port 993 TLS for IMAP and port 587 STARTTLS for SMTP, and the v1.2.0 plural `folder.aliases.X` syntax (the pre-v1.2.0 singular form is silently ignored by himalaya and causes save-to-Sent failures).
+
+If `EMAIL_DISPLAY_NAME` is set, it is written as `display-name` in the config, producing `"Name" <address>` in the From header. Omitting it leaves the field out entirely — both are valid.
+
+The config is written on every boot (not first-boot-only) so credential changes in Railway take effect after the next container restart.
+
+Implemented in `_seed_himalaya_config` / `_himalaya_backend_config` in `hermes_station/config.py`; the spec is pinned by [`tests/test_himalaya_config.py`](../tests/test_himalaya_config.py).
 
 ## Build metadata
 

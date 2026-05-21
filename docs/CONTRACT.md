@@ -307,6 +307,10 @@ Defined in `hermes_station/admin/channels.py:16` (`CHANNEL_CATALOG`). Stable slu
 | `whatsapp` | `WHATSAPP_ENABLED` | _(none)_ |
 | `email` | `EMAIL_ADDRESS` | `EMAIL_PASSWORD` |
 
+`EMAIL_DISPLAY_NAME` is an auxiliary key for the `email` channel (not modelled as `secondary_key` in the catalog schema) and is included in `CHANNEL_ENV_KEYS` directly.
+
+When `EMAIL_ADDRESS` and `EMAIL_PASSWORD` are both set, `seed_env_file_to_os` writes `~/.config/himalaya/config.toml` on every boot — see `docs/configuration.md` §"Email (himalaya) config auto-seed" for the domain-inference rules and folder-alias details.
+
 Adding a channel slug is a contract extension, not a break — old deploys see "unknown channel" gracefully. Removing or renaming a slug **is** a break.
 
 ---

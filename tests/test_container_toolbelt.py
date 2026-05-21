@@ -182,6 +182,7 @@ def test_mcp_server_binary_resolves_outside_writable_state(binary: str) -> None:
 # tirith — terminal / AI-agent security scanner
 # ---------------------------------------------------------------------------
 
+
 def _tirith_path() -> str | None:
     return shutil.which("tirith")
 
@@ -237,8 +238,7 @@ def test_tirith_allows_benign_command(tid: str, cmd: str) -> None:
         timeout=10,
     )
     assert proc.returncode == 0, (
-        f"tirith wrongly blocked {tid!r}\ncmd: {cmd!r}\n"
-        f"stdout={proc.stdout!r}\nstderr={proc.stderr!r}"
+        f"tirith wrongly blocked {tid!r}\ncmd: {cmd!r}\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
     )
 
 
@@ -246,10 +246,7 @@ def test_tirith_scan_detects_obfuscated_payload(tmp_path: "pytest.TempPathFactor
     """tirith scan must flag a Python file with an eval(base64.b64decode(...)) pattern."""
     _skip_if_missing()
     evil = tmp_path / "evil_skill.py"
-    evil.write_text(
-        "import base64\n"
-        "exec(base64.b64decode('aW1wb3J0IG9z').decode())\n"
-    )
+    evil.write_text("import base64\nexec(base64.b64decode('aW1wb3J0IG9z').decode())\n")
     proc = subprocess.run(  # noqa: S603
         [_tirith_path(), "scan", str(evil)],
         capture_output=True,
