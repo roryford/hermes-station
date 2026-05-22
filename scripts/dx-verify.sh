@@ -17,7 +17,7 @@ uv sync --quiet
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy hermes_station --ignore-missing-imports
-uv run pytest -q
+uv run pytest -q --ignore=tests/fixtures --ignore=tests/test_compat_realistic.py
 
 # 2. Build for the host arch — Apple `container` lacks qemu so it can only run native.
 # CI builds + runs linux/amd64 (matches Railway), so the Railway-parity check happens there.
@@ -81,7 +81,7 @@ jq -e '.components.gateway.state != "unknown"'             /tmp/hs-health.json
   hs-dx \
   python -m pytest tests/ -q --no-cov
 
-# 8. Screenshots — opt-in to keep core verify lean [DX-driven]
+# 7. Screenshots — opt-in to keep core verify lean [DX-driven]
 if [ "$WANT_SCREENSHOTS" = "--screenshots" ]; then
   bash scripts/refresh-screenshots.sh
 fi

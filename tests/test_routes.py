@@ -15,24 +15,26 @@ import pytest
 
 @pytest.fixture(autouse=False)
 def clear_login_rate_limit():
-    """Reset the login rate-limit dict before/after tests to prevent pollution."""
+    """Reset the login rate-limit dicts before/after tests to prevent pollution."""
     from hermes_station.admin import routes
 
     routes._login_attempts.clear()
+    routes._login_lockouts.clear()
     yield
     routes._login_attempts.clear()
+    routes._login_lockouts.clear()
 
 
 # ─────────────────────────────────────────────────────────── rate limiter / prune
 
 
 def test_prune_login_attempts_evicts_stale() -> None:
-    """_prune_login_attempts removes old entries."""
+    """_prune_login_state removes old attempt entries."""
     from hermes_station.admin import routes
 
     routes._login_attempts.clear()
     routes._login_attempts["1.2.3.4"] = [time.time() - 120]
-    routes._prune_login_attempts()
+    routes._prune_login_state()
     assert "1.2.3.4" not in routes._login_attempts
 
 
@@ -41,7 +43,7 @@ def test_prune_login_attempts_keeps_recent() -> None:
 
     routes._login_attempts.clear()
     routes._login_attempts["1.2.3.4"] = [time.time()]
-    routes._prune_login_attempts()
+    routes._prune_login_state()
     assert "1.2.3.4" in routes._login_attempts
 
 
@@ -56,11 +58,23 @@ def test_prune_login_attempts_evicts_beyond_max_ips() -> None:
         now = time.time()
         for i in range(6):
             routes._login_attempts[f"10.0.0.{i}"] = [now + i]
-        routes._prune_login_attempts()
+        routes._prune_login_state()
         assert len(routes._login_attempts) <= 5
     finally:
         routes._LOGIN_MAX_IPS = orig_max
         routes._login_attempts.clear()
+
+
+def test_prune_login_state_evicts_expired_lockouts() -> None:
+    """_prune_login_state removes lockout entries whose expiry has passed."""
+    from hermes_station.admin import routes
+
+    routes._login_lockouts.clear()
+    routes._login_lockouts["1.2.3.4"] = time.time() - 1  # already expired
+    routes._login_lockouts["5.6.7.8"] = time.time() + 3600  # still active
+    routes._prune_login_state()
+    assert "1.2.3.4" not in routes._login_lockouts
+    assert "5.6.7.8" in routes._login_lockouts
 
 
 async def test_rate_limit_blocks_after_max_attempts(fake_data_dir: Path, admin_password: str) -> None:
@@ -69,11 +83,46 @@ async def test_rate_limit_blocks_after_max_attempts(fake_data_dir: Path, admin_p
     from hermes_station.admin import routes
 
     routes._login_attempts.clear()
+    routes._login_lockouts.clear()
     app = create_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         for _ in range(10):
             await client.post("/admin/login", data={"password": "wrong"})
+        resp = await client.post("/admin/login", data={"password": "wrong"})
+    assert resp.status_code == 429
+
+
+async def test_rate_limit_escalates_to_lockout(fake_data_dir: Path, admin_password: str) -> None:
+    """Hitting the rate limit adds the IP to the 1-hour lockout dict."""
+    from hermes_station.app import create_app
+    from hermes_station.admin import routes
+
+    routes._login_attempts.clear()
+    routes._login_lockouts.clear()
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        for _ in range(routes._LOGIN_MAX_ATTEMPTS):
+            await client.post("/admin/login", data={"password": "wrong"})
+        await client.post("/admin/login", data={"password": "wrong"})
+    assert len(routes._login_lockouts) == 1
+    expiry = next(iter(routes._login_lockouts.values()))
+    assert expiry > time.time() + 3500
+
+
+async def test_lockout_blocks_even_after_window_expires(fake_data_dir: Path, admin_password: str) -> None:
+    """An IP in the lockout dict is rejected regardless of the attempt window."""
+    from hermes_station.app import create_app
+    from hermes_station.admin import routes
+
+    routes._login_attempts.clear()
+    routes._login_lockouts.clear()
+    # Seed lockout for the IP the ASGI test transport uses.
+    routes._login_lockouts["127.0.0.1"] = time.time() + 3600
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/admin/login", data={"password": "wrong"})
     assert resp.status_code == 429
 
@@ -450,6 +499,39 @@ async def test_admin_logout(fake_data_dir: Path, admin_password: str, clear_logi
         resp = await client.post("/admin/logout", follow_redirects=False)
     assert resp.status_code == 302
     assert "login" in resp.headers["location"]
+
+
+async def test_logout_unauthenticated_redirects_without_clearing(fake_data_dir: Path) -> None:
+    """Unauthenticated logout redirects to login and does not set a cookie."""
+    from hermes_station.app import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/admin/logout", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "login" in resp.headers["location"]
+    assert "hermes_station_admin" not in resp.cookies
+
+
+async def test_admin_routes_blocked_when_no_password(
+    fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """All admin routes return 401 or redirect when no password is configured."""
+    monkeypatch.delenv("HERMES_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
+
+    from hermes_station.app import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        api_resp = await client.get("/admin/api/status", follow_redirects=False)
+        page_resp = await client.get("/admin", follow_redirects=False)
+
+    assert api_resp.status_code == 401
+    assert page_resp.status_code == 302
+    assert "login" in page_resp.headers["location"]
 
 
 async def test_api_logs_limit_zero(
