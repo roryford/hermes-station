@@ -33,6 +33,7 @@ from hermes_station.admin.auth import (
 )
 from hermes_station.admin.bridge_auth import verify_webui_session
 from hermes_station.admin.channels import channel_status, save_channel_values
+from hermes_station.admin.pilot_smoketest import api_pilot_smoketest
 from hermes_station.admin.pairing import approve, deny, get_approved, get_pending, revoke
 from hermes_station.admin.provider import apply_provider_setup
 from hermes_station.config import (
@@ -1060,6 +1061,7 @@ def admin_routes() -> list[Route]:
         Route("/admin/api/pilot/backup/download", api_pilot_backup_download, methods=["POST"]),
         Route("/admin/api/pilot/backup/restore", api_pilot_backup_restore, methods=["POST"]),
         Route("/admin/api/pilot/gateway/restart", api_pilot_gateway_restart, methods=["POST"]),
+        Route("/admin/api/pilot/smoketest", api_pilot_smoketest, methods=["POST"]),
         Route("/admin/api/provider/setup", api_provider_setup, methods=["POST"]),
         Route("/admin/api/channels", api_channels_get, methods=["GET"]),
         Route("/admin/api/channels/save", api_channels_save, methods=["POST"]),

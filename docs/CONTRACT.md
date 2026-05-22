@@ -394,7 +394,7 @@ hermes-station ships some capabilities as **pilots** — opt-in, flag-gated, and
 
 | Pilot | Flag | Introduced | Endpoints |
 |---|---|---|---|
-| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status`, `/admin/api/pilot/gateway/restart`, `/admin/api/pilot/usage`, `/admin/api/pilot/backup/download`, `/admin/api/pilot/backup/restore` |
+| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status`, `/admin/api/pilot/gateway/restart`, `/admin/api/pilot/usage`, `/admin/api/pilot/backup/download`, `/admin/api/pilot/backup/restore`, `/admin/api/pilot/smoketest` |
 
 **Graduation dispositions.**
 
@@ -402,6 +402,7 @@ hermes-station ships some capabilities as **pilots** — opt-in, flag-gated, and
 |---|---|---|
 | Status pane (`/admin/api/pilot/status`) | Station-permanent | Aggregates station-owned subprocess state (gateway supervisor, webui supervisor, readiness cache) that upstream webui has no knowledge of. |
 | Gateway restart (`/admin/api/pilot/gateway/restart`) | Station-permanent | The gateway is a station-owned async task supervised by `hermes_station.gateway.Gateway`. Upstream webui has no concept of "the gateway" as a restartable process — it's a hermes-station deployment topology choice. The endpoint stays station-side. |
+| Smoketest extension (`/admin/api/pilot/smoketest`) | Station-permanent | Connectivity and credential checks run against station-owned config, secrets, and process state (gateway supervisor). The SSE streaming pattern is station-specific; upstream webui has no equivalent hook. The check logic re-uses `hermes_station/admin/smoketest.py` so the two surfaces stay in sync without duplication. |
 
 **CSRF posture for state-changing pilot POSTs.** No project-wide CSRF token scheme exists yet. State-changing pilot endpoints (e.g. `/admin/api/pilot/gateway/restart`) defend against cross-site POSTs via:
 
