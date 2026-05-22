@@ -385,6 +385,139 @@
     return uc;
   }
 
+  // ── Smoketest card ────────────────────────────────────────────────────────
+
+  let _smoketestCardEl = null;
+  let _smoketestRunning = false;
+
+  const _CHECK_LABELS = {
+    storage: "Storage",
+    provider: "Provider",
+    gateway: "Gateway",
+    github_mcp: "GitHub MCP",
+    web_search: "Web search",
+    image_gen: "Image gen",
+    browser_backend: "Browser backend",
+    plugin_registry: "Plugin registry",
+    mcp_urls: "MCP URLs",
+  };
+
+  function _renderSmoketestResults(results) {
+    if (!_smoketestCardEl) return;
+    let listEl = _smoketestCardEl.querySelector(".admin-smoketest-list");
+    if (!listEl) {
+      listEl = document.createElement("ul");
+      listEl.className = "admin-smoketest-list";
+      _smoketestCardEl.appendChild(listEl);
+    }
+    for (const [check, result] of Object.entries(results)) {
+      let li = listEl.querySelector('[data-check="' + check + '"]');
+      if (!li) {
+        li = document.createElement("li");
+        li.className = "admin-smoketest-item";
+        li.dataset.check = check;
+        listEl.appendChild(li);
+      }
+      const label = result.label || _CHECK_LABELS[check] || check;
+      const status = result.status || "pending";
+      const detail = result.detail || "";
+      const fix = result.fix || "";
+      const pill = status === "pass" ? "ok" : status === "fail" ? "fail" : status === "skip" ? "muted" : "pending";
+      li.innerHTML = "";
+      const nameEl = document.createElement("span"); nameEl.className = "admin-smoketest-name"; nameEl.textContent = label;
+      const pillEl = document.createElement("span"); pillEl.className = "admin-pill " + pill; pillEl.textContent = status;
+      li.appendChild(nameEl); li.appendChild(pillEl);
+      if (detail) {
+        const detailEl = document.createElement("span"); detailEl.className = "admin-smoketest-detail"; detailEl.textContent = detail;
+        li.appendChild(detailEl);
+      }
+      if (fix && status === "fail") {
+        const fixEl = document.createElement("div"); fixEl.className = "admin-smoketest-fix"; fixEl.textContent = "Fix: " + fix;
+        li.appendChild(fixEl);
+      }
+    }
+  }
+
+  async function _doSmoketest(runBtn) {
+    if (_smoketestRunning) return;
+    _smoketestRunning = true;
+    runBtn.disabled = true;
+    runBtn.textContent = "Running…";
+
+    // Reset list.
+    if (_smoketestCardEl) {
+      const old = _smoketestCardEl.querySelector(".admin-smoketest-list");
+      if (old) old.remove();
+    }
+
+    const results = {};
+
+    try {
+      const r = await fetch("/admin/api/pilot/smoketest", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (r.status === 401) { window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname); return; }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        // Parse SSE lines: split on double-newline.
+        const parts = buf.split("\n\n");
+        buf = parts.pop(); // keep incomplete chunk.
+        for (const part of parts) {
+          for (const line of part.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            let evt;
+            try { evt = JSON.parse(line.slice(6)); } catch (_) { continue; }
+            const check = evt.check;
+            if (check === "__done__") {
+              // Summary toast.
+              const ok = evt.status === "pass";
+              if (typeof window.showToast === "function") {
+                window.showToast("Smoketest: " + (evt.detail || (ok ? "all passed" : "some failed")), ok ? 4000 : 6000, ok ? "success" : "error");
+              }
+            } else {
+              results[check] = evt;
+              _renderSmoketestResults(results);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (typeof window.showToast === "function") {
+        window.showToast("Smoketest failed: " + (err && err.message ? err.message : err), 6000, "error");
+      }
+    } finally {
+      _smoketestRunning = false;
+      runBtn.disabled = false;
+      runBtn.textContent = "Run smoketest";
+    }
+  }
+
+  function buildSmoketestCard() {
+    const sc = card("Smoketest");
+
+    const desc = document.createElement("div"); desc.className = "admin-backup-warn";
+    desc.textContent = "Check provider auth, model resolution, gateway state, and channel connectivity.";
+    sc.appendChild(desc);
+
+    const actions = document.createElement("div"); actions.className = "admin-card-actions";
+    const runBtn = document.createElement("button"); runBtn.type = "button"; runBtn.className = "admin-btn"; runBtn.textContent = "Run smoketest";
+    runBtn.addEventListener("click", () => _doSmoketest(runBtn));
+    actions.appendChild(runBtn);
+    sc.appendChild(actions);
+
+    _smoketestCardEl = sc;
+    return sc;
+  }
+
   // ── Backup card ───────────────────────────────────────────────────────────
 
   let _backupCardEl = null;
@@ -510,6 +643,7 @@
     appendDl(vc, [["Station", fmt(v.station)], ["WebUI", fmt(v.webui)], ["Hermes", fmt(v.hermes)]]);
     pane.appendChild(vc);
     pane.appendChild(buildUsageCard());
+    pane.appendChild(buildSmoketestCard());
     pane.appendChild(buildBackupCard());
   }
 
