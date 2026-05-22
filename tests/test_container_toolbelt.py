@@ -56,6 +56,8 @@ TOOLBELT: list[tuple[str, list[str]]] = [
     ("rsync", ["--version"]),
     ("himalaya", ["--version"]),
     ("tirith", ["--version"]),
+    ("pandoc", ["--version"]),
+    ("typst", ["--version"]),
 ]
 
 
@@ -257,6 +259,29 @@ def test_tirith_scan_detects_obfuscated_payload(tmp_path: "pytest.TempPathFactor
     assert proc.returncode != 0 or "finding" in output.lower(), (
         f"tirith scan did not flag obfuscated payload\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Data-science libs — installed into the container Python so execute_code
+# subprocesses can import them without touching the gateway in-process.
+# ---------------------------------------------------------------------------
+
+DATASCI_MODULES = ["pandas", "numpy", "PIL", "openpyxl", "pypdf"]
+
+
+@pytest.mark.parametrize("module", DATASCI_MODULES)
+def test_datasci_module_importable(module: str) -> None:
+    proc = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", f"import {module}"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        msg = f"{module!r} not importable from {sys.executable!r}: {proc.stderr.strip()!r}"
+        if REQUIRE:
+            pytest.fail(msg)
+        pytest.skip(msg + " (set HERMES_STATION_REQUIRE_TOOLBELT=1 to fail instead)")
 
 
 def test_fd_symlink_resolves_to_fdfind() -> None:

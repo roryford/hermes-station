@@ -26,6 +26,7 @@ RUN apt-get update \
          fd-find \
          sqlite3 \
          poppler-utils \
+         xz-utils \
          # operator-diagnostics toolbelt — required for a shareable image
          # (see test_container_toolbelt.py and HERMES_CONTAINER_REQUIREMENTS §4)
          procps \
@@ -74,6 +75,48 @@ RUN set -eux; \
     tar -xzf /tmp/himalaya.tgz -C /tmp himalaya; \
     install -m 0755 /tmp/himalaya /usr/local/bin/himalaya; \
     rm /tmp/himalaya.tgz /tmp/himalaya
+
+# pandoc (Haskell document converter) — not in Debian repos at a useful version; pinned upstream.
+# Bump version + both sha256s together.
+ARG PANDOC_VERSION=3.9.0.2
+ARG PANDOC_SHA256_AMD64=a69abfababda8a56969a254b09f9553a7be89ddec00d4e0fe9fd585d71a67508
+ARG PANDOC_SHA256_ARM64=b6d21e8f9c3b15744f5a7ab40248019157ed7793875dbe0383d4c82ff572b528
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) pd_arch=amd64; pd_sha="$PANDOC_SHA256_AMD64" ;; \
+      arm64) pd_arch=arm64; pd_sha="$PANDOC_SHA256_ARM64" ;; \
+      *) echo "unsupported arch for pandoc: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 \
+         -o /tmp/pandoc.tgz "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-${pd_arch}.tar.gz"; \
+    echo "${pd_sha}  /tmp/pandoc.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/pandoc.tgz -C /tmp "pandoc-${PANDOC_VERSION}/bin/pandoc"; \
+    install -m 0755 "/tmp/pandoc-${PANDOC_VERSION}/bin/pandoc" /usr/local/bin/pandoc; \
+    rm -rf /tmp/pandoc.tgz "/tmp/pandoc-${PANDOC_VERSION}"
+
+# typst (Rust typesetting system) — not in Debian repos; pinned upstream.
+# Bump version + both sha256s together.
+ARG TYPST_VERSION=v0.14.2
+ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
+ARG TYPST_SHA256_ARM64=491b101aa40a3a7ea82a3f8a6232cabb4e6a7e233810082e5ac812d43fdcd47a
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) ty_arch=x86_64-unknown-linux-musl ;; \
+      arm64) ty_arch=aarch64-unknown-linux-musl ;; \
+      *) echo "unsupported arch for typst: $arch" >&2; exit 1 ;; \
+    esac; \
+    case "$arch" in \
+      amd64) ty_sha="$TYPST_SHA256_AMD64" ;; \
+      arm64) ty_sha="$TYPST_SHA256_ARM64" ;; \
+    esac; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 \
+         -o /tmp/typst.tar.xz "https://github.com/typst/typst/releases/download/${TYPST_VERSION}/typst-${ty_arch}.tar.xz"; \
+    echo "${ty_sha}  /tmp/typst.tar.xz" | sha256sum -c -; \
+    tar -xJf /tmp/typst.tar.xz -C /tmp "typst-${ty_arch}/typst"; \
+    install -m 0755 "/tmp/typst-${ty_arch}/typst" /usr/local/bin/typst; \
+    rm -rf /tmp/typst.tar.xz "/tmp/typst-${ty_arch}"
 
 # tirith (Rust terminal-security binary) — not in Debian repos; pinned upstream.
 # Bump version + both sha256s together.
@@ -125,6 +168,7 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 # interpolated from ARG/env vars. Dropping the mount keeps this Dockerfile
 # portable across forks and fresh Railway services.
 RUN uv pip install --system --link-mode=copy ".[hermes]" -r /opt/hermes-webui/requirements.txt \
+        pandas numpy pillow openpyxl pypdf \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
 # Patch: restore plugin.yaml manifests omitted from the hermes-agent 0.14.0 wheel.
@@ -290,7 +334,7 @@ LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 # so the entrypoint script fixes /data ownership at container start before
 # dropping to the hermes user via gosu.
 RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
-    && python3 -m compileall -q /app \
+    && python3 -m compileall -q /app "$site_pkgs" \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
     && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app /opt/uv-tools \
     && printf '#!/bin/sh\nset -e\nchown -R 10000 /data\nexec gosu hermes "$@"\n' \
