@@ -394,7 +394,7 @@ hermes-station ships some capabilities as **pilots** — opt-in, flag-gated, and
 
 | Pilot | Flag | Introduced | Endpoints |
 |---|---|---|---|
-| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status`, `/admin/api/pilot/gateway/restart`, `/admin/api/pilot/usage`, `/admin/api/pilot/backup/download`, `/admin/api/pilot/backup/restore`, `/admin/api/pilot/smoketest` |
+| Admin UI extension | `HERMES_STATION_PILOT_ADMIN_EXTENSION` | v0.5.0 | `/admin/api/pilot/status`, `/admin/api/pilot/gateway/restart`, `/admin/api/pilot/usage`, `/admin/api/pilot/backup/download`, `/admin/api/pilot/backup/restore`, `/admin/api/pilot/smoketest`, `/admin/api/pilot/upgrade` |
 
 **Graduation dispositions.**
 
@@ -403,6 +403,7 @@ hermes-station ships some capabilities as **pilots** — opt-in, flag-gated, and
 | Status pane (`/admin/api/pilot/status`) | Station-permanent | Aggregates station-owned subprocess state (gateway supervisor, webui supervisor, readiness cache) that upstream webui has no knowledge of. |
 | Gateway restart (`/admin/api/pilot/gateway/restart`) | Station-permanent | The gateway is a station-owned async task supervised by `hermes_station.gateway.Gateway`. Upstream webui has no concept of "the gateway" as a restartable process — it's a hermes-station deployment topology choice. The endpoint stays station-side. |
 | Smoketest extension (`/admin/api/pilot/smoketest`) | Station-permanent | Connectivity and credential checks run against station-owned config, secrets, and process state (gateway supervisor). The SSE streaming pattern is station-specific; upstream webui has no equivalent hook. The check logic re-uses `hermes_station/admin/smoketest.py` so the two surfaces stay in sync without duplication. |
+| Upgrade visibility (`/admin/api/pilot/upgrade`) | Station-permanent | Reports running vs. latest container version by querying GitHub releases for `roryford/hermes-station`. Intentionally read-only — no auto-apply. Operators run prod deploys manually (see project policy). Stays station-side because it is tied to the hermes-station container release cycle, not webui internals. Introduced in v0.7.2 (issue #116). |
 
 **CSRF posture for state-changing pilot POSTs.** No project-wide CSRF token scheme exists yet. State-changing pilot endpoints (e.g. `/admin/api/pilot/gateway/restart`) defend against cross-site POSTs via:
 
