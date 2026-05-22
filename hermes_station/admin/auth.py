@@ -89,7 +89,8 @@ def auth_state(request: Request) -> AuthState:
 
 def require_admin(request: Request) -> Response | None:
     """Return an early-exit response if the request lacks valid admin auth."""
-    if is_authenticated(request):
+    # Explicit guard: no password configured means admin is locked, not open.
+    if admin_auth_enabled() and is_authenticated(request):
         return None
     if request.url.path.startswith("/admin/api/"):
         return JSONResponse({"error": "unauthorized"}, status_code=401)

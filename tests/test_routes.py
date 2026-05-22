@@ -501,6 +501,39 @@ async def test_admin_logout(fake_data_dir: Path, admin_password: str, clear_logi
     assert "login" in resp.headers["location"]
 
 
+async def test_logout_unauthenticated_redirects_without_clearing(fake_data_dir: Path) -> None:
+    """Unauthenticated logout redirects to login and does not set a cookie."""
+    from hermes_station.app import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/admin/logout", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "login" in resp.headers["location"]
+    assert "hermes_station_admin" not in resp.cookies
+
+
+async def test_admin_routes_blocked_when_no_password(
+    fake_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """All admin routes return 401 or redirect when no password is configured."""
+    monkeypatch.delenv("HERMES_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
+
+    from hermes_station.app import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        api_resp = await client.get("/admin/api/status", follow_redirects=False)
+        page_resp = await client.get("/admin", follow_redirects=False)
+
+    assert api_resp.status_code == 401
+    assert page_resp.status_code == 302
+    assert "login" in page_resp.headers["location"]
+
+
 async def test_api_logs_limit_zero(
     fake_data_dir: Path, admin_password: str, clear_login_rate_limit: None
 ) -> None:

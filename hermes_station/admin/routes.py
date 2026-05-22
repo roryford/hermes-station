@@ -144,7 +144,8 @@ async def admin_login(request: Request) -> Response:
 
 async def admin_logout(request: Request) -> Response:
     response = RedirectResponse(url="/admin/login", status_code=302)
-    clear_session_cookie(response)
+    if is_authenticated(request):
+        clear_session_cookie(response)
     return response
 
 
