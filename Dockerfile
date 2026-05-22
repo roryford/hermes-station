@@ -99,8 +99,8 @@ WORKDIR /app
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
 # hermes-webui is fetched at build time because it has no pyproject.toml,
 # so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
-ARG HERMES_WEBUI_VERSION=v0.51.103
-ARG HERMES_WEBUI_SHA=7057c94277803d120fbb24a4fe95ea67432ec8ff
+ARG HERMES_WEBUI_VERSION=v0.51.107
+ARG HERMES_WEBUI_SHA=5abd142f34f6fbfeed9308064530c295000d0b20
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
@@ -211,7 +211,7 @@ PYEOF
 # UV_TOOL_BIN_DIR=/usr/local/bin does the same for fetch. All bins land
 # root-owned, not chmod'd writable, and PATH-resolves to a non-writable
 # location at runtime. See CONTRACT.md §3.6.
-ARG MCP_SERVER_FILESYSTEM_VERSION=2025.8.21
+ARG MCP_SERVER_FILESYSTEM_VERSION=2026.1.14
 ARG MCP_SERVER_GITHUB_VERSION=2025.4.8
 ARG MCP_SERVER_FETCH_VERSION=2025.4.7
 RUN set -eux; \
