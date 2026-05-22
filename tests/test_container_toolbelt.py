@@ -56,6 +56,8 @@ TOOLBELT: list[tuple[str, list[str]]] = [
     ("rsync", ["--version"]),
     ("himalaya", ["--version"]),
     ("tirith", ["--version"]),
+    ("pandoc", ["--version"]),
+    ("typst", ["--version"]),
 ]
 
 
