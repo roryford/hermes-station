@@ -9,6 +9,7 @@ stdlib http.server and can't be mounted as an ASGI sub-app.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -25,7 +26,7 @@ from hermes_station.admin.htmx_dashboard import routes as dashboard_routes
 from hermes_station.admin.htmx_logs import routes as logs_routes
 from hermes_station.admin.htmx_settings import routes as settings_routes
 from hermes_station.admin.presets import routes as presets_routes
-from hermes_station.admin.routes import admin_routes
+from hermes_station.admin.routes import admin_routes, _prune_login_state
 from hermes_station.admin.smoketest import routes as smoketest_routes
 from hermes_station.admin.upgrade import routes as upgrade_routes
 from hermes_station.config import (
@@ -262,9 +263,19 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         webui.mark_disabled()
         logger.warning("hermes-webui source not found at %s; subprocess will not start", paths.webui_src)
 
+    async def _login_prune_loop() -> None:
+        while True:
+            await asyncio.sleep(300)  # every 5 minutes
+            _prune_login_state()
+
+    prune_task = asyncio.create_task(_login_prune_loop())
+
     try:
         yield
     finally:
+        prune_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await prune_task
         logger.info("lifespan shutdown: stopping supervisors")
         with suppress(Exception):
             await gateway.stop()

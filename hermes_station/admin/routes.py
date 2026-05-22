@@ -49,17 +49,25 @@ from hermes_station.gateway import Gateway
 logger = logging.getLogger(__name__)
 
 _login_attempts: dict[str, list[float]] = defaultdict(list)
+_login_lockouts: dict[str, float] = {}  # IP → lockout expiry timestamp
 _LOGIN_MAX_ATTEMPTS = 10
 _LOGIN_WINDOW_SECONDS = 60.0
+_LOGIN_LOCKOUT_SECONDS = 3600.0  # 1 hour lockout after hitting the rate limit
 _LOGIN_MAX_IPS = 10_000
 
 
-def _prune_login_attempts() -> None:
-    """Evict IPs outside the rate-limit window; cap total entries to prevent unbounded growth.
+def _prune_login_state() -> None:
+    """Evict stale rate-limit and lockout entries.
 
-    When the dict exceeds _LOGIN_MAX_IPS entries, the oldest (by most-recent attempt)
-    are evicted down to 75% of the cap before the time-window prune runs.
+    Called both on each login POST and by a background task every 5 minutes so
+    scanner traffic can't accumulate unbounded memory between login requests.
     """
+    now = time.time()
+    # Prune expired lockouts.
+    expired_locks = [ip for ip, expiry in list(_login_lockouts.items()) if now >= expiry]
+    for ip in expired_locks:
+        _login_lockouts.pop(ip, None)
+    # Cap attempts dict before time-window prune.
     if len(_login_attempts) > _LOGIN_MAX_IPS:
         target = int(_LOGIN_MAX_IPS * 0.75)
         sorted_ips = sorted(
@@ -68,7 +76,6 @@ def _prune_login_attempts() -> None:
         )
         for ip in sorted_ips[: len(_login_attempts) - target]:
             _login_attempts.pop(ip, None)
-    now = time.time()
     stale = [
         ip
         for ip, times in list(_login_attempts.items())
@@ -76,6 +83,10 @@ def _prune_login_attempts() -> None:
     ]
     for ip in stale:
         _login_attempts.pop(ip, None)
+
+
+# Keep the old name as an alias so existing call-sites don't need updating.
+_prune_login_attempts = _prune_login_state
 
 
 def _paths(request: Request) -> Paths:
@@ -99,13 +110,20 @@ async def admin_login_page(request: Request) -> Response:
 
 
 async def admin_login(request: Request) -> Response:
-    _prune_login_attempts()
+    _prune_login_state()
     # Rate-limit by client IP to slow brute-force attacks.
     xff = request.headers.get("x-forwarded-for", "")
     client_ip = xff.split(",")[0].strip() or (request.client.host if request.client else "unknown")
     now = time.time()
+    # Check 1-hour lockout (applied after hitting the short-window rate limit).
+    lockout_expiry = _login_lockouts.get(client_ip)
+    if lockout_expiry is not None and now < lockout_expiry:
+        return Response("Too many login attempts. Try again later.", status_code=429)
     recent = [t for t in _login_attempts[client_ip] if now - t < _LOGIN_WINDOW_SECONDS]
     if len(recent) >= _LOGIN_MAX_ATTEMPTS:
+        # Escalate to a 1-hour lockout on rate-limit breach.
+        _login_lockouts[client_ip] = now + _LOGIN_LOCKOUT_SECONDS
+        _login_attempts.pop(client_ip, None)
         return Response("Too many login attempts. Try again later.", status_code=429)
     _login_attempts[client_ip] = recent
 
@@ -825,6 +843,9 @@ async def api_pilot_usage(request: Request) -> Response:
         "daily": result["daily"],
     }
     cache[days] = {"ts": now, "payload": payload}
+    # Guard against unbounded growth if unexpected `days` values arrive.
+    for stale_key in [k for k in list(cache) if k not in (7, 30)]:
+        cache.pop(stale_key, None)
     return JSONResponse(payload)
 
 

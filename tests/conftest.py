@@ -72,5 +72,7 @@ def _clear_login_rate_limit() -> Iterator[None]:
     from hermes_station.admin import routes as _routes
 
     _routes._login_attempts.clear()
+    _routes._login_lockouts.clear()
     yield
     _routes._login_attempts.clear()
+    _routes._login_lockouts.clear()
