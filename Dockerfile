@@ -125,6 +125,7 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 # interpolated from ARG/env vars. Dropping the mount keeps this Dockerfile
 # portable across forks and fresh Railway services.
 RUN uv pip install --system --link-mode=copy ".[hermes]" -r /opt/hermes-webui/requirements.txt \
+        pandas numpy pillow openpyxl pypdf \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
 # Patch: restore plugin.yaml manifests omitted from the hermes-agent 0.14.0 wheel.
@@ -290,7 +291,7 @@ LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 # so the entrypoint script fixes /data ownership at container start before
 # dropping to the hermes user via gosu.
 RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
-    && python3 -m compileall -q /app \
+    && python3 -m compileall -q /app "$site_pkgs" \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
     && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app /opt/uv-tools \
     && printf '#!/bin/sh\nset -e\nchown -R 10000 /data\nexec gosu hermes "$@"\n' \
