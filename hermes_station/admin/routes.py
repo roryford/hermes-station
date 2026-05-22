@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpx
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from starlette.routing import Route
@@ -1039,6 +1040,89 @@ async def api_pilot_backup_restore(request: Request) -> Response:
     return JSONResponse({"ok": True, "files": restored_files})
 
 
+_GHCR_STATION_REPO = "roryford/hermes-station"
+_GHCR_RELEASES_URL = "https://api.github.com/repos/{repo}/releases/latest"
+_PILOT_UPGRADE_CACHE_TTL = 1800  # 30 minutes
+_PILOT_UPGRADE_TIMEOUT = 8.0
+
+
+def _normalise_version(ver: str | None) -> str:
+    """Strip leading 'v' for comparison."""
+    if not ver:
+        return ""
+    return ver.lstrip("v")
+
+
+async def _fetch_station_latest() -> str | None:
+    """Return the latest hermes-station release tag from GitHub, or None on error."""
+    url = _GHCR_RELEASES_URL.format(repo=_GHCR_STATION_REPO)
+    try:
+        async with httpx.AsyncClient(timeout=_PILOT_UPGRADE_TIMEOUT) as client:
+            resp = await client.get(url, headers={"Accept": "application/vnd.github+json"})
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        return data.get("tag_name") or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def api_pilot_upgrade(request: Request) -> Response:
+    """Read-only upgrade visibility card endpoint for the pilot admin extension.
+
+    GET /admin/api/pilot/upgrade
+    Returns {running_version, latest_version, status: "behind"|"current"|"ahead"}
+    for the hermes-station container. Fetches latest from GitHub releases and
+    caches the result for 30 minutes.
+
+    Auth: accepts either a webui ``hermes_session`` (via the bridge) or the
+    legacy ``hermes_station_admin`` cookie. Mirrors ``api_pilot_status``'s
+    dual-cookie pattern.
+    """
+    if not pilot_admin_extension_enabled():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if not await verify_webui_session(request):
+        if not is_authenticated(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    # Resolve running version from the package metadata (same as _pilot_compose_versions).
+    try:
+        running = _pkg_version("hermes-station") or None
+        if running == "unknown":
+            running = None
+    except PackageNotFoundError:
+        running = None
+
+    # 30-minute in-process cache for the GitHub fetch.
+    cache = getattr(request.app.state, "_pilot_upgrade_cache", None)
+    now = time.monotonic()
+    if cache is not None and now - cache["ts"] < _PILOT_UPGRADE_CACHE_TTL:
+        latest = cache["latest"]
+    else:
+        latest = await _fetch_station_latest()
+        request.app.state._pilot_upgrade_cache = {"latest": latest, "ts": now}
+
+    # Determine status.
+    if running is None or latest is None:
+        status = "unknown"
+    elif _normalise_version(running) == _normalise_version(latest):
+        status = "current"
+    else:
+        # Simple string-normalised comparison: if they differ, call it "behind"
+        # (could be ahead in dev builds but "behind" is the common production case).
+        # We don't attempt semver ordering — just divergence detection.
+        status = "behind"
+
+    return JSONResponse(
+        {
+            "running_version": running,
+            "latest_version": latest,
+            "status": status,
+        }
+    )
+
+
 async def _unimplemented(request: Request) -> Response:
     guard = require_admin(request)
     if guard is not None:
@@ -1057,6 +1141,7 @@ def admin_routes() -> list[Route]:
         Route("/admin/api/status", api_status, methods=["GET"]),
         Route("/admin/api/ping", api_ping, methods=["GET"]),
         Route("/admin/api/pilot/status", api_pilot_status, methods=["GET"]),
+        Route("/admin/api/pilot/upgrade", api_pilot_upgrade, methods=["GET"]),
         Route("/admin/api/pilot/usage", api_pilot_usage, methods=["GET"]),
         Route("/admin/api/pilot/backup/download", api_pilot_backup_download, methods=["POST"]),
         Route("/admin/api/pilot/backup/restore", api_pilot_backup_restore, methods=["POST"]),

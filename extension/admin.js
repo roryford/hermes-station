@@ -620,6 +620,91 @@
     return bc;
   }
 
+  // ── Upgrade card ──────────────────────────────────────────────────────────
+
+  let _upgradeCardEl = null;
+  let _upgradeData = null;
+  let _upgradeLoading = false;
+
+  async function _fetchUpgrade() {
+    _upgradeLoading = true;
+    _renderUpgradeCard();
+    try {
+      const r = await fetch("/admin/api/pilot/upgrade", { credentials: "include" });
+      if (r.status === 401) {
+        window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
+        return;
+      }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      _upgradeData = await r.json();
+    } catch (_e) {
+      _upgradeData = { _error: true };
+    } finally {
+      _upgradeLoading = false;
+      _renderUpgradeCard();
+    }
+  }
+
+  function _renderUpgradeCard() {
+    if (!_upgradeCardEl) return;
+    // Keep the h3 header, replace the rest.
+    while (_upgradeCardEl.children.length > 1) {
+      _upgradeCardEl.removeChild(_upgradeCardEl.lastChild);
+    }
+    if (_upgradeLoading) {
+      const l = document.createElement("div"); l.className = "admin-empty"; l.textContent = "Checking for updates…";
+      _upgradeCardEl.appendChild(l);
+      return;
+    }
+    if (!_upgradeData || _upgradeData._error) {
+      const e = document.createElement("div"); e.className = "admin-empty"; e.textContent = "Unable to check for updates.";
+      _upgradeCardEl.appendChild(e);
+      return;
+    }
+    const d = _upgradeData;
+    const status = d.status || "unknown";
+    const running = d.running_version || DASH;
+    const latest = d.latest_version || DASH;
+
+    appendDl(_upgradeCardEl, [
+      ["Running", running],
+      ["Latest", latest],
+    ]);
+
+    // Status pill.
+    const statusRow = document.createElement("div"); statusRow.className = "admin-upgrade-status-row";
+    const pill = document.createElement("span"); pill.className = "admin-pill";
+    if (status === "current") {
+      pill.className += " ok"; pill.textContent = "Up to date";
+    } else if (status === "behind") {
+      pill.className += " warn"; pill.textContent = "Update available";
+    } else if (status === "ahead") {
+      pill.className += " muted"; pill.textContent = "Ahead of release";
+    } else {
+      pill.className += " muted"; pill.textContent = "Unknown";
+    }
+    statusRow.appendChild(pill);
+    _upgradeCardEl.appendChild(statusRow);
+
+    // Release notes link (no action button — operator deploys manually).
+    const noteRow = document.createElement("div"); noteRow.className = "admin-upgrade-notes-row";
+    const link = document.createElement("a");
+    link.href = "https://github.com/roryford/hermes-station/releases";
+    link.target = "_blank"; link.rel = "noopener noreferrer";
+    link.textContent = "Release notes";
+    noteRow.appendChild(link);
+    _upgradeCardEl.appendChild(noteRow);
+  }
+
+  function buildUpgradeCard() {
+    const uc = card("Upgrade");
+    _upgradeCardEl = uc;
+    _renderUpgradeCard();
+    // Auto-fetch on first render.
+    if (!_upgradeData && !_upgradeLoading) _fetchUpgrade();
+    return uc;
+  }
+
   function render(data) {
     pane.replaceChildren();
     const g = data.gateway || {}, p = data.provider || {}, m = data.memory || {}, v = data.versions || {};
@@ -645,6 +730,7 @@
     pane.appendChild(buildUsageCard());
     pane.appendChild(buildSmoketestCard());
     pane.appendChild(buildBackupCard());
+    pane.appendChild(buildUpgradeCard());
   }
 
   let timer = null, failCount = 0, toastedThisBurst = false;
