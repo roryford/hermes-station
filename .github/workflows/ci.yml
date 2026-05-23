@@ -38,9 +38,13 @@ jobs:
       - name: pytest
         run: .venv/bin/pytest -q
 
-      - name: Verify Dockerfile retry wrappers present
+      - name: Verify curl retry wrappers present
         run: |
-          grep -c -- "--retry-all-errors" Dockerfile | awk '{ if ($1 < 3) { print "Retry wrapper missing on at least one curl"; exit 1 } }'
+          count=$(grep -h -c -- "--retry-all-errors" Dockerfile scripts/install_pinned_binaries.sh | awk '{ s += $1 } END { print s }')
+          if [ "$count" -lt 3 ]; then
+            echo "Retry wrapper missing on at least one curl (found $count)"
+            exit 1
+          fi
 
   build-and-smoke:
     name: build images + smoke + e2e + scan
@@ -59,6 +63,7 @@ jobs:
         run: |
           mkdir -p /tmp/hs-ctx/hermes_station
           cp pyproject.toml README.md LICENSE uv.lock .dockerignore /tmp/hs-ctx/
+          cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh /tmp/hs-ctx/
           # Staged for the deps-cache COPY (kept separate from the source tar
           # so changes to package source don't bust the uv pip install cache).
           cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
