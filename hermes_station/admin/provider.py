@@ -62,7 +62,7 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "credential_placeholder": "Leave blank to use OAuth token",
         "credential_hint": (
             "Paste an XAI_API_KEY from console.x.ai, or use the Connect with xAI button "
-            "for SuperGrok/X Premium+ OAuth."
+            "for SuperGrok / X Premium+ OAuth (no extra config required)."
         ),
     },
     "custom": {
