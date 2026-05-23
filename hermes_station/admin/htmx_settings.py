@@ -437,9 +437,7 @@ async def xai_oauth_start(request: Request) -> Response:
         _state, authorize_url = start_pkce_flow(redirect_uri)
     except ValueError as exc:
         paths = _paths(request)
-        context: dict[str, Any] = {
-            "alert": {"kind": "error", "message": f"Cannot start xAI OAuth: {exc}"}
-        }
+        context: dict[str, Any] = {"alert": {"kind": "error", "message": f"Cannot start xAI OAuth: {exc}"}}
         context.update(_provider_context(paths))
         return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
     from starlette.responses import RedirectResponse
