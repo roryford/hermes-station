@@ -18,6 +18,7 @@ import shutil
 import stat
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -298,3 +299,31 @@ def test_fd_symlink_resolves_to_fdfind() -> None:
     assert real.endswith("fdfind") or fdfind is not None, (
         f"fd ({fd}) does not resolve to fdfind (realpath={real}, fdfind={fdfind})"
     )
+
+
+# ---------------------------------------------------------------------------
+# Runtime entrypoint patch tests
+# Auto-skip unless the corresponding HERMES_PATCH_* variable is set.
+# To exercise: boot the test image with e.g. -e HERMES_PATCH_AGENT_VERSION=0.14.1
+# The entrypoint applies the patch before pytest runs, so the installed
+# version is already in place by the time these assertions execute.
+# ---------------------------------------------------------------------------
+
+
+def test_patch_agent_version_applied() -> None:
+    target = os.environ.get("HERMES_PATCH_AGENT_VERSION")
+    if not target:
+        pytest.skip("HERMES_PATCH_AGENT_VERSION not set")
+    from importlib.metadata import version
+
+    actual = version("hermes-agent")
+    assert actual == target, f"expected hermes-agent=={target}, got {actual}"
+
+
+def test_patch_webui_version_applied() -> None:
+    target = os.environ.get("HERMES_PATCH_WEBUI_VERSION")
+    if not target:
+        pytest.skip("HERMES_PATCH_WEBUI_VERSION not set")
+    webui = Path("/opt/hermes-webui")
+    assert webui.is_dir(), "/opt/hermes-webui missing after patch"
+    assert not os.access(webui, os.W_OK), "/opt/hermes-webui is writable — re-lock failed"
