@@ -8,6 +8,9 @@ station's callback URL. The station exchanges the code server-side.
 State and code_verifier are kept in an in-memory dict keyed by a random state
 token (secrets.token_urlsafe). Entries expire after 10 minutes. This is fine
 for a single-admin-user setup where the station runs in one process.
+
+XAI_OAUTH_CLIENT_ID is read fresh from os.environ on every call (not at import
+time) so that values seeded from .env via seed_env_file_to_os are visible.
 """
 
 from __future__ import annotations
@@ -20,12 +23,6 @@ import time
 from urllib.parse import urlencode
 
 import httpx
-
-# Public OAuth client ID for SuperGrok.
-# Override via XAI_OAUTH_CLIENT_ID env var if your xAI app uses a different ID.
-# xAI's public SuperGrok OAuth client ID is not yet publicly documented with a
-# default value, so this MUST be configured via the environment variable.
-XAI_OAUTH_CLIENT_ID = os.getenv("XAI_OAUTH_CLIENT_ID", "")
 
 _AUTH_URL = "https://auth.x.ai/oauth2/authorize"
 _TOKEN_URL = "https://auth.x.ai/oauth2/token"
@@ -67,8 +64,9 @@ def build_authorize_url(state: str, code_challenge: str, redirect_uri: str) -> s
     """Build the xAI authorization URL.
 
     Raises ValueError if XAI_OAUTH_CLIENT_ID is not configured.
+    Reads the env var fresh so .env-sourced values are visible.
     """
-    client_id = XAI_OAUTH_CLIENT_ID
+    client_id = os.environ.get("XAI_OAUTH_CLIENT_ID", "")
     if not client_id:
         raise ValueError(
             "XAI_OAUTH_CLIENT_ID is not set. "
@@ -90,17 +88,19 @@ def start_pkce_flow(redirect_uri: str) -> tuple[str, str]:
     """Generate PKCE pair and state, register in pending dict.
 
     Returns (state, authorize_url). Raises ValueError if client_id not set.
-    Purges expired entries on each call.
+    Validates client_id before inserting state so no orphaned entries are left
+    when the env var is missing. Purges expired entries on each call.
     """
     _purge_expired_states()
     state = secrets.token_urlsafe(32)
     code_verifier, code_challenge = generate_pkce_pair()
+    # Validate and build URL before writing state — raises if client_id missing.
+    authorize_url = build_authorize_url(state, code_challenge, redirect_uri)
     _pending_states[state] = {
         "code_verifier": code_verifier,
         "redirect_uri": redirect_uri,
         "expires_at": time.monotonic() + _STATE_TTL_SECONDS,
     }
-    authorize_url = build_authorize_url(state, code_challenge, redirect_uri)
     return state, authorize_url
 
 
@@ -123,8 +123,9 @@ async def exchange_code(code: str, code_verifier: str, redirect_uri: str) -> dic
     Returns the raw token response dict:
         {access_token, token_type, expires_in, refresh_token, ...}
     Raises ValueError on HTTP or parse error.
+    Reads XAI_OAUTH_CLIENT_ID fresh so .env-sourced values are visible.
     """
-    client_id = XAI_OAUTH_CLIENT_ID
+    client_id = os.environ.get("XAI_OAUTH_CLIENT_ID", "")
     if not client_id:
         raise ValueError("XAI_OAUTH_CLIENT_ID is not set.")
     payload = urlencode(

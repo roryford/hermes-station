@@ -393,6 +393,35 @@ async def provider_cancel(request: Request) -> Response:
     return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
 
+def _xai_redirect_uri(request: Request) -> str:
+    """Build the OAuth redirect_uri for xAI callbacks.
+
+    Prefers HERMES_BASE_URL env var so deployments behind a TLS-terminating
+    reverse proxy (e.g. Railway) get the correct public HTTPS origin rather
+    than the internal http://host:port derived from the request.
+    """
+    import os as _os
+
+    base = _os.environ.get("HERMES_BASE_URL", "").rstrip("/")
+    if not base:
+        base = f"{request.url.scheme}://{request.url.netloc}"
+    return f"{base}/admin/oauth/xai/callback"
+
+
+def _xai_settings_error(request: Request, paths: Paths, message: str) -> Response:
+    """Return the full settings page with an error alert.
+
+    Used by xai_oauth_callback, which is a full-page browser GET (the OAuth
+    redirect back from auth.x.ai). Returning a bare fragment would leave the
+    user staring at unstyled HTML with no navigation.
+    """
+    context: dict[str, Any] = {"active": "settings", "alert": {"kind": "error", "message": message}}
+    context.update(_provider_context(paths))
+    context.update(_channels_context(paths))
+    context.update(_secrets_context(paths, request))
+    return _templates.TemplateResponse(request, "admin/settings.html", context)
+
+
 async def xai_oauth_start(request: Request) -> Response:
     """Redirect the admin browser to the xAI authorization endpoint (PKCE flow).
 
@@ -403,10 +432,7 @@ async def xai_oauth_start(request: Request) -> Response:
     guard = require_admin(request)
     if guard is not None:
         return guard
-    # Build the redirect_uri from the incoming request so it works on any host.
-    scheme = request.url.scheme
-    host = request.url.netloc
-    redirect_uri = f"{scheme}://{host}/admin/oauth/xai/callback"
+    redirect_uri = _xai_redirect_uri(request)
     try:
         _state, authorize_url = start_pkce_flow(redirect_uri)
     except ValueError as exc:
@@ -435,27 +461,17 @@ async def xai_oauth_callback(request: Request) -> Response:
     error = request.query_params.get("error")
     if error:
         error_desc = request.query_params.get("error_description", error)
-        context: dict[str, Any] = {
-            "alert": {"kind": "error", "message": f"xAI authorization failed: {error_desc}"}
-        }
-        context.update(_provider_context(paths))
-        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+        return _xai_settings_error(request, paths, f"xAI authorization failed: {error_desc}")
 
     state = request.query_params.get("state", "")
     code = request.query_params.get("code", "")
     if not state or not code:
-        context = {
-            "alert": {"kind": "error", "message": "Missing state or code in xAI callback."}
-        }
-        context.update(_provider_context(paths))
-        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+        return _xai_settings_error(request, paths, "Missing state or code in xAI callback.")
 
     try:
         pending = consume_state(state)
     except ValueError as exc:
-        context = {"alert": {"kind": "error", "message": str(exc)}}
-        context.update(_provider_context(paths))
-        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+        return _xai_settings_error(request, paths, str(exc))
 
     try:
         token_data = await exchange_code(
@@ -464,9 +480,7 @@ async def xai_oauth_callback(request: Request) -> Response:
             redirect_uri=pending["redirect_uri"],
         )
     except ValueError as exc:
-        context = {"alert": {"kind": "error", "message": str(exc)}}
-        context.update(_provider_context(paths))
-        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+        return _xai_settings_error(request, paths, str(exc))
 
     access_token = token_data["access_token"]
     meta = PROVIDER_CATALOG["xai"]
@@ -483,11 +497,7 @@ async def xai_oauth_callback(request: Request) -> Response:
         if gateway is not None:
             await gateway.restart()
     except Exception as exc:
-        context = {
-            "alert": {"kind": "error", "message": f"Token received but could not save: {exc}"}
-        }
-        context.update(_provider_context(paths))
-        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+        return _xai_settings_error(request, paths, f"Token received but could not save: {exc}")
 
     # Full-page redirect so the settings page reloads cleanly showing the new state.
     from starlette.responses import RedirectResponse
