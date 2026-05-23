@@ -247,8 +247,8 @@ RUN set -eux; \
     test -x /usr/local/bin/mcp-server-fetch; \
     echo "MCP servers installed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
 
-COPY extension/ /opt/hermes-station/extension/
-COPY hermes_station/ /app/hermes_station/
+ADD extension.tar /opt/hermes-station/
+ADD hermes_station.tar /app/
 
 ENV HOME=/data \
     HERMES_HOME=/data/.hermes \
@@ -297,8 +297,8 @@ RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['pure
 # --- test stage (not shipped to prod) ---
 FROM runtime AS test
 COPY uv.lock ./
-COPY tests/ /app/tests/
-COPY docs/ /app/docs/
+ADD tests.tar /app/
+ADD docs.tar /app/
 RUN uv export --only-group dev --frozen --no-hashes --no-header \
     | uv pip install --system --link-mode=copy -r /dev/stdin
 CMD ["python", "-m", "pytest", "tests/", "-q", "--no-cov"]
