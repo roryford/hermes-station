@@ -312,6 +312,7 @@ def test_apply_first_boot_seeds_returns_expected_dict_shape(tmp_path: Path) -> N
         "mcp_servers",
         "neutral_personality",
         "show_cost",
+        "safer_agent_defaults",
     }
     assert all(isinstance(v, bool) for v in result.values())
     # On a fresh config, every seeder should have written.
@@ -324,4 +325,5 @@ def test_apply_first_boot_seeds_returns_expected_dict_shape(tmp_path: Path) -> N
         "mcp_servers": False,
         "neutral_personality": False,
         "show_cost": False,
+        "safer_agent_defaults": False,
     }

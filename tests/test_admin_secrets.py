@@ -344,3 +344,37 @@ def test_secret_status_marks_in_process(fake_data_dir: Path) -> None:
     fal_row = next(r for r in ctx["rows"] if r["key"] == "FAL_KEY")
     assert fal_row["in_process"] is True
     assert fal_row["source"] == "env"
+
+
+def test_catalog_includes_expanded_entries() -> None:
+    """Sanity check: keys added for voice/memory/observability/etc are present."""
+    keys = {entry["key"] for entry in sc.KNOWN_SECRETS}
+    expected = {
+        # Web search
+        "EXA_API_KEY",
+        "PARALLEL_API_KEY",
+        "SEARXNG_URL",
+        # Image gen / xAI
+        "XAI_API_KEY",
+        # Voice / TTS / STT
+        "ELEVENLABS_API_KEY",
+        "DEEPGRAM_API_KEY",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        # Memory providers
+        "MEM0_API_KEY",
+        "HONCHO_API_KEY",
+        "SUPERMEMORY_API_KEY",
+        # Observability
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+    }
+    assert expected.issubset(keys)
+
+
+def test_catalog_new_groups_declared() -> None:
+    """The new display groups are in CATALOG_GROUPS with labels defined."""
+    for group in ("voice", "memory", "observability"):
+        assert group in sc.CATALOG_GROUPS
+        assert group in sc._GROUP_LABELS
