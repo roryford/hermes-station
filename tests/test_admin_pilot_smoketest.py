@@ -48,9 +48,7 @@ def _parse_sse_events(body: bytes) -> list[dict[str, Any]]:
 # ── flag off ─────────────────────────────────────────────────────────────────
 
 
-async def test_smoketest_flag_off_returns_404(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_smoketest_flag_off_returns_404(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     monkeypatch.delenv("HERMES_STATION_PILOT_ADMIN_EXTENSION", raising=False)
 
     from hermes_station.app import create_app
@@ -222,10 +220,19 @@ async def test_smoketest_happy_path_streams_events(
 
     # Check that each check name appears at least once (as a non-pending event).
     _EXPECTED_CHECKS = {
-        "storage", "provider", "gateway", "github_mcp", "web_search",
-        "image_gen", "browser_backend", "plugin_registry", "mcp_urls",
+        "storage",
+        "provider",
+        "gateway",
+        "github_mcp",
+        "web_search",
+        "image_gen",
+        "browser_backend",
+        "plugin_registry",
+        "mcp_urls",
     }
-    result_checks = {e["check"] for e in events if e.get("check") != "__done__" and e.get("status") != "pending"}
+    result_checks = {
+        e["check"] for e in events if e.get("check") != "__done__" and e.get("status") != "pending"
+    }
     assert _EXPECTED_CHECKS == result_checks, f"Missing checks: {_EXPECTED_CHECKS - result_checks}"
 
     # All pass/skip → __done__ status should be "pass".
@@ -292,9 +299,7 @@ async def test_smoketest_provider_fail_reflected_in_stream(
     events = _parse_sse_events(r.content)
 
     # Find the provider result event (non-pending).
-    provider_results = [
-        e for e in events if e.get("check") == "provider" and e.get("status") != "pending"
-    ]
+    provider_results = [e for e in events if e.get("check") == "provider" and e.get("status") != "pending"]
     assert len(provider_results) == 1
     assert provider_results[0]["status"] == "fail"
     assert "credential" in provider_results[0]["detail"].lower()
