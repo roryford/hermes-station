@@ -136,12 +136,11 @@ LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 
 # Harden: strip write bits from app code so the hermes user can't modify it.
 # /data is NOT chowned here — entrypoint fixes ownership before dropping to hermes.
+COPY hermes-entrypoint.sh /usr/local/bin/hermes-entrypoint
 RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
     && python3 -m compileall -q /app "$site_pkgs" \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
     && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app /opt/uv-tools \
-    && printf '#!/bin/sh\nset -e\nchown -R 10000 /data\nexec gosu hermes "$@"\n' \
-         > /usr/local/bin/hermes-entrypoint \
     && chmod +x /usr/local/bin/hermes-entrypoint
 
 # --- test stage (not shipped to prod) ---

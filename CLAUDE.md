@@ -26,7 +26,7 @@ Use the Apple `container` CLI (not Docker) for local runs.
 # Prepare staging dir (first time or after clean)
 mkdir -p /tmp/hs-ctx/hermes_station
 cp pyproject.toml README.md LICENSE uv.lock /tmp/hs-ctx/
-cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh /tmp/hs-ctx/
+cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh scripts/hermes-entrypoint.sh /tmp/hs-ctx/
 # __init__.py is staged separately so the deps-cache COPY layer can resolve
 # the package version without busting on every source change.
 cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
