@@ -15,6 +15,12 @@ lands.
 **Health:** read from `$HERMES_HOME/gateway_state.json` which the gateway
 writes itself. `gateway_state == "running"` is the real health signal,
 not a simple liveness heuristic.
+
+**Profile support:** set `HERMES_GATEWAY_PROFILE=<name>` env var to make
+the gateway start under a named profile (e.g. `field`, `ops`). The profile's
+config.yaml is deep-merged into the global config and the result is used as
+the gateway's config surface. CLI and WebUI sessions are unaffected —
+the profile only applies to the gateway process.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +40,64 @@ logger = logging.getLogger("hermes_station.gateway")
 
 GatewayState = Literal["unknown", "starting", "running", "startup_failed", "stopping", "stopped"]
 _TERMINAL_STATES = {"unknown", "startup_failed", "stopping", "stopped"}
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursive dict merge. Values in *override* win on conflicts.
+
+    Dict values are merged recursively; all other values (scalars, lists)
+    from *override* replace the corresponding key in *base*.
+    """
+    result = dict(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _apply_gateway_profile(hermes_home: Path, profile_name: str) -> None:
+    """Merge the named profile's config into global config and set HERMES_CONFIG_PATH.
+
+    The merged config is written to ``gateway_config.<profile>.yaml`` under
+    *hermes_home*, then ``HERMES_CONFIG_PATH`` is set in the process environment
+    so that the subsequent ``start_gateway(config=None)`` call reads the merged
+    config instead of the plain global one.
+
+    No-op if the profile directory doesn't exist (logs a warning).
+    Idempotent across supervisor restarts.
+    """
+    from hermes_station.config import load_yaml_config, write_yaml_config
+
+    global_config = load_yaml_config(hermes_home / "config.yaml")
+    profile_path = hermes_home / "profiles" / profile_name / "config.yaml"
+
+    if not profile_path.exists():
+        logger.warning(
+            "HERMES_GATEWAY_PROFILE='%s' set but profile not found at %s — using default",
+            profile_name,
+            profile_path,
+        )
+        return
+
+    profile_config = load_yaml_config(profile_path)
+    merged = _deep_merge(global_config, profile_config)
+
+    merged_path = hermes_home / f"gateway_config.{profile_name}.yaml"
+    write_yaml_config(merged_path, merged)
+    os.environ["HERMES_CONFIG_PATH"] = str(merged_path)
+
+    model_block = merged.get("model", {})
+    model_str = model_block.get("default", "(not set)") if isinstance(model_block, dict) else "(not set)"
+    max_turns = (merged.get("agent") or {}).get("max_turns", "(inherited)")
+    logger.info(
+        "gateway using profile '%s' (model=%s, max_turns=%s, config=%s)",
+        profile_name,
+        model_str,
+        max_turns,
+        merged_path,
+    )
 
 
 class Gateway:
@@ -192,6 +257,12 @@ class Gateway:
         # Imported lazily — hermes-agent is heavy and only available when
         # the [hermes] extra is installed.
         from gateway.run import start_gateway  # type: ignore[import-not-found]
+
+        # Apply profile override before starting the gateway, so
+        # start_gateway(config=None) picks up HERMES_CONFIG_PATH.
+        profile_name = os.environ.get("HERMES_GATEWAY_PROFILE", "").strip()
+        if profile_name:
+            _apply_gateway_profile(self.hermes_home, profile_name)
 
         loop = asyncio.get_running_loop()
         original_add_signal_handler = loop.add_signal_handler
