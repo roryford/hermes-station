@@ -797,6 +797,51 @@ def seed_show_cost_default(path: Path) -> bool:
     return True
 
 
+_SAFER_DELEGATION_DEFAULTS: dict[str, Any] = {
+    "subagent_auto_approve": False,
+    "max_concurrent_children": 3,
+    "max_spawn_depth": 1,
+}
+
+_SAFER_SECURITY_DEFAULTS: dict[str, Any] = {
+    # tirith binary is already installed in the Dockerfile, so default-on is safe.
+    "tirith_enabled": True,
+}
+
+
+def seed_safer_agent_defaults(path: Path) -> dict[str, list[str]]:
+    """First-boot seed: set conservative defaults for delegation + security.
+
+    Mirrors upstream `cli-config.yaml.example` from hermes-agent. Each leaf key
+    is written only if absent (per-key no-clobber per CONTRACT.md §3.3) — if a
+    user has set e.g. `delegation.subagent_auto_approve: true` deliberately,
+    that value is preserved. Returns a map of section -> list of keys actually
+    written, so callers can log the outcome.
+    """
+    config = load_yaml_config(path)
+    written: dict[str, list[str]] = {"delegation": [], "security": []}
+    dirty = False
+
+    for section, defaults in (
+        ("delegation", _SAFER_DELEGATION_DEFAULTS),
+        ("security", _SAFER_SECURITY_DEFAULTS),
+    ):
+        block = config.get(section)
+        if not isinstance(block, dict):
+            block = {}
+        for key, value in defaults.items():
+            if key in block:
+                continue
+            block[key] = value
+            written[section].append(key)
+            dirty = True
+        config[section] = block
+
+    if dirty:
+        write_yaml_config(path, config)
+    return written
+
+
 def apply_first_boot_seeds(path: Path) -> dict[str, bool]:
     """Apply all first-boot seeders in sequence, returning a per-seed write map.
 
@@ -810,6 +855,8 @@ def apply_first_boot_seeds(path: Path) -> dict[str, bool]:
     results["mcp_servers"] = bool(seed_default_mcp_servers(path))
     results["neutral_personality"] = seed_neutral_personality_default(path)
     results["show_cost"] = seed_show_cost_default(path)
+    safer = seed_safer_agent_defaults(path)
+    results["safer_agent_defaults"] = bool(safer["delegation"] or safer["security"])
     return results
 
 
