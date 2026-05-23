@@ -36,8 +36,11 @@ jobs:
         # See CLAUDE.md and project memory project-container-cli-build-workaround.md
         # for why the Dockerfile uses `ADD <name>.tar` instead of `COPY`.
         run: |
-          mkdir -p /tmp/hs-ctx
+          mkdir -p /tmp/hs-ctx/hermes_station
           cp pyproject.toml README.md LICENSE uv.lock .dockerignore /tmp/hs-ctx/
+          # Staged for the deps-cache COPY (kept separate from the source tar
+          # so changes to package source don't bust the uv pip install cache).
+          cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
           tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/hermes_station.tar hermes_station
           tar -c --exclude '__pycache__' -f /tmp/hs-ctx/extension.tar extension
           tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/tests.tar tests

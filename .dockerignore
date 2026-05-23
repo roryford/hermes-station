@@ -27,5 +27,8 @@ SECURITY.md
 Makefile
 .pre-commit-config.yaml
 
-# Staging build artifacts (created by the build script, not for the image)
-*.tar
+# NOTE: do NOT exclude *.tar — the build context at /tmp/hs-ctx deliberately
+# contains hermes_station.tar / extension.tar / tests.tar / docs.tar as
+# Apple container CLI 0.12.3 subdirectory-COPY workaround sources. They are
+# pre-packed by the build procedure (see CLAUDE.md). The repo root itself
+# never contains *.tar files in normal use.
