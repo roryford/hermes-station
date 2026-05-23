@@ -22,6 +22,49 @@
             depNameTemplate: "nesquena/hermes-webui",
             datasourceTemplate: "github-tags",
         },
+        // One regex manager per pinned binary in scripts/pinned-binaries.tsv.
+        // Each row uses tab-separated fields: name<TAB>version<TAB>url_amd64<TAB>...
+        // When bumping, also update the two SHA256s in the same row.
+        {
+            customType: "regex",
+            description: "yq pinned binary (scripts/pinned-binaries.tsv)",
+            fileMatch: ["(^|/)scripts/pinned-binaries\\.tsv$"],
+            matchStrings: ["^yq\\t(?<currentValue>v[\\d.]+)\\t"],
+            depNameTemplate: "mikefarah/yq",
+            datasourceTemplate: "github-releases",
+        },
+        {
+            customType: "regex",
+            description: "himalaya pinned binary (scripts/pinned-binaries.tsv)",
+            fileMatch: ["(^|/)scripts/pinned-binaries\\.tsv$"],
+            matchStrings: ["^himalaya\\t(?<currentValue>v[\\d.]+)\\t"],
+            depNameTemplate: "pimalaya/himalaya",
+            datasourceTemplate: "github-releases",
+        },
+        {
+            customType: "regex",
+            description: "pandoc pinned binary (scripts/pinned-binaries.tsv)",
+            fileMatch: ["(^|/)scripts/pinned-binaries\\.tsv$"],
+            matchStrings: ["^pandoc\\t(?<currentValue>[\\d.]+)\\t"],
+            depNameTemplate: "jgm/pandoc",
+            datasourceTemplate: "github-releases",
+        },
+        {
+            customType: "regex",
+            description: "typst pinned binary (scripts/pinned-binaries.tsv)",
+            fileMatch: ["(^|/)scripts/pinned-binaries\\.tsv$"],
+            matchStrings: ["^typst\\t(?<currentValue>v[\\d.]+)\\t"],
+            depNameTemplate: "typst/typst",
+            datasourceTemplate: "github-releases",
+        },
+        {
+            customType: "regex",
+            description: "tirith pinned binary (scripts/pinned-binaries.tsv)",
+            fileMatch: ["(^|/)scripts/pinned-binaries\\.tsv$"],
+            matchStrings: ["^tirith\\t(?<currentValue>v[\\d.]+)\\t"],
+            depNameTemplate: "sheeki03/tirith",
+            datasourceTemplate: "github-releases",
+        },
     ],
 
     packageRules: [

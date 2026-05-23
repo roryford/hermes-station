@@ -24,8 +24,12 @@ Use the Apple `container` CLI (not Docker) for local runs.
 
 ```bash
 # Prepare staging dir (first time or after clean)
-mkdir -p /tmp/hs-ctx
+mkdir -p /tmp/hs-ctx/hermes_station
 cp pyproject.toml README.md LICENSE uv.lock /tmp/hs-ctx/
+cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh /tmp/hs-ctx/
+# __init__.py is staged separately so the deps-cache COPY layer can resolve
+# the package version without busting on every source change.
+cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
 
 # (Re-)pack source tars — run this before every build when source changes
 COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/hermes_station.tar hermes_station
