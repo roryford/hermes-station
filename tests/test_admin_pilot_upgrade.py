@@ -15,7 +15,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
-import pytest
 
 from hermes_station.admin.routes import admin_routes
 
