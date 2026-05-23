@@ -39,13 +39,12 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# yq (Mike Farah's Go binary) — not in Debian repos at a recent enough version.
-# Pinned upstream — bump version + both sha256s together.
+# Pinned upstream binaries not in Debian repos at a useful version.
+# Bump VERSION + both SHA256s together for each tool.
 ARG YQ_VERSION=v4.53.2
 ARG YQ_SHA256_AMD64=d56bf5c6819e8e696340c312bd70f849dc1678a7cda9c2ad63eebd906371d56b
 ARG YQ_SHA256_ARM64=03061b2a50c7a498de2bbb92d7cb078ce433011f085a4994117c2726be4106ea
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
+RUN set -eux; arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) yq_arch=amd64; yq_sha="$YQ_SHA256_AMD64" ;; \
       arm64) yq_arch=arm64; yq_sha="$YQ_SHA256_ARM64" ;; \
@@ -53,16 +52,12 @@ RUN set -eux; \
     esac; \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${yq_arch}"; \
     echo "${yq_sha}  /tmp/yq" | sha256sum -c -; \
-    install -m 0755 /tmp/yq /usr/local/bin/yq; \
-    rm /tmp/yq
+    install -m 0755 /tmp/yq /usr/local/bin/yq; rm /tmp/yq
 
-# himalaya (Rust email CLI) — not in Debian repos; pinned upstream.
-# Bump version + both sha256s together.
 ARG HIMALAYA_VERSION=v1.2.0
 ARG HIMALAYA_SHA256_AMD64=e04e6382e3e664ef34b01afa1a2216113194a2975d2859727647b22d9b36d4e4
 ARG HIMALAYA_SHA256_ARM64=643020b220991fac67726f3be11310fcf806e757feadbbab3efbddd713597872
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
+RUN set -eux; arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) hm_arch=x86_64-linux; hm_sha="$HIMALAYA_SHA256_AMD64" ;; \
       arm64) hm_arch=aarch64-linux; hm_sha="$HIMALAYA_SHA256_ARM64" ;; \
@@ -75,13 +70,10 @@ RUN set -eux; \
     install -m 0755 /tmp/himalaya /usr/local/bin/himalaya; \
     rm /tmp/himalaya.tgz /tmp/himalaya
 
-# pandoc (Haskell document converter) — not in Debian repos at a useful version; pinned upstream.
-# Bump version + both sha256s together.
 ARG PANDOC_VERSION=3.9.0.2
 ARG PANDOC_SHA256_AMD64=a69abfababda8a56969a254b09f9553a7be89ddec00d4e0fe9fd585d71a67508
 ARG PANDOC_SHA256_ARM64=b6d21e8f9c3b15744f5a7ab40248019157ed7793875dbe0383d4c82ff572b528
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
+RUN set -eux; arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) pd_arch=amd64; pd_sha="$PANDOC_SHA256_AMD64" ;; \
       arm64) pd_arch=arm64; pd_sha="$PANDOC_SHA256_ARM64" ;; \
@@ -94,21 +86,14 @@ RUN set -eux; \
     install -m 0755 "/tmp/pandoc-${PANDOC_VERSION}/bin/pandoc" /usr/local/bin/pandoc; \
     rm -rf /tmp/pandoc.tgz "/tmp/pandoc-${PANDOC_VERSION}"
 
-# typst (Rust typesetting system) — not in Debian repos; pinned upstream.
-# Bump version + both sha256s together.
 ARG TYPST_VERSION=v0.14.2
 ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
 ARG TYPST_SHA256_ARM64=491b101aa40a3a7ea82a3f8a6232cabb4e6a7e233810082e5ac812d43fdcd47a
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
+RUN set -eux; arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-      amd64) ty_arch=x86_64-unknown-linux-musl ;; \
-      arm64) ty_arch=aarch64-unknown-linux-musl ;; \
+      amd64) ty_arch=x86_64-unknown-linux-musl; ty_sha="$TYPST_SHA256_AMD64" ;; \
+      arm64) ty_arch=aarch64-unknown-linux-musl; ty_sha="$TYPST_SHA256_ARM64" ;; \
       *) echo "unsupported arch for typst: $arch" >&2; exit 1 ;; \
-    esac; \
-    case "$arch" in \
-      amd64) ty_sha="$TYPST_SHA256_AMD64" ;; \
-      arm64) ty_sha="$TYPST_SHA256_ARM64" ;; \
     esac; \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 \
          -o /tmp/typst.tar.xz "https://github.com/typst/typst/releases/download/${TYPST_VERSION}/typst-${ty_arch}.tar.xz"; \
@@ -117,13 +102,10 @@ RUN set -eux; \
     install -m 0755 "/tmp/typst-${ty_arch}/typst" /usr/local/bin/typst; \
     rm -rf /tmp/typst.tar.xz "/tmp/typst-${ty_arch}"
 
-# tirith (Rust terminal-security binary) — not in Debian repos; pinned upstream.
-# Bump version + both sha256s together.
 ARG TIRITH_VERSION=v0.3.1
 ARG TIRITH_SHA256_AMD64=571e6a300e4c444293476537a322666069e561c7f05283d6650f5b8ef83db3ac
 ARG TIRITH_SHA256_ARM64=0462fe5083b4c72c45a8de918d5413e21d17aa8077aa7dbe53c0876b112847bb
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
+RUN set -eux; arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) tr_arch=x86_64-unknown-linux-gnu; tr_sha="$TIRITH_SHA256_AMD64" ;; \
       arm64) tr_arch=aarch64-unknown-linux-gnu; tr_sha="$TIRITH_SHA256_ARM64" ;; \
