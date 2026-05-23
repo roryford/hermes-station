@@ -24,9 +24,14 @@ from urllib.parse import urlencode
 
 import httpx
 
+# Public desktop OAuth client ID for the Grok CLI flow — not a secret.
+# Matches the value used by opencode-grok-auth and similar implementations.
+# Override via XAI_OAUTH_CLIENT_ID env var if needed.
+_DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
+
 _AUTH_URL = "https://auth.x.ai/oauth2/authorize"
 _TOKEN_URL = "https://auth.x.ai/oauth2/token"
-_SCOPES = "openid offline_access"
+_SCOPES = "openid profile email offline_access grok-cli:access api:access"
 _STATE_TTL_SECONDS = 600  # 10 minutes
 
 _HEADERS = {
@@ -66,12 +71,7 @@ def build_authorize_url(state: str, code_challenge: str, redirect_uri: str) -> s
     Raises ValueError if XAI_OAUTH_CLIENT_ID is not configured.
     Reads the env var fresh so .env-sourced values are visible.
     """
-    client_id = os.environ.get("XAI_OAUTH_CLIENT_ID", "")
-    if not client_id:
-        raise ValueError(
-            "XAI_OAUTH_CLIENT_ID is not set. "
-            "Set this environment variable to your xAI OAuth application's client ID."
-        )
+    client_id = os.environ.get("XAI_OAUTH_CLIENT_ID", "") or _DEFAULT_CLIENT_ID
     params = {
         "response_type": "code",
         "client_id": client_id,
@@ -125,9 +125,7 @@ async def exchange_code(code: str, code_verifier: str, redirect_uri: str) -> dic
     Raises ValueError on HTTP or parse error.
     Reads XAI_OAUTH_CLIENT_ID fresh so .env-sourced values are visible.
     """
-    client_id = os.environ.get("XAI_OAUTH_CLIENT_ID", "")
-    if not client_id:
-        raise ValueError("XAI_OAUTH_CLIENT_ID is not set.")
+    client_id = os.environ.get("XAI_OAUTH_CLIENT_ID", "") or _DEFAULT_CLIENT_ID
     payload = urlencode(
         {
             "grant_type": "authorization_code",
