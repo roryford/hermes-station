@@ -27,8 +27,7 @@ RUN apt-get update \
          sqlite3 \
          poppler-utils \
          xz-utils \
-         # operator-diagnostics toolbelt — required for a shareable image
-         # (see test_container_toolbelt.py and HERMES_CONTAINER_REQUIREMENTS §4)
+         # operator-diagnostics toolbelt (see test_container_toolbelt.py)
          procps \
          tmux \
          less \
@@ -142,8 +141,8 @@ WORKDIR /app
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
 # hermes-webui is fetched at build time because it has no pyproject.toml,
 # so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
-ARG HERMES_WEBUI_VERSION=v0.51.117
-ARG HERMES_WEBUI_SHA=f930260157635d1e642cb9ad2c98bab0ae901d2e
+ARG HERMES_WEBUI_VERSION=v0.51.118
+ARG HERMES_WEBUI_SHA=e091e65d56fba42f350a95f3308d6d43b3627a87
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
@@ -153,29 +152,17 @@ RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
        fi \
     && rm -rf /opt/hermes-webui/.git
 
-# Copy only the metadata + a stub package up front so the dependency-install
-# layer below caches across code-only changes. The real source is copied last.
 COPY pyproject.toml README.md LICENSE ./
 COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 
-# Single resolve covering hermes-station's deps, the `hermes` extra (pulls
-# hermes-agent), and hermes-webui's runtime requirements. The Docker layer
-# cache handles reuse — layer is reused as long as pyproject.toml,
-# __init__.py, and HERMES_WEBUI_VERSION are unchanged.
-#
-# No BuildKit cache mount: Railway's metal builder requires
-# id=s/<service-id>-<path>, which is service-specific and cannot be
-# interpolated from ARG/env vars. Dropping the mount keeps this Dockerfile
-# portable across forks and fresh Railway services.
+# No BuildKit cache mount: Railway's metal builder requires service-specific
+# cache IDs that can't be interpolated from ARG/env vars.
 RUN uv pip install --system --link-mode=copy ".[hermes]" -r /opt/hermes-webui/requirements.txt \
         pandas numpy pillow openpyxl pypdf \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
-# Patch: restore plugin.yaml manifests omitted from the hermes-agent 0.14.0 wheel.
-# setuptools package-data doesn't include *.yaml under plugins/, so the plugin
-# discovery system (hermes_cli/plugins.py) skips every bundled backend and
-# web_search / web_extract / image_gen all fail with "No provider configured".
-# Remove this step once upstream PRs #27240 / #27268 merge and we bump the pin.
+# Patch: hermes-agent 0.14.0 wheel omits plugin.yaml files; restore them.
+# Remove once upstream PRs #27240/#27268 merge and we bump the pin.
 RUN <<'PYEOF' python3
 import pathlib, sysconfig
 
@@ -241,20 +228,8 @@ for rel, content in MANIFESTS.items():
         print(f"restored: {dest}")
 PYEOF
 
-# Install the curated stdio MCP servers as global, root-owned binaries on
-# PATH. Versions are pinned and surfaced in hermes_station/config.py
-# (MCP_SERVER_CATALOG) — bumping is one ARG change here + one literal change
-# in config.py, kept in lockstep.
-#
-# Why globals (not npx/uvx)? Both launchers stage their package tree into
-# writable cache dirs (npx: $NPM_CONFIG_CACHE/_npx/<hash>/, defaulting to
-# $HOME/.npm/_npx/ which is /data/.npm/_npx/ under HERMES_HOME). The MCP
-# subprocess then loads JS/Python from a path the runtime user can write
-# to — code-execution from writable state. `npm install -g` puts binaries
-# under /usr/lib/node_modules with symlinks at /usr/bin/, and uv with
-# UV_TOOL_BIN_DIR=/usr/local/bin does the same for fetch. All bins land
-# root-owned, not chmod'd writable, and PATH-resolves to a non-writable
-# location at runtime. See CONTRACT.md §3.6.
+# MCP servers installed as root-owned globals (not npx/uvx) so MCP subprocesses
+# can't write to their own package tree. See CONTRACT.md §3.6.
 ARG MCP_SERVER_FILESYSTEM_VERSION=2026.1.14
 ARG MCP_SERVER_GITHUB_VERSION=2025.4.8
 ARG MCP_SERVER_FETCH_VERSION=2025.4.7
@@ -262,33 +237,19 @@ RUN set -eux; \
     npm install -g --no-audit --no-fund \
         "@modelcontextprotocol/server-filesystem@${MCP_SERVER_FILESYSTEM_VERSION}" \
         "@modelcontextprotocol/server-github@${MCP_SERVER_GITHUB_VERSION}"; \
-    # uv tool install puts the env in UV_TOOL_DIR and links bins into
-    # UV_TOOL_BIN_DIR. /opt/uv-tools is root-owned and not chowned to
-    # hermes later in this Dockerfile, so the installed env (and the
-    # symlinked entrypoint) stay read-only to the runtime user.
     UV_CACHE_DIR=/tmp/uv-cache \
     UV_TOOL_DIR=/opt/uv-tools \
     UV_TOOL_BIN_DIR=/usr/local/bin \
         uv tool install "mcp-server-fetch==${MCP_SERVER_FETCH_VERSION}"; \
     rm -rf /tmp/uv-cache /root/.cache/uv /root/.npm; \
-    # Sanity: bins must resolve to a non-writable location.
     test -x /usr/bin/mcp-server-filesystem; \
     test -x /usr/bin/mcp-server-github; \
     test -x /usr/local/bin/mcp-server-fetch; \
     echo "MCP servers installed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
 
-# Pilot admin extension bundle. Copied above the source layer so an edit to
-# hermes_station/ doesn't invalidate the extension layer, and so an extension
-# edit doesn't invalidate the (much heavier) `uv pip install` layer above.
-COPY extension/ /opt/hermes-station/extension/
+ADD extension.tar /opt/hermes-station/
+ADD hermes_station.tar /app/
 
-# Copy the real source last. At runtime `python -m hermes_station` runs from
-# WORKDIR=/app, so /app/hermes_station/ shadows the stub installed above.
-COPY hermes_station/ /app/hermes_station/
-
-# HERMES_WEBUI_AGENT_DIR is intentionally not set here — hermes_station/webui.py
-# defaults it to the Python site-packages dir at process start, where pip installs
-# the hermes-agent source tree (including run_agent.py).
 ENV HOME=/data \
     HERMES_HOME=/data/.hermes \
     HERMES_CONFIG_PATH=/data/.hermes/config.yaml \
@@ -323,16 +284,8 @@ LABEL org.opencontainers.image.source="https://github.com/roryford/hermes-statio
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 
-# Harden: prevent the agent from modifying its own application code at runtime.
-# Pre-compile /app so Python doesn't need __pycache__ write access, then strip
-# write bits from site-packages, the webui source, the app source tree, and
-# the uv-tools MCP env. /data (all agent state) stays writable. Running as a
-# non-root user is what makes the chmod effective — root has DAC_OVERRIDE
-# and ignores file permission bits.
-#
-# /data is NOT chowned here: bind-mounted volumes ignore image-layer ownership,
-# so the entrypoint script fixes /data ownership at container start before
-# dropping to the hermes user via gosu.
+# Harden: strip write bits from app code so the hermes user can't modify it.
+# /data is NOT chowned here — entrypoint fixes ownership before dropping to hermes.
 RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
     && python3 -m compileall -q /app "$site_pkgs" \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
@@ -342,19 +295,13 @@ RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['pure
     && chmod +x /usr/local/bin/hermes-entrypoint
 
 # --- test stage (not shipped to prod) ---
-# Extends runtime with dev deps + test suite so the full test suite
-# (unit + toolbelt + e2e) can run inside the image via `exec`.
 FROM runtime AS test
 COPY uv.lock ./
-COPY tests/ /app/tests/
-COPY docs/ /app/docs/
-# Install pinned dev deps from the lockfile — faster than resolution and
-# deterministic. uv export reads uv.lock directly, no network needed.
+ADD tests.tar /app/
+ADD docs.tar /app/
 RUN uv export --only-group dev --frozen --no-hashes --no-header \
     | uv pip install --system --link-mode=copy -r /dev/stdin
 CMD ["python", "-m", "pytest", "tests/", "-q", "--no-cov"]
 
 # --- default stage ---
-# Plain `docker build .` (no --target) must produce the runtime image.
-# Railway has no dockerTarget config — it always builds the final stage.
 FROM runtime

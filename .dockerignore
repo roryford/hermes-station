@@ -26,3 +26,6 @@ SECURITY.md
 # Developer tooling not needed in image
 Makefile
 .pre-commit-config.yaml
+
+# Staging build artifacts (created by the build script, not for the image)
+*.tar

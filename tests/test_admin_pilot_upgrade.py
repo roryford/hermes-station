@@ -15,7 +15,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
-import pytest
 
 from hermes_station.admin.routes import admin_routes
 
@@ -42,9 +41,7 @@ def _make_app(monkeypatch, *, flag_on: bool = True):
 # ─────────────────────────────────────────────────────────── flag-off
 
 
-async def test_upgrade_flag_off_returns_404(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_upgrade_flag_off_returns_404(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     app = _make_app(monkeypatch, flag_on=False)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -58,9 +55,7 @@ async def test_upgrade_flag_off_returns_404(
 # ─────────────────────────────────────────────────────────── auth
 
 
-async def test_upgrade_unauthenticated_returns_401(
-    fake_data_dir: Path, monkeypatch
-) -> None:
+async def test_upgrade_unauthenticated_returns_401(fake_data_dir: Path, monkeypatch) -> None:
     app = _make_app(monkeypatch, flag_on=True)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -72,9 +67,7 @@ async def test_upgrade_unauthenticated_returns_401(
 # ─────────────────────────────────────────────────────────── JSON shape
 
 
-async def test_upgrade_returns_required_keys(
-    fake_data_dir: Path, admin_password: str, monkeypatch
-) -> None:
+async def test_upgrade_returns_required_keys(fake_data_dir: Path, admin_password: str, monkeypatch) -> None:
     """Response must include running_version, latest_version, and status."""
     app = _make_app(monkeypatch, flag_on=True)
     transport = httpx.ASGITransport(app=app)
@@ -175,7 +168,9 @@ async def test_upgrade_status_unknown_when_running_is_none(
     from hermes_station.admin import routes as _routes
 
     app = _make_app(monkeypatch, flag_on=True)
-    monkeypatch.setattr(_routes, "_pkg_version", lambda _name: (_ for _ in ()).throw(_PNFError("hermes-station")))
+    monkeypatch.setattr(
+        _routes, "_pkg_version", lambda _name: (_ for _ in ()).throw(_PNFError("hermes-station"))
+    )
 
     transport = httpx.ASGITransport(app=app)
     with patch(
@@ -239,9 +234,7 @@ async def test_upgrade_cache_refreshes_after_ttl(
             await client.get("/admin/api/pilot/upgrade")
             count_after_second = mock_fetch.call_count
 
-    assert count_after_second > count_after_first, (
-        "Request after TTL expiry must re-fetch from GitHub"
-    )
+    assert count_after_second > count_after_first, "Request after TTL expiry must re-fetch from GitHub"
 
 
 # ─────────────────────────────────────────────────────────── route registration
@@ -253,11 +246,7 @@ def test_upgrade_route_is_get_only() -> None:
         if route.path == "/admin/api/pilot/upgrade":
             methods = set(route.methods or set())
             # Starlette automatically includes HEAD alongside GET; POST must not be present.
-            assert "POST" not in methods, (
-                f"upgrade route must not accept POST, got {route.methods}"
-            )
-            assert "GET" in methods, (
-                f"upgrade route must accept GET, got {route.methods}"
-            )
+            assert "POST" not in methods, f"upgrade route must not accept POST, got {route.methods}"
+            assert "GET" in methods, f"upgrade route must accept GET, got {route.methods}"
             return
     raise AssertionError("upgrade route not registered in admin_routes()")

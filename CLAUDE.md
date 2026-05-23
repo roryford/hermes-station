@@ -15,9 +15,28 @@ uv run pytest tests/ --ignore=tests/fixtures --ignore=tests/test_compat_realisti
 Use the Apple `container` CLI (not Docker) for local runs.
 
 **1. Build both images:**
+
+> **container CLI 0.12.3 workaround**: two bugs require a staging build context.
+> Bug 1: Dockerfiles > ~15KB crash buildkit before a build starts.
+> Bug 2: Only root-level files are served to buildkit (subdirectory COPY silently empties).
+> The build uses tar archives as root-level ADD sources to bypass bug 2,
+> and a `/tmp/hs-ctx` staging dir (< 15K files) to bypass the file-count crash.
+
 ```bash
-container build -t hermes-station:local .
-container build --target test -t hermes-station:test .
+# Prepare staging dir (first time or after clean)
+mkdir -p /tmp/hs-ctx
+cp pyproject.toml README.md LICENSE uv.lock /tmp/hs-ctx/
+
+# (Re-)pack source tars — run this before every build when source changes
+COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/hermes_station.tar hermes_station
+COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' -f /tmp/hs-ctx/extension.tar extension
+COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/tests.tar tests
+COPYFILE_DISABLE=1 tar -c -f /tmp/hs-ctx/docs.tar docs
+cp .dockerignore /tmp/hs-ctx/
+
+# Build
+container build -f Dockerfile -t hermes-station:local /tmp/hs-ctx
+container build --target test -f Dockerfile -t hermes-station:test /tmp/hs-ctx
 ```
 
 **2. Boot the runtime container:**
