@@ -476,6 +476,7 @@ async def xai_oauth_callback(request: Request) -> Response:
             code=code,
             code_verifier=pending["code_verifier"],
             redirect_uri=pending["redirect_uri"],
+            client_id=pending["client_id"],
         )
     except ValueError as exc:
         return _xai_settings_error(request, paths, str(exc))
