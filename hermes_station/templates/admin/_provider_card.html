@@ -76,6 +76,12 @@
             >Connect with GitHub</button>
             <div class="field-hint">Opens a GitHub device authorization flow — no token to copy.</div>
         </div>
+        <div class="field" data-field="xai_oauth" style="display:none;">
+            <form method="POST" action="/admin/_partial/provider/xai/start" hx-boost="false">
+                <button type="submit" class="btn">Connect with xAI</button>
+            </form>
+            <div class="field-hint">Opens xAI OAuth in your browser — no token to copy. Requires XAI_OAUTH_CLIENT_ID to be configured.</div>
+        </div>
         <div class="field" data-field="base_url">
             <label for="provider-base-url">Base URL</label>
             <input type="url" id="provider-base-url" name="base_url" value="{{ provider_status.base_url }}" placeholder="https://...">

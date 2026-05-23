@@ -37,6 +37,7 @@ from hermes_station.admin.pairing import (
     revoke,
 )
 from hermes_station.admin.copilot_oauth import poll_device_flow, start_device_flow
+from hermes_station.admin.xai_oauth import consume_state, exchange_code, start_pkce_flow
 from hermes_station.admin.provider import (
     PROVIDER_CATALOG,
     apply_provider_setup,
@@ -392,6 +393,108 @@ async def provider_cancel(request: Request) -> Response:
     return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
 
+async def xai_oauth_start(request: Request) -> Response:
+    """Redirect the admin browser to the xAI authorization endpoint (PKCE flow).
+
+    This is a POST handler that returns a 303 redirect. It must be submitted
+    via a plain browser form (not an HTMX fetch) so the redirect is followed
+    natively and the browser navigates to auth.x.ai.
+    """
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    # Build the redirect_uri from the incoming request so it works on any host.
+    scheme = request.url.scheme
+    host = request.url.netloc
+    redirect_uri = f"{scheme}://{host}/admin/oauth/xai/callback"
+    try:
+        _state, authorize_url = start_pkce_flow(redirect_uri)
+    except ValueError as exc:
+        paths = _paths(request)
+        context: dict[str, Any] = {
+            "alert": {"kind": "error", "message": f"Cannot start xAI OAuth: {exc}"}
+        }
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+    from starlette.responses import RedirectResponse
+
+    return RedirectResponse(url=authorize_url, status_code=303)
+
+
+async def xai_oauth_callback(request: Request) -> Response:
+    """Handle the xAI OAuth callback (browser GET redirect back from auth.x.ai).
+
+    Validates state, exchanges the authorization code for an access token,
+    saves it as XAI_API_KEY, and redirects to /admin/settings.
+    """
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+
+    error = request.query_params.get("error")
+    if error:
+        error_desc = request.query_params.get("error_description", error)
+        context: dict[str, Any] = {
+            "alert": {"kind": "error", "message": f"xAI authorization failed: {error_desc}"}
+        }
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    state = request.query_params.get("state", "")
+    code = request.query_params.get("code", "")
+    if not state or not code:
+        context = {
+            "alert": {"kind": "error", "message": "Missing state or code in xAI callback."}
+        }
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    try:
+        pending = consume_state(state)
+    except ValueError as exc:
+        context = {"alert": {"kind": "error", "message": str(exc)}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    try:
+        token_data = await exchange_code(
+            code=code,
+            code_verifier=pending["code_verifier"],
+            redirect_uri=pending["redirect_uri"],
+        )
+    except ValueError as exc:
+        context = {"alert": {"kind": "error", "message": str(exc)}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    access_token = token_data["access_token"]
+    meta = PROVIDER_CATALOG["xai"]
+    try:
+        apply_provider_setup(
+            config_path=paths.config_path,
+            env_path=paths.env_path,
+            provider="xai",
+            model=meta["default_model"],
+            api_key=access_token,
+        )
+        seed_env_file_to_os(paths.env_path, paths.config_path)
+        gateway = getattr(request.app.state, "gateway", None)
+        if gateway is not None:
+            await gateway.restart()
+    except Exception as exc:
+        context = {
+            "alert": {"kind": "error", "message": f"Token received but could not save: {exc}"}
+        }
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    # Full-page redirect so the settings page reloads cleanly showing the new state.
+    from starlette.responses import RedirectResponse
+
+    return RedirectResponse(url="/admin/settings?alert=xai_connected", status_code=303)
+
+
 async def _secrets_card_response(request: Request, paths: Paths, alert: dict[str, str] | None) -> Response:
     context: dict[str, Any] = {"alert": alert}
     context.update(_secrets_context(paths, request))
@@ -589,6 +692,8 @@ def routes() -> list[Route]:
         Route("/admin/_partial/provider/copilot/start", copilot_oauth_start, methods=["POST"]),
         Route("/admin/_partial/provider/copilot/poll", copilot_oauth_poll, methods=["POST"]),
         Route("/admin/_partial/provider/cancel", provider_cancel, methods=["POST"]),
+        Route("/admin/_partial/provider/xai/start", xai_oauth_start, methods=["POST"]),
+        Route("/admin/oauth/xai/callback", xai_oauth_callback, methods=["GET"]),
         Route("/admin/_partial/secrets/save", secrets_fragment_save, methods=["POST"]),
         Route("/admin/_partial/secrets/clear", secrets_fragment_clear, methods=["POST"]),
         Route("/admin/_partial/secrets/disable", secrets_fragment_disable, methods=["POST"]),

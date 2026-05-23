@@ -53,6 +53,18 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "credential_placeholder": "Leave blank to keep existing key",
         "credential_hint": "Use the Connect with GitHub button to authenticate via OAuth.",
     },
+    "xai": {
+        "label": "xAI (SuperGrok)",
+        "env_var": "XAI_API_KEY",
+        "default_model": "grok-4",
+        "requires_base_url": False,
+        "credential_label": "xAI API key",
+        "credential_placeholder": "Leave blank to use OAuth token",
+        "credential_hint": (
+            "Paste an XAI_API_KEY from console.x.ai, or use the Connect with xAI button "
+            "for SuperGrok/X Premium+ OAuth."
+        ),
+    },
     "custom": {
         "label": "Custom OpenAI-compatible",
         "env_var": "OPENAI_API_KEY",
@@ -190,6 +202,7 @@ def apply_provider_setup(
 
     if provider == "copilot":
         _suppress_copilot_fallback_sources()
+    # xai: token is stored as XAI_API_KEY — no extra post-save step needed.
 
     return {"provider": provider, "model": model, "env_var": meta["env_var"]}
 

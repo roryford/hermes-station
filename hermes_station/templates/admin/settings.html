@@ -26,18 +26,22 @@
         const baseUrlField = scope.querySelector('[data-field="base_url"]');
         const credentialField = scope.querySelector('[data-field="credential"]');
         const copilotOAuthField = scope.querySelector('[data-field="copilot_oauth"]');
+        const xaiOAuthField = scope.querySelector('[data-field="xai_oauth"]');
         const credentialLabel = scope.querySelector('[data-provider-credential-label]');
         const credentialInput = scope.querySelector('[data-provider-credential-input]');
         const credentialHint = scope.querySelector('[data-provider-credential-hint]');
         if (!select) return;
         const option = select.options[select.selectedIndex];
         const isCopilot = option && option.value === "copilot";
+        const isXai = option && option.value === "xai";
+        const useOAuth = isCopilot || isXai;
         if (baseUrlField) {
             const requires = option && option.dataset.requiresBaseUrl === "true";
             baseUrlField.style.display = requires ? "" : "none";
         }
-        if (credentialField) credentialField.style.display = isCopilot ? "none" : "";
+        if (credentialField) credentialField.style.display = useOAuth ? "none" : "";
         if (copilotOAuthField) copilotOAuthField.style.display = isCopilot ? "" : "none";
+        if (xaiOAuthField) xaiOAuthField.style.display = isXai ? "" : "none";
         if (!option) return;
         if (credentialLabel && option.dataset.credentialLabel) {
             credentialLabel.textContent = option.dataset.credentialLabel;
