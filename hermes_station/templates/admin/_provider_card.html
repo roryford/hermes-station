@@ -76,6 +76,13 @@
             >Connect with GitHub</button>
             <div class="field-hint">Opens a GitHub device authorization flow — no token to copy.</div>
         </div>
+        <div class="field" data-field="xai_oauth" style="display:none;">
+            {# form="xai-oauth-form" associates this button with the disconnected form
+               below — HTML5 forbids nested <form> elements, so the xAI form lives
+               outside the outer settings form and is linked via the id attribute. #}
+            <button type="submit" form="xai-oauth-form" class="btn">Connect with xAI</button>
+            <div class="field-hint">Opens xAI OAuth in your browser — no token to copy. Requires XAI_OAUTH_CLIENT_ID to be configured.</div>
+        </div>
         <div class="field" data-field="base_url">
             <label for="provider-base-url">Base URL</label>
             <input type="url" id="provider-base-url" name="base_url" value="{{ provider_status.base_url }}" placeholder="https://...">
@@ -85,4 +92,7 @@
             <button type="submit" class="btn">Save provider</button>
         </div>
     </form>
+    {# Disconnected form for xAI OAuth — must live outside the outer form (HTML5
+       forbids nesting). The button above references it via form="xai-oauth-form". #}
+    <form id="xai-oauth-form" method="POST" action="/admin/_partial/provider/xai/start" style="display:none;"></form>
 </section>
