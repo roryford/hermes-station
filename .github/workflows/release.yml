@@ -63,10 +63,22 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest
 
+      - name: pre-pack build context (mirrors local /tmp/hs-ctx procedure)
+        # See CLAUDE.md and project memory project-container-cli-build-workaround.md
+        # for why the Dockerfile uses `ADD <name>.tar` instead of `COPY`.
+        run: |
+          mkdir -p /tmp/hs-ctx
+          cp pyproject.toml README.md LICENSE uv.lock .dockerignore /tmp/hs-ctx/
+          tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/hermes_station.tar hermes_station
+          tar -c --exclude '__pycache__' -f /tmp/hs-ctx/extension.tar extension
+          tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/tests.tar tests
+          tar -c -f /tmp/hs-ctx/docs.tar docs
+          cp Dockerfile /tmp/hs-ctx/
+
       - name: build and push
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
-          context: .
+          context: /tmp/hs-ctx
           target: runtime
           push: true
           tags: ${{ steps.meta.outputs.tags }}

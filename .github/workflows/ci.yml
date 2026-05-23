@@ -51,10 +51,24 @@ jobs:
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
+      - name: pre-pack build context (mirrors local /tmp/hs-ctx procedure)
+        # The Dockerfile uses `ADD <name>.tar` to bypass an Apple `container` CLI
+        # 0.12.3 bug where subdirectory COPY silently empties. CI must produce
+        # the same tar layout so the same Dockerfile works on Linux buildx.
+        # See CLAUDE.md and project memory project-container-cli-build-workaround.md.
+        run: |
+          mkdir -p /tmp/hs-ctx
+          cp pyproject.toml README.md LICENSE uv.lock .dockerignore /tmp/hs-ctx/
+          tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/hermes_station.tar hermes_station
+          tar -c --exclude '__pycache__' -f /tmp/hs-ctx/extension.tar extension
+          tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/tests.tar tests
+          tar -c -f /tmp/hs-ctx/docs.tar docs
+          cp Dockerfile /tmp/hs-ctx/
+
       - name: build runtime image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
-          context: .
+          context: /tmp/hs-ctx
           load: true
           target: runtime
           tags: hermes-station:ci
@@ -71,7 +85,7 @@ jobs:
       - name: build test image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
-          context: .
+          context: /tmp/hs-ctx
           load: true
           target: test
           tags: hermes-station:ci-test
