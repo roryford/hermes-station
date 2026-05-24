@@ -83,6 +83,33 @@ container run --rm \
     -v --no-cov
 ```
 
+**Hindsight sidecar tests** — boot the runtime container with sidecar enabled and port 8888 exposed, then run the test image pointing at the host IP:
+
+```bash
+# Boot (replace step 2) with sidecar + exposed port.
+# HINDSIGHT_API_HOST=0.0.0.0 overrides the default loopback bind so the
+# port-forward from the test container can reach it:
+container run -d --name hs-test -p 8787:8787 -p 8888:8888 \
+  -e HERMES_WEBUI_PASSWORD=test-admin-pw \
+  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
+  -e OPENROUTER_API_KEY=local-fake-key \
+  -e HINDSIGHT_SIDECAR=1 \
+  -e HINDSIGHT_API_HOST=0.0.0.0 \
+  hermes-station:local
+
+# Run from the test image (HTTP tests only — process/log checks need local mode):
+container run --rm \
+  -e HERMES_STATION_HINDSIGHT_SIDECAR=1 \
+  -e HERMES_STATION_HINDSIGHT_SIDECAR_URL=http://192.168.64.1:8888 \
+  -e HERMES_STATION_E2E_URL=http://192.168.64.1:8787 \
+  -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
+  hermes-station:test \
+  python -m pytest tests/test_hindsight_sidecar.py -v --no-cov
+```
+
+A fake key is sufficient — the API server starts and listens even if LLM auth would fail with 401.
+
 **5. Cleanup:**
 ```bash
 container stop hs-test && container rm hs-test

@@ -72,7 +72,8 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 RUN uv pip install --system --link-mode=copy ".[hermes]" -r /opt/hermes-webui/requirements.txt \
         pandas numpy pillow openpyxl pypdf \
         pytest ruff \
-    && mkdir -p /data/.hermes /data/webui /data/workspace
+        "hindsight-all-slim" "pg0-embedded" \
+    && mkdir -p /data/.hermes /data/webui /data/workspace /data/.hindsight
 
 # Patch: hermes-agent 0.14.0 wheel omits plugin.yaml files; restore them.
 # Remove once upstream PRs #27240/#27268 merge and we bump the pin.
