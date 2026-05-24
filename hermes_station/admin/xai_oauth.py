@@ -183,24 +183,43 @@ async def exchange_code(
 
 
 def write_xai_auth_json(hermes_home: Path, token_data: dict) -> None:
-    """Persist xAI OAuth tokens to auth.json under the 'xai-oauth' provider key.
+    """Persist xAI OAuth tokens via hermes_cli's native auth store.
 
-    Merges into any existing auth.json so other provider entries are preserved.
-    File is written 0600.
+    Delegates to hermes_cli.auth._save_xai_oauth_tokens so the format,
+    file locking, and active_provider field stay in sync with what
+    hermes-agent and the webui expect under providers.xai-oauth.tokens.
+
+    Falls back to a direct JSON write if hermes_cli is unavailable
+    (e.g. unit-test environments without the agent installed).
     """
+    try:
+        from hermes_cli.auth import _save_xai_oauth_tokens  # type: ignore[import]
+
+        _save_xai_oauth_tokens(token_data, redirect_uri=_REDIRECT_URI)
+        return
+    except Exception:
+        pass
+
+    # Fallback: write the correct structure directly.
+    from datetime import datetime, timezone
+
     auth_path = hermes_home / "auth.json"
     try:
         existing: dict = json.loads(auth_path.read_text()) if auth_path.exists() else {}
     except Exception:
         existing = {}
-
-    expires_in = int(token_data.get("expires_in") or 3600)
-    existing["xai-oauth"] = {
-        "accessToken": token_data["access_token"],
-        "refreshToken": token_data.get("refresh_token", ""),
-        "expiresAt": int(time.time()) + expires_in,
-        "idToken": token_data.get("id_token", ""),
-        "tokenType": token_data.get("token_type", "Bearer"),
+    existing.setdefault("version", 1)
+    providers = existing.setdefault("providers", {})
+    if not isinstance(providers, dict):
+        existing["providers"] = {}
+        providers = existing["providers"]
+    providers["xai-oauth"] = {
+        "tokens": dict(token_data),
+        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "auth_mode": "oauth_pkce",
+        "redirect_uri": _REDIRECT_URI,
     }
+    existing["active_provider"] = "xai-oauth"
+    existing["updated_at"] = datetime.now(timezone.utc).isoformat()
     auth_path.write_text(json.dumps(existing, indent=2))
     auth_path.chmod(0o600)

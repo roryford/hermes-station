@@ -229,19 +229,28 @@ def _suppress_copilot_fallback_sources() -> None:
 
 
 def xai_oauth_ready(hermes_home: Path) -> bool:
-    """Return True if a non-expired xai-oauth token exists in auth.json."""
+    """Return True if xai-oauth credentials exist in auth.json (hermes_cli format).
+
+    Prefers hermes_cli.auth.get_xai_oauth_auth_status for accuracy; falls back
+    to reading auth.json directly so unit tests without hermes_cli still work.
+    """
+    try:
+        from hermes_cli.auth import get_xai_oauth_auth_status  # type: ignore[import]
+
+        status = get_xai_oauth_auth_status()
+        return bool(isinstance(status, dict) and status.get("logged_in"))
+    except Exception:
+        pass
+
     import json
-    import time
 
     auth_path = hermes_home / "auth.json"
     if not auth_path.exists():
         return False
     try:
-        entry = json.loads(auth_path.read_text()).get("xai-oauth", {})
-        if not entry.get("accessToken"):
-            return False
-        expires_at = float(entry.get("expiresAt") or 0)
-        return time.time() < expires_at - 60
+        state = json.loads(auth_path.read_text()).get("providers", {}).get("xai-oauth", {})
+        tokens = state.get("tokens", {})
+        return bool(tokens.get("access_token"))
     except Exception:
         return False
 
