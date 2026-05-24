@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import secrets
 import time
+from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
@@ -178,3 +180,27 @@ async def exchange_code(
     if "access_token" not in data:
         raise ValueError(f"xAI token response missing access_token: {data}")
     return data
+
+
+def write_xai_auth_json(hermes_home: Path, token_data: dict) -> None:
+    """Persist xAI OAuth tokens to auth.json under the 'xai-oauth' provider key.
+
+    Merges into any existing auth.json so other provider entries are preserved.
+    File is written 0600.
+    """
+    auth_path = hermes_home / "auth.json"
+    try:
+        existing: dict = json.loads(auth_path.read_text()) if auth_path.exists() else {}
+    except Exception:
+        existing = {}
+
+    expires_in = int(token_data.get("expires_in") or 3600)
+    existing["xai-oauth"] = {
+        "accessToken": token_data["access_token"],
+        "refreshToken": token_data.get("refresh_token", ""),
+        "expiresAt": int(time.time()) + expires_in,
+        "idToken": token_data.get("id_token", ""),
+        "tokenType": token_data.get("token_type", "Bearer"),
+    }
+    auth_path.write_text(json.dumps(existing, indent=2))
+    auth_path.chmod(0o600)
