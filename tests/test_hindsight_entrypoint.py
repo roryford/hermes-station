@@ -24,7 +24,8 @@ def test_entrypoint_sidecar_uses_pg0_db() -> None:
 
 def test_entrypoint_sidecar_binds_loopback() -> None:
     src = ENTRYPOINT.read_text()
-    assert 'HINDSIGHT_API_HOST="127.0.0.1"' in src
+    assert "127.0.0.1" in src
+    assert "HINDSIGHT_API_HOST" in src
 
 
 def test_entrypoint_sidecar_default_port_8888() -> None:

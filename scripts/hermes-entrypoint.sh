@@ -38,7 +38,7 @@ if [ "${HINDSIGHT_SIDECAR}" = "1" ] || [ "${HINDSIGHT_SIDECAR}" = "true" ]; then
         mkdir -p /data/.hindsight
         # Runs as hermes user; pg0 data is stored in /data/.pg0 (inside the Railway volume).
         HINDSIGHT_API_DATABASE_URL="${HINDSIGHT_API_DATABASE_URL:-pg0://hindsight-hermes}" \
-        HINDSIGHT_API_HOST="127.0.0.1" \
+        HINDSIGHT_API_HOST="${HINDSIGHT_API_HOST:-127.0.0.1}" \
         HINDSIGHT_API_PORT="${HINDSIGHT_API_PORT:-8888}" \
         HINDSIGHT_API_LLM_PROVIDER="${HINDSIGHT_API_LLM_PROVIDER:-openrouter}" \
         HINDSIGHT_API_LLM_MODEL="${HINDSIGHT_API_LLM_MODEL:-openai/gpt-4o-mini}" \
