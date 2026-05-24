@@ -837,6 +837,34 @@ def seed_safer_agent_defaults(path: Path) -> dict[str, list[str]]:
     return written
 
 
+def seed_browser_toolset(path: Path) -> bool:
+    """First-boot seed: enable the `browser` toolset if not already configured.
+
+    agent-browser is installed in the image, so the toolset works without any
+    external dependencies. No-clobber per CONTRACT.md §3.3: if `browser` already
+    appears in the toolsets block (enabled or explicitly disabled), the existing
+    value wins. Returns True iff a write happened.
+    """
+    config = load_yaml_config(path)
+    toolsets = config.get("toolsets")
+
+    if isinstance(toolsets, list):
+        if "browser" in toolsets:
+            return False
+        toolsets.append("browser")
+        config["toolsets"] = toolsets
+    elif isinstance(toolsets, dict):
+        if "browser" in toolsets:
+            return False
+        toolsets["browser"] = True
+        config["toolsets"] = toolsets
+    else:
+        config["toolsets"] = ["browser"]
+
+    write_yaml_config(path, config)
+    return True
+
+
 def apply_first_boot_seeds(path: Path) -> dict[str, bool]:
     """Apply all first-boot seeders in sequence, returning a per-seed write map.
 
@@ -852,6 +880,7 @@ def apply_first_boot_seeds(path: Path) -> dict[str, bool]:
     results["show_cost"] = seed_show_cost_default(path)
     safer = seed_safer_agent_defaults(path)
     results["safer_agent_defaults"] = bool(safer["delegation"] or safer["security"])
+    results["browser_toolset"] = seed_browser_toolset(path)
     return results
 
 

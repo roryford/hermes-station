@@ -39,6 +39,7 @@ from hermes_station.config import (
     seed_env_file_to_os,
     seed_neutral_personality_default,
     seed_provider_from_env,
+    seed_browser_toolset,
     seed_safer_agent_defaults,
     seed_show_cost_default,
     write_yaml_config,
@@ -198,6 +199,8 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         for section, keys in safer_written.items():
             if keys:
                 logger.info("seeded safer %s defaults: %s", section, ", ".join(keys))
+        if seed_browser_toolset(paths.config_path):
+            logger.info("seeded browser toolset: enabled")
         seeded_provider = seed_provider_from_env(paths.config_path, dict(os.environ))
         if seeded_provider:
             public_url = os.environ.get("RAILWAY_PUBLIC_DOMAIN")

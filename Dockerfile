@@ -20,6 +20,7 @@ RUN apt-get update \
          gosu \
          gh \
          nodejs \
+         chromium \
          ffmpeg \
          tesseract-ocr tesseract-ocr-eng \
          ripgrep \
@@ -83,10 +84,12 @@ RUN python3 /tmp/patch_plugin_manifests.py && rm /tmp/patch_plugin_manifests.py
 ARG MCP_SERVER_FILESYSTEM_VERSION=2026.1.14
 ARG MCP_SERVER_GITHUB_VERSION=2025.4.8
 ARG MCP_SERVER_FETCH_VERSION=2025.4.7
+ARG AGENT_BROWSER_VERSION=0.27.0
 RUN set -eux; \
     npm install -g --no-audit --no-fund \
         "@modelcontextprotocol/server-filesystem@${MCP_SERVER_FILESYSTEM_VERSION}" \
-        "@modelcontextprotocol/server-github@${MCP_SERVER_GITHUB_VERSION}"; \
+        "@modelcontextprotocol/server-github@${MCP_SERVER_GITHUB_VERSION}" \
+        "agent-browser@${AGENT_BROWSER_VERSION}"; \
     UV_CACHE_DIR=/tmp/uv-cache \
     UV_TOOL_DIR=/opt/uv-tools \
     UV_TOOL_BIN_DIR=/usr/local/bin \
@@ -95,7 +98,9 @@ RUN set -eux; \
     test -x /usr/bin/mcp-server-filesystem; \
     test -x /usr/bin/mcp-server-github; \
     test -x /usr/local/bin/mcp-server-fetch; \
-    echo "MCP servers installed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})"
+    test -x /usr/bin/agent-browser; \
+    echo "MCP servers installed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})" && \
+    echo "agent-browser installed (${AGENT_BROWSER_VERSION})"
 
 ADD extension.tar /opt/hermes-station/
 ADD hermes_station.tar /app/
