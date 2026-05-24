@@ -228,20 +228,57 @@ def _suppress_copilot_fallback_sources() -> None:
         pass  # hermes-agent not installed (test environment)
 
 
-def provider_status(config: dict[str, Any], env_values: dict[str, str]) -> dict[str, Any]:
+def xai_oauth_ready(hermes_home: Path) -> bool:
+    """Return True if xai-oauth credentials exist in auth.json (hermes_cli format).
+
+    Prefers hermes_cli.auth.get_xai_oauth_auth_status for accuracy; falls back
+    to reading auth.json directly so unit tests without hermes_cli still work.
+    """
+    try:
+        from hermes_cli.auth import get_xai_oauth_auth_status  # type: ignore[import]
+
+        status = get_xai_oauth_auth_status()
+        return bool(isinstance(status, dict) and status.get("logged_in"))
+    except Exception:
+        pass
+
+    import json
+
+    auth_path = hermes_home / "auth.json"
+    if not auth_path.exists():
+        return False
+    try:
+        state = json.loads(auth_path.read_text()).get("providers", {}).get("xai-oauth", {})
+        tokens = state.get("tokens", {})
+        return bool(tokens.get("access_token"))
+    except Exception:
+        return False
+
+
+def provider_status(
+    config: dict[str, Any],
+    env_values: dict[str, str],
+    hermes_home: Path | None = None,
+) -> dict[str, Any]:
     """Provider block for /admin/api/status: provider/default/base_url + readiness."""
     model = extract_model_config(config)
     provider = model.provider.lower()
-    ready = bool(provider and provider_has_credentials(provider, env_values))
-    source = ""
-    if provider:
-        for name in provider_env_var_names(provider):
-            if (env_values.get(name) or "").strip():
-                source = "file"
-                break
-            if (os.environ.get(name) or "").strip():
-                source = "env"
-                break
+
+    if provider == "xai-oauth":
+        ready = hermes_home is not None and xai_oauth_ready(hermes_home)
+        source = "file" if ready else ""
+    else:
+        ready = bool(provider and provider_has_credentials(provider, env_values))
+        source = ""
+        if provider:
+            for name in provider_env_var_names(provider):
+                if (env_values.get(name) or "").strip():
+                    source = "file"
+                    break
+                if (os.environ.get(name) or "").strip():
+                    source = "env"
+                    break
+
     return {
         "provider": model.provider,
         "default": model.default,

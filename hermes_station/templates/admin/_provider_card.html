@@ -45,7 +45,7 @@
                         data-credential-label="{{ entry.credential_label }}"
                         data-credential-placeholder="{{ entry.credential_placeholder }}"
                         data-credential-hint="{{ entry.credential_hint }}"
-                        {% if entry.id == provider_status.provider %}selected{% endif %}
+                        {% if entry.id == provider_status.provider or (entry.id == "xai" and provider_status.provider == "xai-oauth") %}selected{% endif %}
                     >{{ entry.label }}</option>
                 {% endfor %}
             </select>

@@ -35,6 +35,7 @@ from hermes_station.admin.xai_oauth import (
     exchange_code,
     pop_latest_flow,
     start_pkce_flow,
+    write_xai_auth_json,
 )
 from hermes_station.admin.provider import (
     PROVIDER_CATALOG,
@@ -50,7 +51,13 @@ from hermes_station.admin.secrets_catalog import (
     save_override,
     secret_status,
 )
-from hermes_station.config import Paths, load_env_file, load_yaml_config, seed_env_file_to_os
+from hermes_station.config import (
+    Paths,
+    load_env_file,
+    load_yaml_config,
+    seed_env_file_to_os,
+    write_yaml_config,
+)
 
 
 def _paths(request: Request) -> Paths:
@@ -60,10 +67,12 @@ def _paths(request: Request) -> Paths:
 def _provider_context(paths: Paths) -> dict[str, Any]:
     config = load_yaml_config(paths.config_path)
     env_values = load_env_file(paths.env_path)
-    status = provider_status(config, env_values)
-    selected_provider = status["provider"].lower()
-    if selected_provider not in PROVIDER_CATALOG:
-        selected_provider = next(iter(PROVIDER_CATALOG))
+    status = provider_status(config, env_values, hermes_home=paths.hermes_home)
+    # xai-oauth is the hermes-agent provider ID for OAuth SuperGrok; display as xai in the UI.
+    display_provider = "xai" if status["provider"].lower() == "xai-oauth" else status["provider"].lower()
+    selected_provider = (
+        display_provider if display_provider in PROVIDER_CATALOG else next(iter(PROVIDER_CATALOG))
+    )
     selected_meta = PROVIDER_CATALOG[selected_provider]
     catalog = [
         {
@@ -80,7 +89,7 @@ def _provider_context(paths: Paths) -> dict[str, Any]:
         }
         for pid, meta in PROVIDER_CATALOG.items()
     ]
-    label = PROVIDER_CATALOG.get(status["provider"].lower(), {}).get("label", "")
+    label = PROVIDER_CATALOG.get(display_provider, {}).get("label", "")
     return {
         "provider_catalog": catalog,
         "provider_status": status,
@@ -438,16 +447,23 @@ async def xai_oauth_exchange(request: Request) -> Response:
         context.update(_provider_context(paths))
         return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
-    access_token = token_data["access_token"]
-    meta = PROVIDER_CATALOG["xai"]
     try:
-        apply_provider_setup(
-            config_path=paths.config_path,
-            env_path=paths.env_path,
-            provider="xai",
-            model=meta["default_model"],
-            api_key=access_token,
-        )
+        # Write OAuth tokens to auth.json — hermes-agent's xai-oauth provider reads
+        # from here and gives 8 Grok models + automatic token refresh, unlike the
+        # x-ai env-var path which is limited to one configured model.
+        write_xai_auth_json(paths.hermes_home, token_data)
+
+        # Point config.yaml at the xai-oauth provider so hermes-agent routes calls
+        # through the OAuth credential pool rather than XAI_API_KEY.
+        config = load_yaml_config(paths.config_path)
+        raw_model = config.get("model")
+        model_cfg: dict[str, Any] = dict(raw_model) if isinstance(raw_model, dict) else {}
+        model_cfg["provider"] = "xai-oauth"
+        model_cfg.setdefault("default", PROVIDER_CATALOG["xai"]["default_model"])
+        model_cfg.pop("base_url", None)
+        config["model"] = model_cfg
+        write_yaml_config(paths.config_path, config)
+
         seed_env_file_to_os(paths.env_path, paths.config_path)
         gateway = getattr(request.app.state, "gateway", None)
         if gateway is not None:
@@ -457,7 +473,9 @@ async def xai_oauth_exchange(request: Request) -> Response:
         context.update(_provider_context(paths))
         return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
-    context = {"alert": {"kind": "success", "message": "xAI connected successfully."}}
+    context = {
+        "alert": {"kind": "success", "message": "xAI connected via OAuth — all Grok models available."}
+    }
     context.update(_provider_context(paths))
     return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
@@ -499,16 +517,16 @@ async def xai_oauth_callback(request: Request) -> Response:
     except ValueError as exc:
         return _xai_settings_error(request, paths, str(exc))
 
-    access_token = token_data["access_token"]
-    meta = PROVIDER_CATALOG["xai"]
     try:
-        apply_provider_setup(
-            config_path=paths.config_path,
-            env_path=paths.env_path,
-            provider="xai",
-            model=meta["default_model"],
-            api_key=access_token,
-        )
+        write_xai_auth_json(paths.hermes_home, token_data)
+        config = load_yaml_config(paths.config_path)
+        raw_model = config.get("model")
+        model_cfg: dict[str, Any] = dict(raw_model) if isinstance(raw_model, dict) else {}
+        model_cfg["provider"] = "xai-oauth"
+        model_cfg.setdefault("default", PROVIDER_CATALOG["xai"]["default_model"])
+        model_cfg.pop("base_url", None)
+        config["model"] = model_cfg
+        write_yaml_config(paths.config_path, config)
         seed_env_file_to_os(paths.env_path, paths.config_path)
         gateway = getattr(request.app.state, "gateway", None)
         if gateway is not None:
@@ -516,7 +534,6 @@ async def xai_oauth_callback(request: Request) -> Response:
     except Exception as exc:
         return _xai_settings_error(request, paths, f"Token received but could not save: {exc}")
 
-    # Full-page redirect so the settings page reloads cleanly showing the new state.
     from starlette.responses import RedirectResponse
 
     return RedirectResponse(url="/admin/settings?alert=xai_connected", status_code=303)
