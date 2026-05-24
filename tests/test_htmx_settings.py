@@ -1,4 +1,4 @@
-"""HTMX admin pages — settings and pairings.
+"""HTMX admin pages — settings.
 
 The production `create_app()` does not yet wire the htmx page routes (that's a
 later integration step owned by a sibling worker). To keep these tests
@@ -8,7 +8,6 @@ self-contained, we build a minimal Starlette app from `admin_routes()` plus
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import httpx
@@ -30,11 +29,6 @@ def _build_app() -> Starlette:
 async def _login(client: httpx.AsyncClient, password: str) -> None:
     response = await client.post("/admin/login", data={"password": password}, follow_redirects=False)
     assert response.status_code == 302, response.text
-
-
-def _write_pairing(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data), encoding="utf-8")
 
 
 # ──────────────────────────────────────────────────────────── settings page
@@ -142,101 +136,8 @@ async def test_provider_fragment_save_supports_copilot(fake_data_dir: Path, admi
     assert "COPILOT_GITHUB_TOKEN=gho_test_token" in env_path.read_text(encoding="utf-8")
 
 
-# ──────────────────────────────────────────────────────────── pairings page
-
-
-async def test_pairings_renders_after_login(fake_data_dir: Path, admin_password: str) -> None:
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        response = await client.get("/admin/pairings")
-    assert response.status_code == 200
-    body = response.text
-    # The page is a shell — text comes from the fragment, but the shell itself
-    # must wire HTMX up to load the fragment.
-    assert "pairings-panel" in body
-    assert "/admin/_partial/pairings" in body
-
-
-async def test_pairings_fragment_returns_html(fake_data_dir: Path, admin_password: str) -> None:
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        response = await client.get("/admin/_partial/pairings")
-    assert response.status_code == 200
-    body = response.text
-    assert "Pending pairings" in body
-    assert "Approved users" in body
-    # No pending or approved seeded — empty state messages should be shown.
-    assert "No pending pairings." in body
-    assert "No approved users." in body
-
-
-async def test_pairings_panel_shows_pending_users(fake_data_dir: Path, admin_password: str) -> None:
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(
-        pairing_dir / "telegram-pending.json",
-        {"42": {"user_name": "alice", "created_at": 100}},
-    )
-    _write_pairing(
-        pairing_dir / "telegram-approved.json",
-        {"7": {"user_name": "bob", "approved_at": 50}},
-    )
-
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        response = await client.get("/admin/_partial/pairings")
-    assert response.status_code == 200
-    body = response.text
-    # Pending row.
-    assert "42" in body
-    assert "alice" in body
-    # Approved row.
-    assert "7" in body
-    assert "bob" in body
-    # Approve/Deny/Revoke buttons rendered for the right rows.
-    assert 'hx-post="/admin/_partial/pairing/approve"' in body
-    assert 'hx-post="/admin/_partial/pairing/deny"' in body
-    assert 'hx-post="/admin/_partial/pairing/revoke"' in body
-
-
-async def test_pairings_fragment_requires_admin(fake_data_dir: Path, admin_password: str) -> None:
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/admin/_partial/pairings", follow_redirects=False)
-    # No /admin/api/ prefix, so this redirects to login rather than returning 401.
-    assert response.status_code == 302
-    assert response.headers["location"] == "/admin/login"
-
-
-async def test_pairings_approve_fragment_moves_and_returns_panel(
-    fake_data_dir: Path, admin_password: str
-) -> None:
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(pairing_dir / "telegram-pending.json", {"42": {"user_name": "alice"}})
-
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        response = await client.post("/admin/_partial/pairing/approve", data={"user_id": "42"})
-    assert response.status_code == 200, response.text
-    body = response.text
-    # After approval the user is in the Approved table, not Pending.
-    assert "No pending pairings." in body
-    assert "42" in body  # still rendered, just under approved
-
-    approved = json.loads((pairing_dir / "telegram-approved.json").read_text())
-    assert "42" in approved
-
-
 # ---------------------------------------------------------------------------
-# HTMX settings helpers: _provider_context, _channels_context, _pairings_context
+# HTMX settings helpers: _provider_context, _channels_context
 # ---------------------------------------------------------------------------
 
 
@@ -261,18 +162,6 @@ def test_channels_context_returns_channels(fake_data_dir: Path) -> None:
     ctx = _channels_context(paths)
     assert "channels" in ctx
     assert isinstance(ctx["channels"], list)
-
-
-def test_pairings_context_returns_pending_and_approved(fake_data_dir: Path) -> None:
-    """_pairings_context returns pending and approved lists."""
-    from hermes_station.admin.htmx_settings import _pairings_context
-
-    paths = Paths()
-    ctx = _pairings_context(paths)
-    assert "pending" in ctx
-    assert "approved" in ctx
-    assert isinstance(ctx["pending"], list)
-    assert isinstance(ctx["approved"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -329,25 +218,6 @@ async def test_channels_fragment_toggle_requires_admin(fake_data_dir: Path) -> N
             data={"slug": "telegram"},
             follow_redirects=False,
         )
-    assert resp.status_code == 302
-
-
-async def test_pairings_page_requires_admin_htmx(fake_data_dir: Path, admin_password: str) -> None:
-    """Unauthenticated GET /admin/pairings redirects to login."""
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/admin/pairings", follow_redirects=False)
-    assert resp.status_code == 302
-    assert "login" in resp.headers["location"]
-
-
-async def test_pairings_fragment_requires_admin_htmx_boost(fake_data_dir: Path, admin_password: str) -> None:
-    """Unauthenticated GET /admin/_partial/pairings redirects to login."""
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/admin/_partial/pairings", follow_redirects=False)
     assert resp.status_code == 302
 
 
@@ -1155,111 +1025,6 @@ def test_ensure_env_passthrough_single_already_present(fake_data_dir: Path) -> N
     config = yaml.safe_load(config_path.read_text())
     # Should not be duplicated.
     assert config["terminal"]["env_passthrough"].count("EXISTING_KEY") == 1
-
-
-# ---------------------------------------------------------------------------
-# pairings_fragment_action unauthenticated (line 557), invalid action (line 562->573)
-# and exception swallow (lines 566-572)
-# ---------------------------------------------------------------------------
-
-
-async def test_pairings_fragment_action_requires_admin(fake_data_dir: Path) -> None:
-    """Unauthenticated POST /admin/_partial/pairing/approve redirects to login (line 557)."""
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post(
-            "/admin/_partial/pairing/approve",
-            data={"user_id": "42"},
-            follow_redirects=False,
-        )
-    assert resp.status_code == 302
-
-
-async def test_pairings_fragment_action_invalid_action(fake_data_dir: Path, admin_password: str) -> None:
-    """pairings_fragment_action with unknown action skips the action block (line 562->573)."""
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        resp = await client.post(
-            "/admin/_partial/pairing/unknown-action",
-            data={"user_id": "42"},
-        )
-    assert resp.status_code == 200
-    assert "Pending pairings" in resp.text
-
-
-async def test_pairings_fragment_action_no_user_id(fake_data_dir: Path, admin_password: str) -> None:
-    """pairings_fragment_action with missing user_id skips the action (line 562->573)."""
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        resp = await client.post(
-            "/admin/_partial/pairing/approve",
-            data={},
-        )
-    assert resp.status_code == 200
-    assert "Pending pairings" in resp.text
-
-
-async def test_pairings_fragment_action_deny(fake_data_dir: Path, admin_password: str) -> None:
-    """pairings_fragment_action deny action covers elif branch (line 567)."""
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(pairing_dir / "telegram-pending.json", {"55": {"user_name": "charlie"}})
-
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        resp = await client.post(
-            "/admin/_partial/pairing/deny",
-            data={"user_id": "55"},
-        )
-    assert resp.status_code == 200
-    assert "Pending pairings" in resp.text
-
-
-async def test_pairings_fragment_action_revoke(fake_data_dir: Path, admin_password: str) -> None:
-    """pairings_fragment_action revoke action covers else branch (line 568-569)."""
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(pairing_dir / "telegram-approved.json", {"77": {"user_name": "dave"}})
-
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-        resp = await client.post(
-            "/admin/_partial/pairing/revoke",
-            data={"user_id": "77"},
-        )
-    assert resp.status_code == 200
-    assert "Pending pairings" in resp.text
-
-
-async def test_pairings_fragment_action_swallows_keyerror(fake_data_dir: Path, admin_password: str) -> None:
-    """pairings_fragment_action swallows KeyError/ValueError from action helpers (lines 570-572)."""
-    from unittest.mock import patch
-
-    import hermes_station.admin.htmx_settings as _htmx_settings
-
-    app = _build_app()
-    transport = httpx.ASGITransport(app=app)
-
-    def _raise(*_a, **_kw):
-        raise KeyError("user not found")
-
-    with patch.object(_htmx_settings, "approve", _raise):
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            await _login(client, admin_password)
-            resp = await client.post(
-                "/admin/_partial/pairing/approve",
-                data={"user_id": "99"},
-            )
-    assert resp.status_code == 200
-    # Error is swallowed — panel still renders.
-    assert "Pending pairings" in resp.text
 
 
 # ---------------------------------------------------------------------------

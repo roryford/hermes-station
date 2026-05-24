@@ -1,8 +1,8 @@
-"""HTMX page + fragment handlers for the admin Settings and Pairings pages.
+"""HTMX page + fragment handlers for the admin Settings page.
 
 This module renders Jinja2 templates against the same underlying domain helpers
-(`provider.apply_provider_setup`, `channels.save_channel_values`, the pairing
-approve/deny/revoke functions) used by the JSON API in `admin/routes.py`.
+(`provider.apply_provider_setup`, `channels.save_channel_values`) used by the
+JSON API in `admin/routes.py`.
 
 Design choice — fragment endpoints over `hx-ext='json-enc'`:
 The existing JSON API endpoints return JSON, which is awkward to swap into
@@ -28,13 +28,6 @@ from hermes_station.admin.channels import (
     CHANNEL_ENV_KEYS,
     channel_status,
     save_channel_values,
-)
-from hermes_station.admin.pairing import (
-    approve,
-    deny,
-    get_approved,
-    get_pending,
-    revoke,
 )
 from hermes_station.admin.copilot_oauth import poll_device_flow, start_device_flow
 from hermes_station.admin.xai_oauth import (
@@ -119,13 +112,6 @@ def _channels_context(paths: Paths) -> dict[str, Any]:
     return {"channels": channel_status(env_values)}
 
 
-def _pairings_context(paths: Paths) -> dict[str, Any]:
-    return {
-        "pending": get_pending(paths.pairing_dir),
-        "approved": get_approved(paths.pairing_dir),
-    }
-
-
 def _secrets_context(paths: Paths, request: Request | None = None) -> dict[str, Any]:
     config = load_yaml_config(paths.config_path)
     env_values = load_env_file(paths.env_path)
@@ -151,29 +137,6 @@ async def settings_page(request: Request) -> Response:
     context.update(_channels_context(paths))
     context.update(_secrets_context(paths, request))
     return _templates.TemplateResponse(request, "admin/settings.html", context)
-
-
-async def pairings_page(request: Request) -> Response:
-    guard = require_admin(request)
-    if guard is not None:
-        return guard
-    return _templates.TemplateResponse(
-        request,
-        "admin/pairings.html",
-        {"active": "pairings"},
-    )
-
-
-async def pairings_fragment(request: Request) -> Response:
-    guard = require_admin(request)
-    if guard is not None:
-        return guard
-    paths = _paths(request)
-    return _templates.TemplateResponse(
-        request,
-        "admin/_pairings_panel.html",
-        _pairings_context(paths),
-    )
 
 
 # ───────────────────────────────────────────────────────────── partial POSTs
@@ -734,38 +697,9 @@ def _ensure_env_passthrough_single(paths: Paths, key: str) -> None:
     _write(paths.config_path, config)
 
 
-async def pairings_fragment_action(request: Request) -> Response:
-    """Form-encoded approve/deny/revoke. Returns the refreshed pairings panel."""
-    guard = require_admin(request)
-    if guard is not None:
-        return guard
-    paths = _paths(request)
-    action = request.path_params["action"]
-    form = await request.form()
-    user_id = str(form.get("user_id") or "").strip()
-    if user_id and action in {"approve", "deny", "revoke"}:
-        try:
-            if action == "approve":
-                approve(paths.pairing_dir, user_id)
-            elif action == "deny":
-                deny(paths.pairing_dir, user_id)
-            else:
-                revoke(paths.pairing_dir, user_id)
-        except (KeyError, ValueError):
-            # Swallow — the refreshed panel reflects reality either way.
-            pass
-    return _templates.TemplateResponse(
-        request,
-        "admin/_pairings_panel.html",
-        _pairings_context(paths),
-    )
-
-
 def routes() -> list[Route]:
     return [
         Route("/admin/settings", settings_page, methods=["GET"]),
-        Route("/admin/pairings", pairings_page, methods=["GET"]),
-        Route("/admin/_partial/pairings", pairings_fragment, methods=["GET"]),
         Route("/admin/_partial/provider/setup", provider_fragment_save, methods=["POST"]),
         Route("/admin/_partial/channels/save", channels_fragment_save, methods=["POST"]),
         Route("/admin/_partial/channels/clear", channels_fragment_clear, methods=["POST"]),
@@ -782,9 +716,4 @@ def routes() -> list[Route]:
         Route("/admin/_partial/secrets/enable", secrets_fragment_enable, methods=["POST"]),
         Route("/admin/_partial/secrets/add", secrets_fragment_add, methods=["POST"]),
         Route("/admin/_partial/secrets/forget", secrets_fragment_forget, methods=["POST"]),
-        Route(
-            "/admin/_partial/pairing/{action}",
-            pairings_fragment_action,
-            methods=["POST"],
-        ),
     ]

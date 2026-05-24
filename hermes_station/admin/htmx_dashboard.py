@@ -8,8 +8,7 @@ POST to the existing JSON action endpoints in `hermes_station.admin.routes`
 fragment for the response swap.
 
 The dashboard is intentionally read-mostly: provider configuration and channel
-secrets are edited on the Settings page; pending pairings are managed on the
-Pairings page. The summary card here links to both.
+secrets are edited on the Settings page.
 """
 
 from __future__ import annotations
@@ -26,7 +25,6 @@ from hermes_station.admin._templates import templates as _templates
 from hermes_station.admin.auth import is_authenticated, require_admin
 from hermes_station.admin.channels import CHANNEL_CATALOG, channel_status
 from hermes_station.admin.mcp import load_mcp_status, toggle_mcp_server
-from hermes_station.admin.pairing import get_pending
 from hermes_station.admin.provider import PROVIDER_CATALOG
 from hermes_station.config import (
     AdminSettings,
@@ -87,7 +85,6 @@ async def _gather_status(request: Request) -> dict[str, Any]:
     }
 
     channels = channel_status(env_values)
-    pending_count = len(get_pending(paths.pairing_dir))
 
     memory_raw = config.get("memory") or {}
     if not isinstance(memory_raw, dict):
@@ -129,7 +126,6 @@ async def _gather_status(request: Request) -> dict[str, Any]:
         "memory": memory_block,
         "channels": channels,
         "channel_catalog": CHANNEL_CATALOG,
-        "pending_pairings": pending_count,
         "stages": stages,
         "warnings": warnings,
         "versions": versions,

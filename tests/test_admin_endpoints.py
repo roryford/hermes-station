@@ -1,19 +1,18 @@
 """Phase-1 admin endpoint + helper tests.
 
-Covers `hermes_station.admin.{provider,channels,pairing}` and the routes that
+Covers `hermes_station.admin.{provider,channels}` and the routes that
 expose them. Tests against a fake `/data` tree via the `fake_data_dir` fixture.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import httpx
 import pytest
 import yaml
 
-from hermes_station.admin import channels, pairing, provider
+from hermes_station.admin import channels, provider
 from hermes_station.config import load_env_file
 
 
@@ -187,71 +186,6 @@ def test_apply_provider_setup_blank_key_no_existing_raises(
         )
 
 
-# ────────────────────────────────────────────────────────────── pairing helper
-
-
-def _write_pairing(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-
-def test_pairing_approve_moves_pending_to_approved(fake_data_dir: Path) -> None:
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(
-        pairing_dir / "telegram-pending.json",
-        {"42": {"user_name": "alice", "created_at": 100}},
-    )
-
-    pairing.approve(pairing_dir, "42")
-
-    pending = json.loads((pairing_dir / "telegram-pending.json").read_text())
-    approved = json.loads((pairing_dir / "telegram-approved.json").read_text())
-    assert pending == {}
-    assert "42" in approved
-    assert approved["42"]["user_name"] == "alice"
-    assert "approved_at" in approved["42"]
-    assert (pairing_dir / "telegram-approved.json").stat().st_mode & 0o777 == 0o600
-
-
-def test_pairing_deny_removes_from_pending(fake_data_dir: Path) -> None:
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(
-        pairing_dir / "telegram-pending.json",
-        {"42": {"user_name": "alice"}, "43": {"user_name": "bob"}},
-    )
-
-    pairing.deny(pairing_dir, "42")
-
-    pending = json.loads((pairing_dir / "telegram-pending.json").read_text())
-    assert "42" not in pending
-    assert "43" in pending
-
-
-def test_pairing_revoke_removes_from_approved(fake_data_dir: Path) -> None:
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(
-        pairing_dir / "telegram-approved.json",
-        {"42": {"user_name": "alice", "approved_at": 1}},
-    )
-
-    pairing.revoke(pairing_dir, "42")
-
-    approved = json.loads((pairing_dir / "telegram-approved.json").read_text())
-    assert approved == {}
-
-
-def test_pairing_reads_new_path_if_present(fake_data_dir: Path) -> None:
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    new_path = fake_data_dir / ".hermes" / "platforms" / "pairing" / "telegram-approved.json"
-    # Legacy path has alice; new path has bob — reader should prefer new.
-    _write_pairing(pairing_dir / "telegram-approved.json", {"1": {"user_name": "alice"}})
-    _write_pairing(new_path, {"2": {"user_name": "bob"}})
-
-    approved = pairing.get_approved(pairing_dir)
-    user_ids = {entry["user_id"] for entry in approved}
-    assert user_ids == {"2"}, "new platforms/pairing path should win"
-
-
 # ─────────────────────────────────────────────────────────────────── endpoints
 
 
@@ -298,26 +232,6 @@ async def test_channels_save_endpoint_persists(fake_data_dir: Path, admin_passwo
         telegram = next(c for c in listing.json()["channels"] if c["slug"] == "telegram")
         assert telegram["enabled"] is True
         assert "abc" not in telegram["primary_value"]
-
-
-async def test_pairing_approve_endpoint(fake_data_dir: Path, admin_password: str) -> None:
-    pairing_dir = fake_data_dir / ".hermes" / "pairing"
-    _write_pairing(pairing_dir / "telegram-pending.json", {"42": {"user_name": "alice"}})
-
-    from hermes_station.app import create_app
-
-    app = create_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        await _login(client, admin_password)
-
-        resp = await client.post("/admin/api/pairing/approve", json={"user_id": "42"})
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["ok"] is True
-
-        approved_resp = await client.get("/admin/api/pairing/approved")
-        approved = approved_resp.json()["approved"]
-        assert any(entry["user_id"] == "42" for entry in approved)
 
 
 # ─────────────────────────────────────────────── login page no-password message

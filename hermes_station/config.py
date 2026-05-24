@@ -36,10 +36,6 @@ class Paths(BaseSettings):
     def env_path(self) -> Path:
         return self.hermes_home / ".env"
 
-    @property
-    def pairing_dir(self) -> Path:
-        return self.hermes_home / "pairing"
-
     def ensure(self) -> None:
         """Create the directory skeleton documented in CONTRACT.md §3.1.
 
@@ -53,7 +49,6 @@ class Paths(BaseSettings):
             self.hermes_home / "sessions",
             self.hermes_home / "skills",
             self.hermes_home / "optional-skills",
-            self.pairing_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
 

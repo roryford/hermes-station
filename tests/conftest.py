@@ -17,15 +17,12 @@ def fake_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[P
     """A throwaway /data tree, populated to match the post-first-boot contract."""
     data = tmp_path / "data"
     hermes_home = data / ".hermes"
-    (hermes_home / "pairing").mkdir(parents=True)
+    hermes_home.mkdir(parents=True)
     (hermes_home / "sessions").mkdir()
     (hermes_home / "skills").mkdir()
     (hermes_home / "optional-skills").mkdir()
     (data / "webui").mkdir()
     (data / "workspace").mkdir()
-
-    for name in ("telegram-approved.json", "telegram-pending.json", "_rate_limits.json"):
-        (hermes_home / "pairing" / name).write_text("{}")
 
     monkeypatch.setenv("HOME", str(data))
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
