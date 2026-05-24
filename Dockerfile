@@ -72,6 +72,7 @@ COPY hermes_station/__init__.py /app/hermes_station/__init__.py
 RUN uv pip install --system --link-mode=copy ".[hermes]" -r /opt/hermes-webui/requirements.txt \
         pandas numpy pillow openpyxl pypdf \
         pytest ruff \
+        "hindsight-client>=0.4.22" \
     && mkdir -p /data/.hermes /data/webui /data/workspace
 
 # Patch: hermes-agent 0.14.0 wheel omits plugin.yaml files; restore them.
