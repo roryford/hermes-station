@@ -105,6 +105,21 @@ The config is written on every boot (not first-boot-only) so credential changes 
 
 Implemented in `_seed_himalaya_config` / `_himalaya_backend_config` in `hermes_station/config.py`; the spec is pinned by [`tests/test_himalaya_config.py`](../tests/test_himalaya_config.py).
 
+### Runtime version patches
+
+The container ships a pinned combination of hermes-agent and hermes-webui, but you can override either at boot — useful for testing an upstream release before rebaking the image.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HERMES_PATCH_AGENT_VERSION` | _unset_ | When set to a version string (e.g. `0.14.1`), the entrypoint upgrades `hermes-agent` to that version before the control plane boots. |
+| `HERMES_PATCH_WEBUI_VERSION` | _unset_ | Same as above but for `hermes-webui`. |
+
+Both vars are honored only at container start (the entrypoint runs the upgrade and then `exec`s the control plane). Unset to revert to the image-baked versions on the next restart.
+
+## Capabilities reference
+
+For the full list of what hermes-station supports (LLM providers, channels, voice, memory, web search, browser automation, image generation, observability, MCP tools) plus how to enable each, see [`features.md`](./features.md).
+
 ## Build metadata
 
 ### `IMAGE_REVISION`

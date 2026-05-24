@@ -32,7 +32,7 @@ Everything writes to `/data` (single Railway volume) and shares one Hermes ident
 
 To skip the `/admin` provider step, set `OPENROUTER_API_KEY` (or another supported key) as an env var at boot — the auto-seeder writes `model.provider: openrouter` to `config.yaml` on first start.
 
-See [`docs/configuration.md`](docs/configuration.md) for the full env-var reference.
+See [`docs/features.md`](docs/features.md) for the full capability catalogue — LLM providers, channels, voice, memory, web search, browser automation, image generation, observability, and MCP tools, with which ones are free. [`docs/configuration.md`](docs/configuration.md) has the full env-var reference.
 
 ## Quick start: Docker / Apple container
 
