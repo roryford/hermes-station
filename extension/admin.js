@@ -64,6 +64,9 @@
   // switchSettingsSection('conversation')" — they look identical. So we flip the flag
   // on a different signal: real click events on #settingsMenu menu items. webui's
   // init does not synthesize click events, only real user navigation does.
+  // One-shot flag: once station has been activated (by user or default), don't
+  // re-apply the default activation again.
+  let _defaultActivated = false;
   let _userOpenedStation = false;
   let _delegate = window.switchSettingsSection;
   function activateStation() {
@@ -77,6 +80,7 @@
   function wrappedSwitchSettingsSection(name) {
     if (name === SECTION_ID) {
       _userOpenedStation = true;
+      _defaultActivated = true;
       activateStation();
       start();
       return;
@@ -86,7 +90,16 @@
     // polling lifecycle no longer depends on this class).
     pane.classList.remove("active");
     btn.classList.remove("active");
-    if (typeof _delegate === "function") return _delegate.apply(this, arguments);
+    if (typeof _delegate === "function") _delegate.apply(this, arguments);
+    // The first non-station call is webui's async init ending on 'conversation'
+    // (panels.js:5695). Re-activate station as the default view (one-shot) so
+    // it is the first thing operators see when they open Settings.
+    if (!_defaultActivated) {
+      _defaultActivated = true;
+      _userOpenedStation = true;
+      activateStation();
+      start();
+    }
   }
   try {
     // The existing global was created via `function` declaration in panels.js, so it is
