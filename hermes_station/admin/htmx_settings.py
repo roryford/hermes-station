@@ -506,9 +506,7 @@ async def xai_oauth_exchange(request: Request) -> Response:
         if gateway is not None:
             await gateway.restart()
     except Exception as exc:
-        context: dict[str, Any] = {
-            "alert": {"kind": "error", "message": f"Token received but could not save: {exc}"}
-        }
+        context = {"alert": {"kind": "error", "message": f"Token received but could not save: {exc}"}}
         context.update(_provider_context(paths))
         return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
