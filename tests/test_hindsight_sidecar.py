@@ -92,9 +92,7 @@ def test_sidecar_process_running() -> None:
         timeout=10,
     )
     assert proc.returncode == 0, f"ps aux failed: {proc.stderr!r}"
-    assert "hindsight-api" in proc.stdout, (
-        "hindsight-api process not found in ps aux output"
-    )
+    assert "hindsight-api" in proc.stdout, "hindsight-api process not found in ps aux output"
 
 
 @_local_only
@@ -106,9 +104,7 @@ def test_sidecar_pg0_running() -> None:
         timeout=10,
     )
     assert proc.returncode == 0, f"ps aux failed: {proc.stderr!r}"
-    assert "postgres" in proc.stdout, (
-        "postgres (pg0 embedded) process not found in ps aux output"
-    )
+    assert "postgres" in proc.stdout, "postgres (pg0 embedded) process not found in ps aux output"
 
 
 @_local_only
