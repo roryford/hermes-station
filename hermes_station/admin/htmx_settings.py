@@ -449,7 +449,9 @@ async def xai_oauth_exchange(request: Request) -> Response:
     form = await request.form()
     code = str(form.get("xai_code", "")).strip()
     if not code:
-        context: dict[str, Any] = {"alert": {"kind": "error", "message": "Paste the authorization code from xAI first."}}
+        context: dict[str, Any] = {
+            "alert": {"kind": "error", "message": "Paste the authorization code from xAI first."}
+        }
         context.update(_provider_context(paths))
         return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
