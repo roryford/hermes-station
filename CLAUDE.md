@@ -83,6 +83,21 @@ container run --rm \
     -v --no-cov
 ```
 
+**Hindsight sidecar tests** (requires container booted with `HINDSIGHT_SIDECAR=1 -e OPENROUTER_API_KEY=local-fake-key`):
+
+```bash
+container run --rm \
+  -e HERMES_STATION_HINDSIGHT_SIDECAR=1 \
+  -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
+  -e HERMES_STATION_E2E_URL=http://192.168.64.1:8787 \
+  -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
+  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
+  hermes-station:test \
+  python -m pytest tests/test_hindsight_sidecar.py -v --no-cov
+```
+
+Note: a fake key is sufficient — the API server starts and listens even if LLM auth would fail with 401.
+
 **5. Cleanup:**
 ```bash
 container stop hs-test && container rm hs-test
