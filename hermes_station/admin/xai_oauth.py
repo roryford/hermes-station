@@ -2,15 +2,19 @@
 
 SuperGrok / X Premium+ uses a standard OAuth 2.0 authorization code flow with
 PKCE (Proof Key for Code Exchange, S256 method). The user's browser is
-redirected to auth.x.ai, authorizes there, and xAI redirects back to the
-station's callback URL. The station exchanges the code server-side.
+redirected to auth.x.ai, authorizes there, then xAI attempts to redirect to
+http://127.0.0.1:56121/callback — the localhost redirect URI registered for the
+public Grok CLI client. Since no local listener is running, xAI shows the
+authorization code on screen. The user copies it and pastes it into the admin UI,
+where hermes exchanges it server-side using the stored code_verifier.
 
-State, code_verifier, and client_id are kept in an in-memory dict keyed by a
-random state token (secrets.token_urlsafe). Entries expire after 10 minutes.
-This is fine for a single-admin-user setup where the station runs in one process.
+State, code_verifier, and code_challenge are kept in an in-memory dict keyed by
+a random state token (secrets.token_urlsafe). Entries expire after 10 minutes.
+A separate _latest_flow dict holds the most recent pending flow so the paste-code
+endpoint can retrieve the verifier without needing the state token.
 
-XAI_OAUTH_CLIENT_ID is resolved once in start_pkce_flow and stored with the
-state so exchange_code uses the exact same client_id that was presented to xAI.
+XAI_OAUTH_CLIENT_ID is resolved once in start_pkce_flow. The default is the
+public desktop client ID used by the Grok CLI — not a secret.
 """
 
 from __future__ import annotations
@@ -29,6 +33,11 @@ import httpx
 # Override via XAI_OAUTH_CLIENT_ID env var if needed.
 _DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
 
+# Redirect URI registered for the public Grok CLI client. The station is not
+# listening on this port — when xAI tries to redirect here and fails, it
+# displays the authorization code on screen for the user to copy and paste back.
+_REDIRECT_URI = "http://127.0.0.1:56121/callback"
+
 _AUTH_URL = "https://auth.x.ai/oauth2/authorize"
 _TOKEN_URL = "https://auth.x.ai/oauth2/token"
 _SCOPES = "openid profile email offline_access grok-cli:access api:access"
@@ -40,12 +49,14 @@ _HEADERS = {
     "User-Agent": "hermes-station/1.0",
 }
 
-# Pending PKCE states: state_token -> {code_verifier, redirect_uri, client_id, expires_at}
+# Pending PKCE states: state_token -> {code_verifier, code_challenge, redirect_uri, client_id, expires_at}
 _pending_states: dict[str, dict[str, str | float]] = {}
+
+# Most recent pending flow — used by the paste-code exchange path.
+_latest_flow: dict[str, str | float] = {}
 
 
 def _purge_expired_states() -> None:
-    """Remove state entries older than _STATE_TTL_SECONDS."""
     now = time.monotonic()
     expired = [k for k, v in _pending_states.items() if float(v["expires_at"]) < now]
     for k in expired:
@@ -53,11 +64,7 @@ def _purge_expired_states() -> None:
 
 
 def generate_pkce_pair() -> tuple[str, str]:
-    """Return (code_verifier, code_challenge) using S256 method.
-
-    code_verifier: 32 random URL-safe bytes, base64url-encoded (no padding).
-    code_challenge: SHA-256 of the verifier, base64url-encoded (no padding).
-    """
+    """Return (code_verifier, code_challenge) using S256 method."""
     raw = secrets.token_bytes(32)
     code_verifier = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
     digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
@@ -65,7 +72,9 @@ def generate_pkce_pair() -> tuple[str, str]:
     return code_verifier, code_challenge
 
 
-def build_authorize_url(state: str, code_challenge: str, redirect_uri: str, client_id: str) -> str:
+def build_authorize_url(
+    state: str, code_challenge: str, nonce: str, redirect_uri: str, client_id: str
+) -> str:
     """Build the xAI authorization URL."""
     params = {
         "response_type": "code",
@@ -75,35 +84,41 @@ def build_authorize_url(state: str, code_challenge: str, redirect_uri: str, clie
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
+        "nonce": nonce,
+        "plan": "generic",
+        "referrer": "hermes-agent",
     }
     return f"{_AUTH_URL}?{urlencode(params)}"
 
 
-def start_pkce_flow(redirect_uri: str) -> tuple[str, str]:
-    """Generate PKCE pair and state, register in pending dict.
+def start_pkce_flow() -> tuple[str, str]:
+    """Generate PKCE pair and state, register in pending dicts.
 
-    Returns (state, authorize_url). Purges expired entries on each call.
-    Stores the resolved client_id so exchange_code uses the same value.
+    Returns (state, authorize_url). Uses the fixed localhost redirect URI
+    registered for the public Grok CLI client. Purges expired entries on each call.
     """
+    global _latest_flow
     _purge_expired_states()
     client_id = os.environ.get("XAI_OAUTH_CLIENT_ID", "") or _DEFAULT_CLIENT_ID
     state = secrets.token_urlsafe(32)
+    nonce = secrets.token_hex(24)
     code_verifier, code_challenge = generate_pkce_pair()
-    authorize_url = build_authorize_url(state, code_challenge, redirect_uri, client_id)
-    _pending_states[state] = {
+    authorize_url = build_authorize_url(state, code_challenge, nonce, _REDIRECT_URI, client_id)
+    expires_at = time.monotonic() + _STATE_TTL_SECONDS
+    entry: dict[str, str | float] = {
         "code_verifier": code_verifier,
-        "redirect_uri": redirect_uri,
+        "code_challenge": code_challenge,
+        "redirect_uri": _REDIRECT_URI,
         "client_id": client_id,
-        "expires_at": time.monotonic() + _STATE_TTL_SECONDS,
+        "expires_at": expires_at,
     }
+    _pending_states[state] = entry
+    _latest_flow = dict(entry)
     return state, authorize_url
 
 
 def consume_state(state: str) -> dict[str, str]:
-    """Pop and return the pending state entry, or raise ValueError if missing/expired.
-
-    Validates TTL on retrieval even if purge hasn't run yet.
-    """
+    """Pop and return the pending state entry, or raise ValueError if missing/expired."""
     entry = _pending_states.pop(state, None)
     if entry is None:
         raise ValueError("Invalid or expired OAuth state. Please start the flow again.")
@@ -112,13 +127,33 @@ def consume_state(state: str) -> dict[str, str]:
     return {k: str(v) for k, v in entry.items() if k != "expires_at"}
 
 
-async def exchange_code(code: str, code_verifier: str, redirect_uri: str, client_id: str) -> dict:
+def pop_latest_flow() -> dict[str, str]:
+    """Return and clear the latest pending PKCE flow for paste-code exchange.
+
+    Raises ValueError if no active flow or if it has expired.
+    """
+    global _latest_flow
+    if not _latest_flow:
+        raise ValueError("No active xAI OAuth flow. Please click 'Connect with xAI' first.")
+    if time.monotonic() > float(_latest_flow["expires_at"]):
+        _latest_flow = {}
+        raise ValueError("xAI OAuth session expired (10 min limit). Please start again.")
+    flow = {k: str(v) for k, v in _latest_flow.items() if k != "expires_at"}
+    _latest_flow = {}
+    return flow
+
+
+async def exchange_code(
+    code: str,
+    code_verifier: str,
+    code_challenge: str,
+    redirect_uri: str,
+    client_id: str,
+) -> dict:
     """Exchange authorization code for tokens.
 
-    Returns the raw token response dict:
-        {access_token, token_type, expires_in, refresh_token, ...}
+    Returns the raw token response dict: {access_token, token_type, expires_in, ...}
     Raises ValueError on HTTP or parse error.
-    client_id must be the same value used when building the authorize URL.
     """
     payload = urlencode(
         {
@@ -126,6 +161,8 @@ async def exchange_code(code: str, code_verifier: str, redirect_uri: str, client
             "client_id": client_id,
             "code": code,
             "code_verifier": code_verifier,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
             "redirect_uri": redirect_uri,
         }
     )

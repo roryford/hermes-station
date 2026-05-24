@@ -81,7 +81,7 @@
                below — HTML5 forbids nested <form> elements, so the xAI form lives
                outside the outer settings form and is linked via the id attribute. #}
             <button type="submit" form="xai-oauth-form" class="btn">Connect with xAI</button>
-            <div class="field-hint">Opens xAI OAuth in your browser — no token to copy.</div>
+            <div class="field-hint">Opens xAI OAuth — you'll paste a code back here.</div>
         </div>
         <div class="field" data-field="base_url">
             <label for="provider-base-url">Base URL</label>
@@ -93,6 +93,33 @@
         </div>
     </form>
     {# Disconnected form for xAI OAuth — must live outside the outer form (HTML5
-       forbids nesting). The button above references it via form="xai-oauth-form". #}
-    <form id="xai-oauth-form" method="POST" action="/admin/_partial/provider/xai/start" style="display:none;"></form>
+       forbids nesting). The button above references it via form="xai-oauth-form".
+       Uses HTMX so the response swaps the card in-place rather than navigating. #}
+    <form id="xai-oauth-form"
+          hx-post="/admin/_partial/provider/xai/start"
+          hx-target="#provider-card"
+          hx-swap="outerHTML"
+          style="display:none;"></form>
+
+    {% if xai_authorize_url %}
+    {# Step-by-step paste-code UI shown after xai_oauth_start runs. #}
+    <div class="card" style="margin-top:1rem; padding:1rem; background:var(--surface-2,#f5f5f5);">
+        <p style="margin:0 0 0.5rem;"><strong>Step 1:</strong>
+            <a href="{{ xai_authorize_url }}" target="_blank" rel="noopener">Open xAI authorization &rarr;</a>
+        </p>
+        <p style="margin:0 0 0.75rem; color:var(--text-muted,#666); font-size:0.875rem;">
+            After approving, xAI will show "Could not reach your app" and display a code. Copy it.
+        </p>
+        <p style="margin:0 0 0.5rem;"><strong>Step 2:</strong> Paste the code below.</p>
+        <form hx-post="/admin/_partial/provider/xai/exchange"
+              hx-target="#provider-card"
+              hx-swap="outerHTML">
+            <div class="field" style="margin-bottom:0.5rem;">
+                <input type="text" name="xai_code" placeholder="Paste authorization code here"
+                       autocomplete="off" style="font-family:monospace;">
+            </div>
+            <button type="submit" class="btn">Exchange code</button>
+        </form>
+    </div>
+    {% endif %}
 </section>
