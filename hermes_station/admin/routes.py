@@ -31,7 +31,6 @@ from hermes_station.admin.auth import (
 from hermes_station.admin.bridge_auth import verify_webui_session
 from hermes_station.admin.channels import channel_status, save_channel_values
 from hermes_station.admin.pilot_smoketest import api_pilot_smoketest
-from hermes_station.admin.pairing import approve, deny, get_approved, get_pending, revoke
 from hermes_station.admin.provider import apply_provider_setup
 from hermes_station.config import (
     AdminSettings,
@@ -582,52 +581,6 @@ async def api_channels_save(request: Request) -> Response:
     return JSONResponse({"ok": True, "channels": channel_status(env_values)})
 
 
-async def api_pairing_pending(request: Request) -> Response:
-    guard = require_admin(request)
-    if guard is not None:
-        return guard
-    paths = _paths(request)
-    return JSONResponse({"pending": get_pending(paths.pairing_dir)})
-
-
-async def api_pairing_approved(request: Request) -> Response:
-    guard = require_admin(request)
-    if guard is not None:
-        return guard
-    paths = _paths(request)
-    return JSONResponse({"approved": get_approved(paths.pairing_dir)})
-
-
-async def api_pairing_action(request: Request) -> Response:
-    guard = require_admin(request)
-    if guard is not None:
-        return guard
-    action = request.path_params["action"]
-    if action == "pending":
-        return await api_pairing_pending(request)
-    if action == "approved":
-        return await api_pairing_approved(request)
-    if action not in {"approve", "deny", "revoke"}:
-        return JSONResponse({"ok": False, "error": f"unknown action: {action}"}, status_code=400)
-    paths = _paths(request)
-    body = await _json_body(request)
-    user_id = str(body.get("user_id") or "").strip()
-    if not user_id:
-        return JSONResponse({"ok": False, "error": "user_id is required"}, status_code=400)
-    try:
-        if action == "approve":
-            approve(paths.pairing_dir, user_id)
-        elif action == "deny":
-            deny(paths.pairing_dir, user_id)
-        else:
-            revoke(paths.pairing_dir, user_id)
-    except KeyError as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
-    except ValueError as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
-    return JSONResponse({"ok": True})
-
-
 _SUPERVISOR_ACTIONS = frozenset({"start", "stop", "restart"})
 
 
@@ -872,9 +825,6 @@ def admin_routes() -> list[Route]:
         Route("/admin/api/provider/setup", api_provider_setup, methods=["POST"]),
         Route("/admin/api/channels", api_channels_get, methods=["GET"]),
         Route("/admin/api/channels/save", api_channels_save, methods=["POST"]),
-        Route("/admin/api/pairing/pending", api_pairing_pending, methods=["GET"]),
-        Route("/admin/api/pairing/approved", api_pairing_approved, methods=["GET"]),
-        Route("/admin/api/pairing/{action}", api_pairing_action, methods=["GET", "POST"]),
         Route("/admin/api/gateway/{action}", api_gateway_action, methods=["POST"]),
         Route("/admin/api/webui/{action}", api_webui_action, methods=["POST"]),
     ]
