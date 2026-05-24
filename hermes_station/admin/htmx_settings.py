@@ -37,7 +37,12 @@ from hermes_station.admin.pairing import (
     revoke,
 )
 from hermes_station.admin.copilot_oauth import poll_device_flow, start_device_flow
-from hermes_station.admin.xai_oauth import consume_state, exchange_code, start_pkce_flow
+from hermes_station.admin.xai_oauth import (
+    consume_state,
+    exchange_code,
+    pop_latest_flow,
+    start_pkce_flow,
+)
 from hermes_station.admin.provider import (
     PROVIDER_CATALOG,
     apply_provider_setup,
@@ -393,21 +398,6 @@ async def provider_cancel(request: Request) -> Response:
     return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
 
-def _xai_redirect_uri(request: Request) -> str:
-    """Build the OAuth redirect_uri for xAI callbacks.
-
-    Prefers HERMES_BASE_URL env var so deployments behind a TLS-terminating
-    reverse proxy (e.g. Railway) get the correct public HTTPS origin rather
-    than the internal http://host:port derived from the request.
-    """
-    import os as _os
-
-    base = _os.environ.get("HERMES_BASE_URL", "").rstrip("/")
-    if not base:
-        base = f"{request.url.scheme}://{request.url.netloc}"
-    return f"{base}/admin/oauth/xai/callback"
-
-
 def _xai_settings_error(request: Request, paths: Paths, message: str) -> Response:
     """Return the full settings page with an error alert.
 
@@ -423,26 +413,88 @@ def _xai_settings_error(request: Request, paths: Paths, message: str) -> Respons
 
 
 async def xai_oauth_start(request: Request) -> Response:
-    """Redirect the admin browser to the xAI authorization endpoint (PKCE flow).
+    """Start xAI PKCE flow and return a pending-state card.
 
-    This is a POST handler that returns a 303 redirect. It must be submitted
-    via a plain browser form (not an HTMX fetch) so the redirect is followed
-    natively and the browser navigates to auth.x.ai.
+    Generates the authorization URL (using the localhost redirect URI registered
+    for the public Grok CLI client) and returns the provider card fragment with
+    a step-by-step paste-code UI. The user opens the auth URL manually, approves
+    on auth.x.ai, copies the code from xAI's fallback page, and pastes it back.
     """
     guard = require_admin(request)
     if guard is not None:
         return guard
-    redirect_uri = _xai_redirect_uri(request)
+    paths = _paths(request)
     try:
-        _state, authorize_url = start_pkce_flow(redirect_uri)
+        _state, authorize_url = start_pkce_flow()
     except ValueError as exc:
-        paths = _paths(request)
         context: dict[str, Any] = {"alert": {"kind": "error", "message": f"Cannot start xAI OAuth: {exc}"}}
         context.update(_provider_context(paths))
         return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
-    from starlette.responses import RedirectResponse
+    context = {"xai_authorize_url": authorize_url}
+    context.update(_provider_context(paths))
+    return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
-    return RedirectResponse(url=authorize_url, status_code=303)
+
+async def xai_oauth_exchange(request: Request) -> Response:
+    """Exchange a manually-pasted xAI authorization code for an access token.
+
+    Called from the paste-code form shown after xai_oauth_start. Retrieves the
+    stored code_verifier for the most recent PKCE flow and exchanges the code.
+    """
+    guard = require_admin(request)
+    if guard is not None:
+        return guard
+    paths = _paths(request)
+
+    form = await request.form()
+    code = str(form.get("xai_code", "")).strip()
+    if not code:
+        context: dict[str, Any] = {"alert": {"kind": "error", "message": "Paste the authorization code from xAI first."}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    try:
+        flow = pop_latest_flow()
+    except ValueError as exc:
+        context = {"alert": {"kind": "error", "message": str(exc)}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    try:
+        token_data = await exchange_code(
+            code=code,
+            code_verifier=flow["code_verifier"],
+            code_challenge=flow["code_challenge"],
+            redirect_uri=flow["redirect_uri"],
+            client_id=flow["client_id"],
+        )
+    except ValueError as exc:
+        context = {"alert": {"kind": "error", "message": str(exc)}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    access_token = token_data["access_token"]
+    meta = PROVIDER_CATALOG["xai"]
+    try:
+        apply_provider_setup(
+            config_path=paths.config_path,
+            env_path=paths.env_path,
+            provider="xai",
+            model=meta["default_model"],
+            api_key=access_token,
+        )
+        seed_env_file_to_os(paths.env_path, paths.config_path)
+        gateway = getattr(request.app.state, "gateway", None)
+        if gateway is not None:
+            await gateway.restart()
+    except Exception as exc:
+        context = {"alert": {"kind": "error", "message": f"Token received but could not save: {exc}"}}
+        context.update(_provider_context(paths))
+        return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
+
+    context = {"alert": {"kind": "success", "message": "xAI connected successfully."}}
+    context.update(_provider_context(paths))
+    return _templates.TemplateResponse(request, "admin/_provider_card.html", context)
 
 
 async def xai_oauth_callback(request: Request) -> Response:
@@ -475,6 +527,7 @@ async def xai_oauth_callback(request: Request) -> Response:
         token_data = await exchange_code(
             code=code,
             code_verifier=pending["code_verifier"],
+            code_challenge=pending["code_challenge"],
             redirect_uri=pending["redirect_uri"],
             client_id=pending["client_id"],
         )
@@ -702,6 +755,7 @@ def routes() -> list[Route]:
         Route("/admin/_partial/provider/copilot/poll", copilot_oauth_poll, methods=["POST"]),
         Route("/admin/_partial/provider/cancel", provider_cancel, methods=["POST"]),
         Route("/admin/_partial/provider/xai/start", xai_oauth_start, methods=["POST"]),
+        Route("/admin/_partial/provider/xai/exchange", xai_oauth_exchange, methods=["POST"]),
         Route("/admin/oauth/xai/callback", xai_oauth_callback, methods=["GET"]),
         Route("/admin/_partial/secrets/save", secrets_fragment_save, methods=["POST"]),
         Route("/admin/_partial/secrets/clear", secrets_fragment_clear, methods=["POST"]),
