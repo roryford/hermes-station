@@ -63,7 +63,7 @@ jobs:
         run: |
           mkdir -p /tmp/hs-ctx/hermes_station
           cp pyproject.toml README.md LICENSE uv.lock .dockerignore /tmp/hs-ctx/
-          cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh /tmp/hs-ctx/
+          cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh scripts/hermes-entrypoint.sh /tmp/hs-ctx/
           # Staged for the deps-cache COPY (kept separate from the source tar
           # so changes to package source don't bust the uv pip install cache).
           cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
