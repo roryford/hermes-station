@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
 import os
 import sqlite3
-import tarfile
-import tempfile
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -17,9 +14,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-import httpx
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from hermes_station.admin._templates import templates as _templates
@@ -852,277 +848,6 @@ async def api_pilot_usage(request: Request) -> Response:
     return JSONResponse(payload)
 
 
-# Flat files and directories included in backup archives.
-# .env is excluded — users manage secrets separately via Railway env vars.
-_BACKUP_FILES = frozenset({"config.yaml", "state.db", "gateway_state.json", "SOUL.md"})
-_BACKUP_DIRS = frozenset({"memories", "pairing"})
-
-
-def _member_allowed(name: str) -> bool:
-    """Return True if a tar member name is permitted by the backup allowlist."""
-    parts = name.split("/")
-    if len(parts) == 1:
-        return name in _BACKUP_FILES
-    # Directory entries or files inside an allowed directory.
-    return parts[0] in _BACKUP_DIRS
-
-
-def _build_backup_sync(hermes_home: Path) -> tuple[bytes, str]:
-    """Build an in-memory tar.gz of the allowed files and directories."""
-    buf = io.BytesIO()
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    filename = f"hermes-station-backup-{timestamp}.tar.gz"
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        for name in sorted(_BACKUP_FILES):
-            p = hermes_home / name
-            if p.exists():
-                tf.add(str(p), arcname=name)
-        for name in sorted(_BACKUP_DIRS):
-            p = hermes_home / name
-            if p.exists():
-                tf.add(str(p), arcname=name, recursive=True)
-    return buf.getvalue(), filename
-
-
-async def api_pilot_backup_download(request: Request) -> Response:
-    """Download a tar.gz backup of the agent state directory.
-
-    POST /admin/api/pilot/backup/download
-    Stops the gateway, WAL-checkpoints state.db, builds tar.gz in memory,
-    restarts the gateway, streams the archive.
-    """
-    if not pilot_admin_extension_enabled():
-        return JSONResponse({"error": "not_found"}, status_code=404)
-
-    if not await verify_webui_session(request):
-        if not is_authenticated(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-    if not _same_origin_or_missing(request):
-        return JSONResponse({"ok": False, "error": "cross-origin request rejected"}, status_code=403)
-
-    gateway: Gateway | None = getattr(request.app.state, "gateway", None)
-    paths = _paths(request)
-    hermes_home = paths.hermes_home
-    db_path = hermes_home / "state.db"
-
-    if gateway is not None:
-        try:
-            await gateway.stop()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("backup: gateway stop failed: %s", exc)
-
-    try:
-        if db_path.exists():
-
-            def _wal_checkpoint() -> None:
-                conn = sqlite3.connect(str(db_path))
-                try:
-                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                finally:
-                    conn.close()
-
-            await asyncio.to_thread(_wal_checkpoint)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("backup: WAL checkpoint failed: %s", exc)
-
-    try:
-        data, filename = await asyncio.to_thread(_build_backup_sync, hermes_home)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("backup: tar build failed: %s", exc)
-        if gateway is not None:
-            try:
-                await gateway.start()
-            except Exception as exc2:  # noqa: BLE001
-                logger.warning("backup: gateway restart after tar failure: %s", exc2)
-        return JSONResponse({"ok": False, "error": "backup build failed"}, status_code=500)
-
-    if gateway is not None:
-        try:
-            await gateway.start()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("backup: gateway start after backup: %s", exc)
-
-    return StreamingResponse(
-        iter([data]),
-        media_type="application/gzip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-async def api_pilot_backup_restore(request: Request) -> Response:
-    """Restore from an uploaded tar.gz backup.
-
-    POST /admin/api/pilot/backup/restore (multipart, field: backup_file)
-    """
-    if not pilot_admin_extension_enabled():
-        return JSONResponse({"error": "not_found"}, status_code=404)
-
-    if not await verify_webui_session(request):
-        if not is_authenticated(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-    if not _same_origin_or_missing(request):
-        return JSONResponse({"ok": False, "error": "cross-origin request rejected"}, status_code=403)
-
-    try:
-        form = await request.form()
-        upload = form.get("backup_file")
-        if upload is None or not hasattr(upload, "read"):
-            return JSONResponse({"ok": False, "error": "missing backup_file field"}, status_code=400)
-        _MAX_UPLOAD = 100 * 1024 * 1024  # 100 MB
-        raw_bytes = await upload.read(_MAX_UPLOAD + 1)
-        if len(raw_bytes) > _MAX_UPLOAD:
-            return JSONResponse({"ok": False, "error": "upload exceeds 100 MB limit"}, status_code=413)
-    except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"ok": False, "error": f"upload error: {exc}"}, status_code=400)
-
-    # Validate it's a real tar.gz.
-    try:
-        buf = io.BytesIO(raw_bytes)
-        with tarfile.open(fileobj=buf, mode="r:gz") as tf:
-            members = tf.getmembers()
-    except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"ok": False, "error": f"invalid archive: {exc}"}, status_code=400)
-
-    # Security: allowlist + path traversal check.
-    for m in members:
-        name = m.name
-        if name.startswith("/") or ".." in name.split("/") or "\x00" in name:
-            return JSONResponse({"ok": False, "error": f"rejected path: {name}"}, status_code=400)
-        if m.isdir():
-            # Directory entries are fine if they're an allowed top-level dir.
-            if name.rstrip("/") not in _BACKUP_DIRS:
-                return JSONResponse({"ok": False, "error": f"rejected directory: {name}"}, status_code=400)
-            continue
-        if not _member_allowed(name):
-            return JSONResponse({"ok": False, "error": f"rejected file: {name}"}, status_code=400)
-
-    gateway: Gateway | None = getattr(request.app.state, "gateway", None)
-    paths = _paths(request)
-    hermes_home = paths.hermes_home
-
-    if gateway is not None:
-        try:
-            await gateway.stop()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("restore: gateway stop failed: %s", exc)
-
-    restored_files: list[str] = []
-    error: str | None = None
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            buf2 = io.BytesIO(raw_bytes)
-            with tarfile.open(fileobj=buf2, mode="r:gz") as tf:
-                tf.extractall(tmp_path, filter="data")  # noqa: S202  # already allowlisted above
-            for m in members:
-                if m.isdir():
-                    continue
-                name = m.name
-                src = tmp_path / name
-                dest = hermes_home / name
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                src.replace(dest)
-                restored_files.append(name)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("restore: extraction failed: %s", exc)
-        error = f"extraction failed: {exc}"
-
-    if gateway is not None:
-        try:
-            await gateway.start()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("restore: gateway start failed: %s", exc)
-
-    if error:
-        return JSONResponse({"ok": False, "error": error}, status_code=500)
-    return JSONResponse({"ok": True, "files": restored_files})
-
-
-_GHCR_STATION_REPO = "roryford/hermes-station"
-_GHCR_RELEASES_URL = "https://api.github.com/repos/{repo}/releases/latest"
-_PILOT_UPGRADE_CACHE_TTL = 1800  # 30 minutes
-_PILOT_UPGRADE_TIMEOUT = 8.0
-
-
-def _normalise_version(ver: str | None) -> str:
-    """Strip leading 'v' for comparison."""
-    if not ver:
-        return ""
-    return ver.lstrip("v")
-
-
-async def _fetch_station_latest() -> str | None:
-    """Return the latest hermes-station release tag from GitHub, or None on error."""
-    url = _GHCR_RELEASES_URL.format(repo=_GHCR_STATION_REPO)
-    try:
-        async with httpx.AsyncClient(timeout=_PILOT_UPGRADE_TIMEOUT) as client:
-            resp = await client.get(url, headers={"Accept": "application/vnd.github+json"})
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        return data.get("tag_name") or None
-    except Exception:  # noqa: BLE001
-        return None
-
-
-async def api_pilot_upgrade(request: Request) -> Response:
-    """Read-only upgrade visibility card endpoint for the pilot admin extension.
-
-    GET /admin/api/pilot/upgrade
-    Returns {running_version, latest_version, status: "behind"|"current"|"ahead"}
-    for the hermes-station container. Fetches latest from GitHub releases and
-    caches the result for 30 minutes.
-
-    Auth: accepts either a webui ``hermes_session`` (via the bridge) or the
-    legacy ``hermes_station_admin`` cookie. Mirrors ``api_pilot_status``'s
-    dual-cookie pattern.
-    """
-    if not pilot_admin_extension_enabled():
-        return JSONResponse({"error": "not_found"}, status_code=404)
-
-    if not await verify_webui_session(request):
-        if not is_authenticated(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-    # Resolve running version from the package metadata (same as _pilot_compose_versions).
-    try:
-        running = _pkg_version("hermes-station") or None
-        if running == "unknown":
-            running = None
-    except PackageNotFoundError:
-        running = None
-
-    # 30-minute in-process cache for the GitHub fetch.
-    cache = getattr(request.app.state, "_pilot_upgrade_cache", None)
-    now = time.monotonic()
-    if cache is not None and now - cache["ts"] < _PILOT_UPGRADE_CACHE_TTL:
-        latest = cache["latest"]
-    else:
-        latest = await _fetch_station_latest()
-        request.app.state._pilot_upgrade_cache = {"latest": latest, "ts": now}
-
-    # Determine status.
-    if running is None or latest is None:
-        status = "unknown"
-    elif _normalise_version(running) == _normalise_version(latest):
-        status = "current"
-    else:
-        # Simple string-normalised comparison: if they differ, call it "behind"
-        # (could be ahead in dev builds but "behind" is the common production case).
-        # We don't attempt semver ordering — just divergence detection.
-        status = "behind"
-
-    return JSONResponse(
-        {
-            "running_version": running,
-            "latest_version": latest,
-            "status": status,
-        }
-    )
-
-
 async def _unimplemented(request: Request) -> Response:
     guard = require_admin(request)
     if guard is not None:
@@ -1141,10 +866,7 @@ def admin_routes() -> list[Route]:
         Route("/admin/api/status", api_status, methods=["GET"]),
         Route("/admin/api/ping", api_ping, methods=["GET"]),
         Route("/admin/api/pilot/status", api_pilot_status, methods=["GET"]),
-        Route("/admin/api/pilot/upgrade", api_pilot_upgrade, methods=["GET"]),
         Route("/admin/api/pilot/usage", api_pilot_usage, methods=["GET"]),
-        Route("/admin/api/pilot/backup/download", api_pilot_backup_download, methods=["POST"]),
-        Route("/admin/api/pilot/backup/restore", api_pilot_backup_restore, methods=["POST"]),
         Route("/admin/api/pilot/gateway/restart", api_pilot_gateway_restart, methods=["POST"]),
         Route("/admin/api/pilot/smoketest", api_pilot_smoketest, methods=["POST"]),
         Route("/admin/api/provider/setup", api_provider_setup, methods=["POST"]),

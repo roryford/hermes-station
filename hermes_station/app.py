@@ -28,7 +28,6 @@ from hermes_station.admin.htmx_settings import routes as settings_routes
 from hermes_station.admin.presets import routes as presets_routes
 from hermes_station.admin.routes import admin_routes, _prune_login_state
 from hermes_station.admin.smoketest import routes as smoketest_routes
-from hermes_station.admin.upgrade import routes as upgrade_routes
 from hermes_station.config import (
     AdminSettings,
     Paths,
@@ -307,7 +306,6 @@ def create_app() -> Starlette:
         *logs_routes(),
         *presets_routes(),
         *smoketest_routes(),
-        *upgrade_routes(),
         *admin_routes(),
         Mount(
             "/admin/static",
