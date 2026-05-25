@@ -94,6 +94,37 @@ memory:
   provider: holographic   # or mem0, honcho, supermemory
 ```
 
+## Hindsight memory sidecar
+
+Hindsight is an optional in-container sidecar that runs a local memory API backed by an embedded Postgres database (pg0). It provides vector-based retrieval over conversation history without routing data to an external service.
+
+**Enable it:**
+
+```
+HINDSIGHT_SIDECAR=1
+```
+
+Requires `OPENROUTER_API_KEY` to be set — the sidecar uses it for both LLM inference and embeddings. If the key is absent the sidecar is skipped with a warning and the container still boots normally.
+
+**Configuration:**
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HINDSIGHT_SIDECAR` | _unset_ | Set to `1` or `true` to enable. |
+| `HINDSIGHT_API_HOST` | `127.0.0.1` | Bind host. Set to `0.0.0.0` to expose the port externally (e.g. for in-container test runs). |
+| `HINDSIGHT_API_PORT` | `8888` | TCP port for the Hindsight API. |
+| `HINDSIGHT_API_LLM_PROVIDER` | `openrouter` | LLM provider used for memory inference. |
+| `HINDSIGHT_API_LLM_MODEL` | `openai/gpt-4o-mini` | Model used for memory inference. |
+| `HINDSIGHT_API_EMBEDDINGS_PROVIDER` | `openai` | Embeddings provider. |
+| `HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` | Embeddings API endpoint. |
+| `HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL` | `text-embedding-3-small` | Embeddings model. |
+| `HINDSIGHT_API_RERANKER_PROVIDER` | `rrf` | Reranker strategy (RRF = Reciprocal Rank Fusion). |
+| `HINDSIGHT_API_DATABASE_URL` | `pg0://hindsight-hermes` | Postgres connection string. The embedded pg0 database stores its files under `/data/.pg0`. |
+
+The LLM and embeddings API keys are always derived from `OPENROUTER_API_KEY` and cannot be set independently.
+
+Sidecar logs are written to `/data/.hindsight/api.log`.
+
 ## Image generation
 
 | Backend | Key | Notes |
