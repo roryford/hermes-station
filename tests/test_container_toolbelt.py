@@ -59,6 +59,12 @@ TOOLBELT: list[tuple[str, list[str]]] = [
     ("tirith", ["--version"]),
     ("pandoc", ["--version"]),
     ("typst", ["--version"]),
+    # Browser automation: the apt `chromium` binary plus the agent-browser
+    # CLI that drives it. agent-browser auto-detects the system Chromium (no
+    # bundled/downloaded browser ships in the image), so both must be present
+    # for the `browser` toolset seeded at first boot to work.
+    ("chromium", ["--version"]),
+    ("agent-browser", ["--version"]),
 ]
 
 
@@ -107,6 +113,45 @@ def test_node_is_v24() -> None:
         if REQUIRE:
             pytest.fail(msg)
         pytest.skip(msg + " (host node, not container; skipping)")
+
+
+# ---------------------------------------------------------------------------
+# Browser automation — agent-browser must be able to launch the system
+# Chromium and render a page. A version check alone wouldn't catch a missing
+# or incompatible browser; this drives a real launch end-to-end.
+# ---------------------------------------------------------------------------
+
+
+def test_agent_browser_launches_system_chromium(tmp_path: Path) -> None:
+    """agent-browser opens a page and writes a screenshot using the system
+    Chromium. Guards against the browser toolset silently breaking (e.g. a
+    chromium apt removal or an agent-browser version that bundles its own
+    browser instead of using /usr/bin/chromium)."""
+    ab = shutil.which("agent-browser")
+    if ab is None or shutil.which("chromium") is None:
+        msg = "agent-browser and/or chromium not on PATH"
+        if REQUIRE:
+            pytest.fail(msg)
+        pytest.skip(msg + " (set HERMES_STATION_REQUIRE_TOOLBELT=1 to fail instead)")
+
+    shot = tmp_path / "shot.png"
+    # The agent-browser daemon persists only within a single shell invocation,
+    # so open + screenshot must be chained. A data: URL avoids any network dep.
+    cmd = f'{ab} open "data:text/html,<h1>ok</h1>" && {ab} screenshot {shot}'
+    proc = subprocess.run(  # noqa: S602 - fixed binary, controlled args
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=tmp_path,
+    )
+    assert proc.returncode == 0, (
+        f"agent-browser launch failed (rc={proc.returncode}): stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    )
+    assert shot.is_file() and shot.stat().st_size > 0, (
+        f"agent-browser produced no screenshot at {shot}: stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

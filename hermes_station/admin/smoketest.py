@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -389,6 +391,70 @@ _BROWSER_BACKENDS: list[tuple[str, list[str]]] = [
 ]
 
 
+def _rlb(status: str, detail: str, fix: str = "") -> dict[str, Any]:
+    return {
+        "name": "local_browser",
+        "label": "Local browser",
+        "status": status,
+        "detail": detail,
+        "fix": fix,
+    }
+
+
+def _browser_toolset_enabled(config: dict[str, Any]) -> bool:
+    """Mirror config.seed_browser_toolset: toolsets may be a list or a dict."""
+    toolsets = config.get("toolsets")
+    if isinstance(toolsets, list):
+        return "browser" in toolsets
+    if isinstance(toolsets, dict):
+        return bool(toolsets.get("browser"))
+    return False
+
+
+def _probe_binary(binary: str) -> tuple[bool, str]:
+    """Return (ok, version) for a `<binary> --version` call. Fast, in-process."""
+    path = shutil.which(binary)
+    if path is None:
+        return False, ""
+    try:
+        proc = subprocess.run(  # noqa: S603 - fixed binary list, no shell
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False, ""
+    if proc.returncode != 0:
+        return False, ""
+    return True, (proc.stdout + proc.stderr).strip().splitlines()[0] if (proc.stdout or proc.stderr) else ""
+
+
+async def _test_local_browser(config: dict[str, Any]) -> dict[str, Any]:
+    """Verify the in-container browser toolset: agent-browser + system Chromium.
+
+    agent-browser drives the apt-installed /usr/bin/chromium (no bundled
+    browser ships in the image), so both binaries must be present for the
+    `browser` toolset to work. Skips when the toolset isn't enabled.
+    """
+    if not _browser_toolset_enabled(config):
+        return _rlb("skip", "Browser toolset not enabled.")
+
+    chromium_ok, chromium_ver = await asyncio.to_thread(_probe_binary, "chromium")
+    ab_ok, ab_ver = await asyncio.to_thread(_probe_binary, "agent-browser")
+
+    missing = [name for name, ok in (("chromium", chromium_ok), ("agent-browser", ab_ok)) if not ok]
+    if missing:
+        return _rlb(
+            "fail",
+            f"Missing or non-runnable: {', '.join(missing)}.",
+            "The browser toolset needs both chromium and agent-browser in the image — "
+            "rebuild from an image that includes them, or disable the browser toolset.",
+        )
+
+    return _rlb("pass", f"{ab_ver} driving {chromium_ver}.")
+
+
 def _rb(status: str, detail: str, fix: str = "") -> dict[str, Any]:
     return {
         "name": "browser_backend",
@@ -566,6 +632,7 @@ async def run_all_tests(request: Request) -> list[dict[str, Any]]:
         _test_github_mcp(config, env),
         _test_web_search(config, env),
         _test_image_gen(config, env),
+        _test_local_browser(config),
         _test_browser_backend(env),
         _test_plugin_registry(),
         _test_mcp_urls(config, env),
