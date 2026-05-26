@@ -137,10 +137,7 @@ def test_agent_browser_launches_system_chromium(tmp_path: Path) -> None:
     shot = tmp_path / "shot.png"
     # The agent-browser daemon persists only within a single shell invocation,
     # so open + screenshot must be chained. A data: URL avoids any network dep.
-    cmd = (
-        f'{ab} open "data:text/html,<h1>ok</h1>" '
-        f"&& {ab} screenshot {shot}"
-    )
+    cmd = f'{ab} open "data:text/html,<h1>ok</h1>" && {ab} screenshot {shot}'
     proc = subprocess.run(  # noqa: S602 - fixed binary, controlled args
         cmd,
         shell=True,
@@ -150,12 +147,10 @@ def test_agent_browser_launches_system_chromium(tmp_path: Path) -> None:
         cwd=tmp_path,
     )
     assert proc.returncode == 0, (
-        f"agent-browser launch failed (rc={proc.returncode}): "
-        f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+        f"agent-browser launch failed (rc={proc.returncode}): stdout={proc.stdout!r} stderr={proc.stderr!r}"
     )
     assert shot.is_file() and shot.stat().st_size > 0, (
-        f"agent-browser produced no screenshot at {shot}: "
-        f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+        f"agent-browser produced no screenshot at {shot}: stdout={proc.stdout!r} stderr={proc.stderr!r}"
     )
 
 
