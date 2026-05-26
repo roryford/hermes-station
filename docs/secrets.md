@@ -86,15 +86,17 @@ secret — leave it unchecked unless you know a sandboxed tool needs the key.
 The web UI runs as its own subprocess, and it does **not** inherit the full
 environment. It only receives env vars whose **name** is on an allowlist:
 
-- every key in the secrets catalog (provider keys, FAL, search/browser
-  backends, …),
+- every key in the tool-backend secrets catalog (`KNOWN_SECRETS`): FAL,
+  search/browser backends, voice, memory, observability keys,
+- model-provider credential keys (OpenRouter, Anthropic, OpenAI, xAI,
+  Copilot, …),
 - channel tokens,
 - anything you've registered under `admin.custom_secret_keys`.
 
 This matters when you add a variable **directly in Railway** that isn't one of
-those: the station and the in-process agent will see it (they read `os.environ`
-directly), but the web UI process will **not**. The fix is to register the key
-name — use **Add custom secret** on the Secrets page (which writes
+those: the station process (and in-process agent tools) will see it (they read
+`os.environ` directly), but the web UI process will **not**. The fix is to
+register the key name — use **Add custom secret** on the Secrets page (which writes
 `admin.custom_secret_keys`), and it will then be forwarded to the web UI too.
 
 Note this gating is purely **by key name**. Marking a variable as a *sealed
