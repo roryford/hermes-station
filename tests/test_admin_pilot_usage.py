@@ -50,11 +50,11 @@ def _make_state_db(hermes_home: Path) -> Path:
         """,
         [
             # Row with actual cost — within last 7 days
-            ("2026-05-19T10:00:00", "webui", "gpt-4o", "openai", 0.08, None, 8000, 2000, 0, 0, 30),
+            ("2026-05-25T10:00:00", "webui", "gpt-4o", "openai", 0.08, None, 8000, 2000, 0, 0, 30),
             # Row with estimated cost only — within last 7 days
-            ("2026-05-18T08:00:00", "telegram", "claude-3", "anthropic", None, 0.04, 4000, 1000, 0, 0, 12),
-            # Old row — outside 7 days (25 days ago) but within 30 days
-            ("2026-04-25T10:00:00", "webui", "gpt-4o", "openai", 0.02, None, 2000, 500, 0, 0, 5),
+            ("2026-05-24T08:00:00", "telegram", "claude-3", "anthropic", None, 0.04, 4000, 1000, 0, 0, 12),
+            # Old row — outside 7 days (21 days ago) but within 30 days
+            ("2026-05-05T10:00:00", "webui", "gpt-4o", "openai", 0.02, None, 2000, 500, 0, 0, 5),
         ],
     )
     conn.commit()
@@ -162,8 +162,8 @@ async def test_usage_7d_aggregation(fake_data_dir: Path, admin_password: str, mo
     assert isinstance(daily, list)
     assert len(daily) == 2
     day_keys = {d["day"] for d in daily}
-    assert "2026-05-19" in day_keys
-    assert "2026-05-18" in day_keys
+    assert "2026-05-25" in day_keys
+    assert "2026-05-24" in day_keys
     # Each entry has the expected fields
     for entry in daily:
         assert "day" in entry
@@ -198,9 +198,9 @@ async def test_usage_30d_includes_old_row(fake_data_dir: Path, admin_password: s
     daily = data["daily"]
     assert len(daily) == 3
     day_keys = {d["day"] for d in daily}
-    assert "2026-04-25" in day_keys
+    assert "2026-05-05" in day_keys
     # Ordered oldest-first
-    assert daily[0]["day"] == "2026-04-25"
+    assert daily[0]["day"] == "2026-05-05"
 
 
 async def test_usage_invalid_days_defaults_to_7(
