@@ -38,19 +38,21 @@ if [ "${HINDSIGHT_SIDECAR}" = "1" ] || [ "${HINDSIGHT_SIDECAR}" = "true" ]; then
         echo "hermes-entrypoint: WARNING: HINDSIGHT_SIDECAR=1 but OPENROUTER_API_KEY is not set — sidecar not started"
     else
         mkdir -p /data/.hindsight
+        # Export defaults so hermes-agent child processes (e.g. hindsight-embed daemon)
+        # inherit these — inline assignments only reach hindsight-api, not the main process.
+        export HINDSIGHT_API_DATABASE_URL="${HINDSIGHT_API_DATABASE_URL:-pg0://hindsight-hermes}"
+        export HINDSIGHT_API_HOST="${HINDSIGHT_API_HOST:-127.0.0.1}"
+        export HINDSIGHT_API_PORT="${HINDSIGHT_API_PORT:-8888}"
+        export HINDSIGHT_API_LLM_PROVIDER="${HINDSIGHT_API_LLM_PROVIDER:-openrouter}"
+        export HINDSIGHT_API_LLM_MODEL="${HINDSIGHT_API_LLM_MODEL:-openai/gpt-4o-mini}"
+        export HINDSIGHT_API_LLM_API_KEY="${OPENROUTER_API_KEY}"
+        export HINDSIGHT_API_EMBEDDINGS_PROVIDER="${HINDSIGHT_API_EMBEDDINGS_PROVIDER:-openai}"
+        export HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY="${OPENROUTER_API_KEY}"
+        export HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL="${HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}"
+        export HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL="${HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL:-text-embedding-3-small}"
+        export HINDSIGHT_API_RERANKER_PROVIDER="${HINDSIGHT_API_RERANKER_PROVIDER:-rrf}"
         # Runs as hermes user; pg0 data is stored in /data/.pg0 (inside the Railway volume).
-        HINDSIGHT_API_DATABASE_URL="${HINDSIGHT_API_DATABASE_URL:-pg0://hindsight-hermes}" \
-        HINDSIGHT_API_HOST="${HINDSIGHT_API_HOST:-127.0.0.1}" \
-        HINDSIGHT_API_PORT="${HINDSIGHT_API_PORT:-8888}" \
-        HINDSIGHT_API_LLM_PROVIDER="${HINDSIGHT_API_LLM_PROVIDER:-openrouter}" \
-        HINDSIGHT_API_LLM_MODEL="${HINDSIGHT_API_LLM_MODEL:-openai/gpt-4o-mini}" \
-        HINDSIGHT_API_LLM_API_KEY="${OPENROUTER_API_KEY}" \
-        HINDSIGHT_API_EMBEDDINGS_PROVIDER="${HINDSIGHT_API_EMBEDDINGS_PROVIDER:-openai}" \
-        HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY="${OPENROUTER_API_KEY}" \
-        HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL="${HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}" \
-        HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL="${HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL:-text-embedding-3-small}" \
-        HINDSIGHT_API_RERANKER_PROVIDER="${HINDSIGHT_API_RERANKER_PROVIDER:-rrf}" \
-            gosu hermes hindsight-api >> /data/.hindsight/api.log 2>&1 &
+        gosu hermes hindsight-api >> /data/.hindsight/api.log 2>&1 &
         echo "hermes-entrypoint: hindsight-api started (PID $!, port=${HINDSIGHT_API_PORT:-8888}, db=${HINDSIGHT_API_DATABASE_URL:-pg0://hindsight-hermes})"
     fi
 fi
