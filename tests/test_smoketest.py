@@ -17,6 +17,7 @@ from hermes_station.admin.smoketest import (
     _test_gateway,
     _test_github_mcp,
     _test_image_gen,
+    _test_local_browser,
     _test_mcp_urls,
     _test_plugin_registry,
     _test_provider,
@@ -600,6 +601,38 @@ async def test_smoketest_run_shows_run_again_button(fake_data_dir: Path, admin_p
         response = await client.post("/admin/_partial/smoketest/run")
     assert response.status_code == 200
     assert "Run again" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Unit: _test_local_browser
+# ---------------------------------------------------------------------------
+
+
+async def test_local_browser_skip_toolset_disabled() -> None:
+    result = await _test_local_browser({"toolsets": ["web"]})
+    assert result["status"] == "skip"
+    assert result["name"] == "local_browser"
+
+
+async def test_local_browser_pass_both_present() -> None:
+    with patch(
+        "hermes_station.admin.smoketest._probe_binary",
+        side_effect=lambda b: (True, f"{b} 1.0"),
+    ):
+        result = await _test_local_browser({"toolsets": ["browser"]})
+    assert result["status"] == "pass"
+    assert "agent-browser 1.0" in result["detail"]
+
+
+async def test_local_browser_fail_chromium_missing() -> None:
+    def _probe(binary: str) -> tuple[bool, str]:
+        return (False, "") if binary == "chromium" else (True, "agent-browser 1.0")
+
+    with patch("hermes_station.admin.smoketest._probe_binary", side_effect=_probe):
+        # toolsets-as-dict form is also valid.
+        result = await _test_local_browser({"toolsets": {"browser": True}})
+    assert result["status"] == "fail"
+    assert "chromium" in result["detail"]
 
 
 # ---------------------------------------------------------------------------
