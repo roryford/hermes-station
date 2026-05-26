@@ -1,0 +1,56 @@
+name: base-image
+
+# Builds + publishes the slowly-changing system base image (Dockerfile.base:
+# chromium/ffmpeg/tesseract/node + pinned binaries) consumed by the main
+# Dockerfile's `FROM`. Run manually whenever Dockerfile.base or the
+# pinned-binaries inputs change, then bump the tag in the main Dockerfile's
+# BASE_IMAGE arg. Published multi-arch so local arm64 (Apple `container`) and
+# amd64 (CI/Railway) builds can both pull it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v2). Bump when base deps change."
+        required: true
+        default: v1
+
+permissions:
+  contents: read
+  packages: write  # required for GHCR push
+
+jobs:
+  build-and-push:
+    name: build + push multi-arch base image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.6.0
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: stage build context
+        # Dockerfile.base uses root-level COPY for the pinned-binaries inputs
+        # (same CLI 0.12.3 constraint as the main Dockerfile — see CLAUDE.md).
+        run: |
+          mkdir -p /tmp/base-ctx
+          cp Dockerfile.base scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh /tmp/base-ctx/
+
+      - name: build and push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: /tmp/base-ctx
+          file: /tmp/base-ctx/Dockerfile.base
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/roryford/hermes-station-base:${{ inputs.tag }}
+          provenance: false
+          sbom: false
