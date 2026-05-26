@@ -31,3 +31,25 @@ def test_entrypoint_sidecar_binds_loopback() -> None:
 def test_entrypoint_sidecar_default_port_8888() -> None:
     src = ENTRYPOINT.read_text()
     assert "8888" in src
+
+
+def test_entrypoint_exports_hindsight_vars_for_agent_inheritance() -> None:
+    """All HINDSIGHT_API_* vars must be exported, not just inline-assigned.
+
+    Inline assignments (KEY=value \\ cmd) only reach the sidecar process.
+    hermes-agent child processes (e.g. hindsight-embed daemon) inherit the
+    environment of the main station process, so the vars must be exported
+    before exec gosu hermes.
+    """
+    src = ENTRYPOINT.read_text()
+    required = [
+        "HINDSIGHT_API_LLM_API_KEY",
+        "HINDSIGHT_API_LLM_PROVIDER",
+        "HINDSIGHT_API_EMBEDDINGS_PROVIDER",
+        "HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY",
+        "HINDSIGHT_API_RERANKER_PROVIDER",
+    ]
+    for var in required:
+        assert f"export {var}" in src, (
+            f"{var} must be exported (not just inline-assigned) so hermes-agent inherits it"
+        )
