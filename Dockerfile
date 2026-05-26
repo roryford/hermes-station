@@ -1,52 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim AS runtime
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file gnupg \
-    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-         > /etc/apt/sources.list.d/github-cli.list \
-    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-         | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
-    && chmod go+r /usr/share/keyrings/nodesource.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
-         > /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update \
-    && apt-get upgrade -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends \
-         gosu \
-         gh \
-         nodejs \
-         chromium \
-         ffmpeg \
-         tesseract-ocr tesseract-ocr-eng \
-         ripgrep \
-         fd-find \
-         sqlite3 \
-         poppler-utils \
-         xz-utils \
-         # operator-diagnostics toolbelt (see test_container_toolbelt.py)
-         procps \
-         tmux \
-         less \
-         tree \
-         unzip \
-         zip \
-         rsync \
-    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Pinned upstream binaries not in Debian repos at a useful version.
-# Versions + SHA256s live in scripts/pinned-binaries.tsv (bump there).
-# Copied from build-context root (CLI 0.12.3 can't read subdirs — see CLAUDE.md).
-COPY pinned-binaries.tsv install_pinned_binaries.sh /tmp/
-RUN chmod +x /tmp/install_pinned_binaries.sh \
-    && /tmp/install_pinned_binaries.sh \
-    && rm /tmp/install_pinned_binaries.sh /tmp/pinned-binaries.tsv
+# The heavy, slowly-changing system layer (chromium/ffmpeg/tesseract/node +
+# pinned upstream binaries) lives in a separately-published base image so it
+# isn't rebuilt or re-cached on every code change — see Dockerfile.base and
+# .github/workflows/base-image.yml. Bump this tag after republishing the base.
+ARG BASE_IMAGE=ghcr.io/roryford/hermes-station-base:v1
+FROM ${BASE_IMAGE} AS runtime
 
 WORKDIR /app
 

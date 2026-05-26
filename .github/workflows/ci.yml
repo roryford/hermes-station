@@ -40,7 +40,7 @@ jobs:
 
       - name: Verify curl retry wrappers present
         run: |
-          count=$(grep -h -c -- "--retry-all-errors" Dockerfile scripts/install_pinned_binaries.sh | awk '{ s += $1 } END { print s }')
+          count=$(grep -h -c -- "--retry-all-errors" Dockerfile.base scripts/install_pinned_binaries.sh | awk '{ s += $1 } END { print s }')
           if [ "$count" -lt 3 ]; then
             echo "Retry wrapper missing on at least one curl (found $count)"
             exit 1
@@ -63,7 +63,7 @@ jobs:
         run: |
           mkdir -p /tmp/hs-ctx/hermes_station
           cp pyproject.toml README.md LICENSE uv.lock .dockerignore /tmp/hs-ctx/
-          cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh scripts/hermes-entrypoint.sh /tmp/hs-ctx/
+          cp scripts/patch_plugin_manifests.py scripts/hermes-entrypoint.sh /tmp/hs-ctx/
           # Staged for the deps-cache COPY (kept separate from the source tar
           # so changes to package source don't bust the uv pip install cache).
           cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
@@ -83,7 +83,10 @@ jobs:
           build-args: |
             IMAGE_REVISION=${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Only main writes the gha cache. PRs read it but never export, so
+          # per-PR layer copies (scoped to refs/pull/N/merge and never reused)
+          # can't fill GitHub's 10GB cache budget and evict main's layers.
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max' || '' }}
           # provenance/sbom both off when load:true — docker daemon can't ingest
           # manifest lists, and buildx emits one whenever either attestor is on.
           # Re-enable behind a separate push-only build if attestation matters.
@@ -100,7 +103,10 @@ jobs:
           build-args: |
             IMAGE_REVISION=${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Only main writes the gha cache. PRs read it but never export, so
+          # per-PR layer copies (scoped to refs/pull/N/merge and never reused)
+          # can't fill GitHub's 10GB cache budget and evict main's layers.
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max' || '' }}
           provenance: false
           sbom: false
 
