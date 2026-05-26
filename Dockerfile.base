@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1.7
+#
+# hermes-station base image: the heavy, slowly-changing system layer
+# (chromium, ffmpeg, tesseract, node + pinned upstream binaries — chromium
+# alone is the bulk of the ~0.8GB apt layer).
+#
+# Split out of the main Dockerfile so CI / local / Railway builds don't rebuild
+# or re-cache this layer on every code change, and so it stops evicting the
+# rest of the build cache from GitHub's 10GB Actions cache budget.
+#
+# Rebuilt + republished ONLY via .github/workflows/base-image.yml (manual
+# workflow_dispatch). When you change this file or the pinned-binaries inputs,
+# run that workflow with a bumped tag, then update the `BASE_IMAGE` tag in the
+# main Dockerfile's `FROM`. Published multi-arch (amd64 for CI/Railway, arm64
+# for local Apple `container` CLI builds).
+
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim AS base
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini ca-certificates git curl jq file gnupg \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+         > /etc/apt/sources.list.d/github-cli.list \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 60 https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+         | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
+    && chmod go+r /usr/share/keyrings/nodesource.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+         > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
+         gosu \
+         gh \
+         nodejs \
+         chromium \
+         ffmpeg \
+         tesseract-ocr tesseract-ocr-eng \
+         ripgrep \
+         fd-find \
+         sqlite3 \
+         poppler-utils \
+         xz-utils \
+         # operator-diagnostics toolbelt (see test_container_toolbelt.py)
+         procps \
+         tmux \
+         less \
+         tree \
+         unzip \
+         zip \
+         rsync \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pinned upstream binaries not in Debian repos at a useful version.
+# Versions + SHA256s live in scripts/pinned-binaries.tsv (bump there).
+# Copied from build-context root (CLI 0.12.3 can't read subdirs — see CLAUDE.md).
+COPY pinned-binaries.tsv install_pinned_binaries.sh /tmp/
+RUN chmod +x /tmp/install_pinned_binaries.sh \
+    && /tmp/install_pinned_binaries.sh \
+    && rm /tmp/install_pinned_binaries.sh /tmp/pinned-binaries.tsv
