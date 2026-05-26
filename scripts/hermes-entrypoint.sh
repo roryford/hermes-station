@@ -2,6 +2,8 @@
 set -e
 
 chown -R 10000 /data
+echo "hermes-entrypoint: chown done, /data/.hermes ownership:"
+ls -la /data/.hermes/ 2>&1 || echo "hermes-entrypoint: ls /data/.hermes failed"
 
 _patched=0
 
