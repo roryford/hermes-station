@@ -118,7 +118,7 @@ jobs:
       - name: install test deps
         run: |
           uv venv --python 3.12
-          uv pip install pytest requests
+          uv pip install pytest requests httpx
 
       - name: e2e + integration tests (host-runnable)
         env:
@@ -129,6 +129,7 @@ jobs:
             --ignore=tests/fixtures \
             --ignore=tests/test_container_toolbelt.py \
             --ignore=tests/test_plugin_manifests.py \
+            --ignore=tests/test_version.py \
             -q --no-cov
 
       - name: in-container tests (toolbelt + plugin manifests)

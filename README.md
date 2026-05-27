@@ -89,7 +89,6 @@ Example `/health` body on a fresh boot with **no** `OPENROUTER_API_KEY`:
     "memory:holographic": {"intended": true,  "ready": true}
   },
   "versions": {
-    "hermes_station": "0.10.x",
     "hermes_agent":   "0.x.y",
     "hermes_webui":   "v0.51.x",
     "python":         "3.13.x",

@@ -62,10 +62,10 @@ docker run -d --name hs-test -p 8787:8787 \
 Poll until healthy:
 
 ```bash
-curl -s http://127.0.0.1:8787/health | jq .status
+until curl -sf http://127.0.0.1:8787/health >/dev/null 2>&1; do sleep 2; done && echo "ready"
 ```
 
-Expected: `"ok"`.
+Expected: `"ok"` from `curl http://127.0.0.1:8787/health | jq .status`.
 
 ## Run host-runnable e2e tests
 
@@ -77,6 +77,7 @@ uv run --with pytest --with httpx \
     --ignore=tests/fixtures \
     --ignore=tests/test_container_toolbelt.py \
     --ignore=tests/test_plugin_manifests.py \
+    --ignore=tests/test_version.py \
     -v --no-cov
 ```
 

@@ -96,6 +96,38 @@ container run --rm \
 
 ---
 
+## Gateway won't start
+
+**Symptom:** The messaging gateway (Discord, Telegram, Slack, etc.) is not running even after setting `HERMES_GATEWAY_ENABLED=1`.
+
+**Fix:**
+
+1. Check container logs for gateway output:
+
+   ```bash
+   container logs hs-test 2>&1 | grep gateway
+   docker logs hs-test 2>&1 | grep gateway
+   ```
+
+2. Check supervisord status interactively:
+
+   ```bash
+   container exec hs-test supervisorctl -c /etc/supervisord.conf status
+   docker exec hs-test supervisorctl -c /etc/supervisord.conf status
+   ```
+
+3. Confirm `HERMES_GATEWAY_ENABLED=1` is set and the entrypoint ran. Look for this line in the logs:
+
+   ```
+   hermes-entrypoint: gateway enabled — patching supervisord.conf
+   ```
+
+   If it's missing, the env var wasn't set at container start time.
+
+4. **"No messaging platforms enabled"** in the logs is a warning, not an error — the gateway process is running fine, it just has no platforms configured yet. Add a platform key (e.g. `TELEGRAM_BOT_TOKEN`) to enable one.
+
+---
+
 ## `uv pip install` fails with EUCLEAN
 
 **Symptom:** `uv pip install` inside a Dockerfile fails with an error like `EUCLEAN: filesystem state is unexpected (os error 117)` or similar hardlink errors.

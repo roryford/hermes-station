@@ -62,6 +62,7 @@ uv run --with pytest --with httpx \
     --ignore=tests/fixtures \
     --ignore=tests/test_container_toolbelt.py \
     --ignore=tests/test_plugin_manifests.py \
+    --ignore=tests/test_version.py \
     -v --no-cov
 ```
 

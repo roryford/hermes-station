@@ -54,7 +54,11 @@ container run -d --name hs-test -p 8787:8787 \
   hermes-station:local
 ```
 
-Poll until healthy: `curl -s http://127.0.0.1:8787/health`
+Poll until healthy:
+
+```bash
+until curl -sf http://127.0.0.1:8787/health >/dev/null 2>&1; do sleep 2; done && echo "ready"
+```
 
 ### Run host-runnable e2e tests
 
@@ -66,6 +70,7 @@ uv run --with pytest --with httpx \
     --ignore=tests/fixtures \
     --ignore=tests/test_container_toolbelt.py \
     --ignore=tests/test_plugin_manifests.py \
+    --ignore=tests/test_version.py \
     -v --no-cov
 ```
 

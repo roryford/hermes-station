@@ -79,9 +79,9 @@ ENV HOME=/data \
     PORT=8787
 
 # Bake the hermes-agent site-packages path so webui can import run_agent without discovery.
+# The actual mechanism is the `export HERMES_WEBUI_AGENT_DIR` in hermes-entrypoint.sh.
 RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
-    && echo "HERMES_WEBUI_AGENT_DIR=${site_pkgs}" >> /etc/environment \
-    && printf 'HERMES_WEBUI_AGENT_DIR=%s\n' "${site_pkgs}" >> /etc/supervisord-env.conf
+    && echo "HERMES_WEBUI_AGENT_DIR=${site_pkgs}" >> /etc/environment
 
 EXPOSE 8787
 
@@ -107,6 +107,8 @@ COPY hermes-entrypoint.sh /usr/local/bin/hermes-entrypoint
 RUN python3 -m compileall -q /opt/hermes-webui \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
     && chmod +x /usr/local/bin/hermes-entrypoint
+RUN chmod -R a-w "$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
+    /opt/hermes-webui /opt/uv-tools 2>/dev/null || true
 
 # --- test stage (not shipped to prod) ---
 FROM runtime AS test
