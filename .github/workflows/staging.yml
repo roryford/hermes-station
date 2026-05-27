@@ -111,7 +111,7 @@ jobs:
       - name: install test deps
         run: |
           uv venv --python 3.12
-          uv pip install pytest httpx requests
+          uv pip install pytest httpx requests pytest-cov
 
       - name: fetch staging credentials from Railway
         env:
