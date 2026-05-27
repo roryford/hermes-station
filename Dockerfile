@@ -32,7 +32,8 @@ RUN uv pip install --system --link-mode=copy \
         -r /opt/hermes-webui/requirements.txt \
         pandas numpy pillow openpyxl pypdf \
         pytest \
-        "hindsight-all-slim" "pg0-embedded"
+        "hindsight-all-slim" "pg0-embedded" \
+        supervisor
 
 # Patch: hermes-agent 0.14.0 wheel omits plugin.yaml files; restore them.
 # Remove once upstream PRs #27240/#27268 merge and we bump the pin.

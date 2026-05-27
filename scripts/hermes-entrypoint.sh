@@ -84,4 +84,6 @@ if [ "${HERMES_GATEWAY_ENABLED}" = "1" ] || [ "${HERMES_GATEWAY_ENABLED}" = "tru
     sed -i 's/^autostart=false$/autostart=true/' /etc/supervisord.conf
 fi
 
-exec gosu hermes "$@"
+# supervisord must run as root to setuid per-program (user=hermes in supervisord.conf).
+# All child processes drop to hermes via that directive.
+exec "$@"
