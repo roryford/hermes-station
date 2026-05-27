@@ -13,7 +13,7 @@ WORKDIR /app
 # hermes-webui is fetched at build time because it has no pyproject.toml,
 # so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
 ARG HERMES_WEBUI_VERSION=v0.51.145
-ARG HERMES_WEBUI_SHA=07ced6ad913aa6036071e41cd8d43c751714d00a
+ARG HERMES_WEBUI_SHA=329debcd33969c4386a72f14d91e38c0e82d0b8e
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
