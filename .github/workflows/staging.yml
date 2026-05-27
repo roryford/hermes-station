@@ -83,7 +83,9 @@ jobs:
           exit 1
 
       - name: install Railway CLI
-        run: curl -fsSL https://railway.com/install.sh | sh
+        run: |
+          curl -fsSL https://railway.com/install.sh | bash
+          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
 
       - name: deploy to staging
         env:
