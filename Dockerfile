@@ -31,7 +31,7 @@ RUN uv pip install --system --link-mode=copy \
         "hermes-agent[messaging]==${HERMES_AGENT_VERSION}" \
         -r /opt/hermes-webui/requirements.txt \
         pandas numpy pillow openpyxl pypdf \
-        pytest \
+        pytest pytest-cov \
         "hindsight-all-slim" "pg0-embedded" \
         supervisor
 

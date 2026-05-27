@@ -138,6 +138,13 @@ jobs:
           # consecutive non-5xx responses. Empirically, Railway can serve /health
           # while still 502'ing on /login and /api/auth/status for several
           # seconds after rollout — see staging flake on 2db320e / 8dd2c1d.
+          #
+          # Give Railway time to start the rollout. The deploy mutation returns
+          # before Railway has begun pulling and starting the new container;
+          # probing immediately just sees the old container (or connection refused
+          # during the swap) and burns through retries before the new image is up.
+          echo "waiting 20s for Railway to begin rollout..."
+          sleep 20
           set -e
           for i in $(seq 1 90); do
             code=$(curl -sf -o /dev/null -w "%{http_code}" "$STAGING_URL/health" 2>/dev/null || echo "000")
