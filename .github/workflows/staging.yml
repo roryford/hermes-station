@@ -57,7 +57,9 @@ jobs:
           context: /tmp/hs-ctx
           target: runtime
           push: true
-          tags: ghcr.io/roryford/hermes-station:staging
+          tags: |
+            ghcr.io/roryford/hermes-station:staging
+            ghcr.io/roryford/hermes-station:staging-${{ github.sha }}
           build-args: |
             IMAGE_REVISION=${{ github.sha }}
           # Reuse the layer cache ci writes on main (read-only here to avoid
@@ -82,23 +84,26 @@ jobs:
           echo "ERROR: manifest did not appear within 60s" >&2
           exit 1
 
-      - name: install Railway CLI
-        run: |
-          curl -fsSL https://railway.com/install.sh | bash
-          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
-
       - name: deploy to staging
         env:
           RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
-          # --from-source re-resolves the :staging tag to the freshly-pushed
-          # digest and creates a new deployment. Plain `railway redeploy`
-          # redeploys the existing digest (silent no-op after an image push).
-          railway redeploy \
-            --service "$RAILWAY_SERVICE_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --from-source \
-            --yes
+          # Use a SHA-specific tag so Railway sees a new image source and
+          # creates a real deployment (not a no-op redeploy of the same digest).
+          # serviceInstanceUpdate changes the source; serviceInstanceDeploy fires it.
+          IMAGE="ghcr.io/roryford/hermes-station:staging-${{ github.sha }}"
+
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { serviceInstanceUpdate(serviceId: \\\"$RAILWAY_SERVICE_ID\\\", environmentId: \\\"$RAILWAY_ENVIRONMENT_ID\\\", input: { source: { image: \\\"${IMAGE}\\\" } }) }\"}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(r); exit(1 if r.get('errors') else 0)"
+
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(serviceId: \\\"$RAILWAY_SERVICE_ID\\\", environmentId: \\\"$RAILWAY_ENVIRONMENT_ID\\\") }\"}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(r); exit(1 if r.get('errors') else 0)"
 
   e2e:
     name: e2e tests against staging
