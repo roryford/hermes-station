@@ -22,11 +22,19 @@ Use the Apple `container` CLI (not Docker) for local runs.
 > The build uses tar archives as root-level ADD sources to bypass bug 2,
 > and a `/tmp/hs-ctx` staging dir (< 15K files) to bypass the file-count crash.
 
+The heavy system layer (chromium/ffmpeg/tesseract/node + pinned binaries) now
+lives in a base image pulled by the Dockerfile's `FROM`
+(`ghcr.io/roryford/hermes-station-base`, built by `.github/workflows/base-image.yml`).
+It's published multi-arch, so local arm64 builds pull it automatically — no local
+base build needed, and the pinned-binaries scripts no longer go in the staging
+dir. To change base deps: edit `Dockerfile.base`, run the base-image workflow with
+a bumped tag, then update the `BASE_IMAGE` arg in `Dockerfile`.
+
 ```bash
 # Prepare staging dir (first time or after clean)
 mkdir -p /tmp/hs-ctx/hermes_station
 cp pyproject.toml README.md LICENSE uv.lock /tmp/hs-ctx/
-cp scripts/patch_plugin_manifests.py scripts/pinned-binaries.tsv scripts/install_pinned_binaries.sh scripts/hermes-entrypoint.sh /tmp/hs-ctx/
+cp scripts/patch_plugin_manifests.py scripts/hermes-entrypoint.sh /tmp/hs-ctx/
 # __init__.py is staged separately so the deps-cache COPY layer can resolve
 # the package version without busting on every source change.
 cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
