@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or SHA to build and deploy"
+        required: false
+        default: main
 
 permissions:
   contents: read
@@ -22,6 +28,8 @@ jobs:
       RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_STAGING_ENVIRONMENT_ID }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
@@ -33,17 +41,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: pre-pack build context (mirrors local /tmp/hs-ctx procedure)
-        # See CLAUDE.md and project memory project-container-cli-build-workaround.md
-        # for why the Dockerfile uses `ADD <name>.tar` instead of `COPY`.
+        # See CLAUDE.md for why the Dockerfile uses `ADD <name>.tar` instead of `COPY`.
         run: |
-          mkdir -p /tmp/hs-ctx/hermes_station
-          cp pyproject.toml README.md LICENSE uv.lock .dockerignore /tmp/hs-ctx/
+          mkdir -p /tmp/hs-ctx
+          cp .dockerignore /tmp/hs-ctx/
           cp scripts/patch_plugin_manifests.py scripts/hermes-entrypoint.sh /tmp/hs-ctx/
-          # Staged for the deps-cache COPY (kept separate from the source tar
-          # so changes to package source don't bust the uv pip install cache).
-          cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
-          tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/hermes_station.tar hermes_station
-          tar -c --exclude '__pycache__' -f /tmp/hs-ctx/extension.tar extension
+          cp supervisord.conf /tmp/hs-ctx/
           tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/tests.tar tests
           tar -c -f /tmp/hs-ctx/docs.tar docs
           cp Dockerfile /tmp/hs-ctx/
@@ -54,7 +57,9 @@ jobs:
           context: /tmp/hs-ctx
           target: runtime
           push: true
-          tags: ghcr.io/roryford/hermes-station:staging
+          tags: |
+            ghcr.io/roryford/hermes-station:staging
+            ghcr.io/roryford/hermes-station:staging-${{ github.sha }}
           build-args: |
             IMAGE_REVISION=${{ github.sha }}
           # Reuse the layer cache ci writes on main (read-only here to avoid
@@ -80,17 +85,25 @@ jobs:
           exit 1
 
       - name: deploy to staging
+        env:
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
+          # Use a SHA-specific tag so Railway sees a new image source and
+          # creates a real deployment (not a no-op redeploy of the same digest).
+          # serviceInstanceUpdate changes the source; serviceInstanceDeploy fires it.
+          IMAGE="ghcr.io/roryford/hermes-station:staging-${{ github.sha }}"
+
           curl -fsSL https://backboard.railway.com/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"query\": \"mutation Deploy(\$svc: String!, \$env: String!) { serviceInstanceDeploy(serviceId: \$svc, environmentId: \$env, latestCommit: false) }\",
-              \"variables\": {
-                \"svc\": \"$RAILWAY_SERVICE_ID\",
-                \"env\": \"$RAILWAY_ENVIRONMENT_ID\"
-              }
-            }"
+            -d "{\"query\":\"mutation { serviceInstanceUpdate(serviceId: \\\"$RAILWAY_SERVICE_ID\\\", environmentId: \\\"$RAILWAY_ENVIRONMENT_ID\\\", input: { source: { image: \\\"${IMAGE}\\\" } }) }\"}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(r); exit(1 if r.get('errors') else 0)"
+
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(serviceId: \\\"$RAILWAY_SERVICE_ID\\\", environmentId: \\\"$RAILWAY_ENVIRONMENT_ID\\\") }\"}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(r); exit(1 if r.get('errors') else 0)"
 
   e2e:
     name: e2e tests against staging
@@ -98,13 +111,17 @@ jobs:
     needs: build-and-deploy
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
 
-      - name: install dev deps
-        run: uv sync --only-group dev --frozen --quiet
+      - name: install test deps
+        run: |
+          uv venv --python 3.12
+          uv pip install pytest httpx requests pytest-cov
 
       - name: fetch staging credentials from Railway
         env:
@@ -117,41 +134,38 @@ jobs:
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
             --data-raw "{\"query\":\"query { variables(projectId: \\\"$RAILWAY_PROJECT_ID\\\", serviceId: \\\"$RAILWAY_SERVICE_ID\\\", environmentId: \\\"$RAILWAY_ENVIRONMENT_ID\\\") }\"}")
-          ADMIN_PW=$(echo "$VARS" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['variables']['HERMES_ADMIN_PASSWORD'])")
           WEBUI_PW=$(echo "$VARS" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['variables']['HERMES_WEBUI_PASSWORD'])")
-          echo "::add-mask::$ADMIN_PW"
           echo "::add-mask::$WEBUI_PW"
-          echo "STAGING_ADMIN_PASSWORD=$ADMIN_PW" >> "$GITHUB_ENV"
           echo "STAGING_WEBUI_PASSWORD=$WEBUI_PW" >> "$GITHUB_ENV"
 
-      - name: wait for staging to serve new revision
+      - name: wait for staging to be ready
         run: |
           # Two-phase readiness check.
           #
-          # Phase 1: /health reports the new image_revision SHA. This proves
-          # Railway has rolled the new container.
+          # Phase 1: /health returns 200. This proves the new container is up.
           #
-          # Phase 2: probe the endpoints the e2e tests will hit and require
-          # multiple consecutive non-5xx responses. Empirically, Railway can
-          # serve /health on the new revision while still 502'ing on /login,
-          # /admin/, and /api/auth/status for several seconds — see the
-          # staging flake on 2db320e / 8dd2c1d (May 2026) which produced
-          # `assert 502 == 200` and `httpx.ReadTimeout` against exactly these
-          # endpoints.
+          # Phase 2: probe the endpoints the e2e tests hit and require 3
+          # consecutive non-5xx responses. Empirically, Railway can serve /health
+          # while still 502'ing on /login and /api/auth/status for several
+          # seconds after rollout — see staging flake on 2db320e / 8dd2c1d.
+          #
+          # Give Railway time to start the rollout. The deploy mutation returns
+          # before Railway has begun pulling and starting the new container;
+          # probing immediately just sees the old container (or connection refused
+          # during the swap) and burns through retries before the new image is up.
+          echo "waiting 20s for Railway to begin rollout..."
+          sleep 20
           set -e
-          SHA="${{ github.sha }}"
-          REV=""
           for i in $(seq 1 90); do
-            REV=$(curl -sf "$STAGING_URL/health" \
-              | python3 -c "import sys,json; print(json.load(sys.stdin).get('versions',{}).get('image_revision',''))" 2>/dev/null || echo "")
-            if [ "$REV" = "$SHA" ]; then
-              echo "phase 1: staging on $SHA after $((i * 5))s"
+            code=$(curl -sf -o /dev/null -w "%{http_code}" "$STAGING_URL/health" 2>/dev/null || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "phase 1: /health 200 after $((i * 5))s"
               break
             fi
             sleep 5
           done
-          if [ "$REV" != "$SHA" ]; then
-            echo "ERROR: staging did not serve revision $SHA within 450s" >&2
+          if [ "$code" != "200" ]; then
+            echo "ERROR: staging /health did not return 200 within 450s" >&2
             exit 1
           fi
 
@@ -163,7 +177,7 @@ jobs:
               *)      return 0 ;;
             esac
           }
-          for endpoint in /login /admin/ /api/auth/status; do
+          for endpoint in /login /api/auth/status; do
             url="${STAGING_URL}${endpoint}"
             consecutive=0
             stable=0
@@ -189,7 +203,11 @@ jobs:
       - name: run e2e tests
         env:
           HERMES_STATION_E2E_URL: ${{ env.STAGING_URL }}
-          HERMES_STATION_E2E_ADMIN_PASSWORD: ${{ env.STAGING_ADMIN_PASSWORD }}
           HERMES_STATION_E2E_PASSWORD: ${{ env.STAGING_WEBUI_PASSWORD }}
         run: |
-          uv run pytest tests/test_e2e_admin.py tests/test_e2e_dx.py tests/test_login_smoke.py -v --no-cov
+          .venv/bin/pytest tests/ \
+            --ignore=tests/fixtures \
+            --ignore=tests/test_container_toolbelt.py \
+            --ignore=tests/test_plugin_manifests.py \
+            --ignore=tests/test_version.py \
+            -v --no-cov

@@ -10,8 +10,8 @@ FROM ${BASE_IMAGE} AS runtime
 WORKDIR /app
 
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
-# hermes-webui is fetched at build time because it has no pyproject.toml,
-# so it can't be installed via pip. The control plane reads it from /opt/hermes-webui at runtime.
+# hermes-webui is fetched at build time; it has no pyproject.toml and is run
+# directly as server.py from /opt/hermes-webui at runtime.
 ARG HERMES_WEBUI_VERSION=v0.51.145
 ARG HERMES_WEBUI_SHA=329debcd33969c4386a72f14d91e38c0e82d0b8e
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
@@ -23,16 +23,17 @@ RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
        fi \
     && rm -rf /opt/hermes-webui/.git
 
-COPY pyproject.toml README.md LICENSE ./
-COPY hermes_station/__init__.py /app/hermes_station/__init__.py
-
 # No BuildKit cache mount: Railway's metal builder requires service-specific
 # cache IDs that can't be interpolated from ARG/env vars.
-RUN uv pip install --system --link-mode=copy ".[hermes]" -r /opt/hermes-webui/requirements.txt \
+# Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
+ARG HERMES_AGENT_VERSION=0.14.0
+RUN uv pip install --system --link-mode=copy \
+        "hermes-agent[messaging]==${HERMES_AGENT_VERSION}" \
+        -r /opt/hermes-webui/requirements.txt \
         pandas numpy pillow openpyxl pypdf \
-        pytest ruff \
+        pytest pytest-cov \
         "hindsight-all-slim" "pg0-embedded" \
-    && mkdir -p /data/.hermes /data/webui /data/workspace /data/.hindsight
+        supervisor
 
 # Patch: hermes-agent 0.14.0 wheel omits plugin.yaml files; restore them.
 # Remove once upstream PRs #27240/#27268 merge and we bump the pin.
@@ -62,21 +63,25 @@ RUN set -eux; \
     echo "MCP servers installed (filesystem=${MCP_SERVER_FILESYSTEM_VERSION}, github=${MCP_SERVER_GITHUB_VERSION}, fetch=${MCP_SERVER_FETCH_VERSION})" && \
     echo "agent-browser installed (${AGENT_BROWSER_VERSION})"
 
-ADD extension.tar /opt/hermes-station/
-ADD hermes_station.tar /app/
+COPY supervisord.conf /etc/supervisord.conf
 
 ENV HOME=/data \
     HERMES_HOME=/data/.hermes \
     HERMES_CONFIG_PATH=/data/.hermes/config.yaml \
     HERMES_WEBUI_STATE_DIR=/data/webui \
     HERMES_WORKSPACE_DIR=/data/workspace \
-    HERMES_GATEWAY_AUTOSTART=auto \
     HERMES_WEBUI_SRC=/opt/hermes-webui \
+    HERMES_WEBUI_HOST=0.0.0.0 \
+    HERMES_WEBUI_PORT=8787 \
     PYTHONUNBUFFERED=1 \
     PYTHONNOUSERSITE=1 \
     PYTHONSAFEPATH=1 \
-    PYTHONPATH=/app \
     PORT=8787
+
+# Bake the hermes-agent site-packages path so webui can import run_agent without discovery.
+# The actual mechanism is the `export HERMES_WEBUI_AGENT_DIR` in hermes-entrypoint.sh.
+RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
+    && echo "HERMES_WEBUI_AGENT_DIR=${site_pkgs}" >> /etc/environment
 
 EXPOSE 8787
 
@@ -84,37 +89,31 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD curl -sf http://localhost:8787/health || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hermes-entrypoint"]
-CMD ["python", "-m", "hermes_station"]
+CMD ["supervisord", "-n", "-c", "/etc/supervisord.conf"]
 
 # --- version metadata (kept at bottom so revision changes don't bust deps cache) ---
 ARG RAILWAY_GIT_COMMIT_SHA=
 ARG IMAGE_REVISION=${RAILWAY_GIT_COMMIT_SHA:-dev}
 ENV HERMES_WEBUI_VERSION=${HERMES_WEBUI_VERSION}
-RUN station=$(python3 -c "from importlib.metadata import version; print(version('hermes-station'))" 2>/dev/null || echo n/a) \
-    && agent=$(python3 -c "from importlib.metadata import version; print(version('hermes-agent'))" 2>/dev/null || echo n/a) \
+RUN agent=$(python3 -c "from importlib.metadata import version; print(version('hermes-agent'))" 2>/dev/null || echo n/a) \
     && echo "${IMAGE_REVISION}" > /etc/hermes-station-build \
-    && printf '\n=== hermes-station built ===\n  station : %s\n  revision: %s\n  webui   : %s\n  agent   : %s\n===========================\n\n' \
-         "$station" "${IMAGE_REVISION}" "${HERMES_WEBUI_VERSION}" "$agent"
+    && printf '\n=== hermes-station built ===\n  revision: %s\n  webui   : %s\n  agent   : %s\n===========================\n\n' \
+         "${IMAGE_REVISION}" "${HERMES_WEBUI_VERSION}" "$agent"
 LABEL org.opencontainers.image.source="https://github.com/roryford/hermes-station"
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}"
 LABEL org.opencontainers.image.version="${HERMES_WEBUI_VERSION}"
 
-# Harden: strip write bits from app code so the hermes user can't modify it.
-# /data is NOT chowned here — entrypoint fixes ownership before dropping to hermes.
 COPY hermes-entrypoint.sh /usr/local/bin/hermes-entrypoint
-RUN site_pkgs="$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
-    && python3 -m compileall -q /app "$site_pkgs" \
+RUN python3 -m compileall -q /opt/hermes-webui \
     && useradd -u 10000 -d /data -s /sbin/nologin -M hermes \
-    && chmod -R a-w "$site_pkgs" /opt/hermes-webui /app /opt/uv-tools \
     && chmod +x /usr/local/bin/hermes-entrypoint
+RUN chmod -R a-w "$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")" \
+    /opt/hermes-webui /opt/uv-tools 2>/dev/null || true
 
 # --- test stage (not shipped to prod) ---
 FROM runtime AS test
-COPY uv.lock ./
 ADD tests.tar /app/
 ADD docs.tar /app/
-RUN uv export --only-group dev --frozen --no-hashes --no-header \
-    | uv pip install --system --link-mode=copy -r /dev/stdin
 CMD ["python", "-m", "pytest", "tests/", "-q", "--no-cov"]
 
 # --- default stage ---

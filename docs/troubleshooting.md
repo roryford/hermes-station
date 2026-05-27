@@ -22,7 +22,7 @@ Common failure modes when running hermes-station locally or under CI.
    docker logs hs-test
    ```
 
-2. Confirm both required env vars are set (`HERMES_WEBUI_PASSWORD` and `HERMES_ADMIN_PASSWORD`). The container will not start without these two passwords.
+2. Confirm the required env var is set (`HERMES_WEBUI_PASSWORD`).
 
 3. Check for a port conflict. If something else is already on `8787`:
 
@@ -96,27 +96,35 @@ container run --rm \
 
 ---
 
-## Realistic fixture import fails
+## Gateway won't start
 
-**Symptom:** `tests/test_compat_realistic.py` fails with an import or assertion error, or runs unexpectedly when it should skip.
+**Symptom:** The messaging gateway (Discord, Telegram, Slack, etc.) is not running even after setting `HERMES_GATEWAY_ENABLED=1`.
 
-**Likely cause (runs unexpectedly):** `tests/fixtures/data-realistic/.hermes/` exists but was populated manually with an incorrect layout. The test activates as soon as that directory exists.
+**Fix:**
 
-**Likely cause (assertion error in `test_sanitized_env_loads_cleanly`):** The fixture was not sanitized correctly — `.env` values were not replaced with `PLACEHOLDER_<KEY>`.
+1. Check container logs for gateway output:
 
-**Fix:** Re-generate the fixture using the sanitize script:
+   ```bash
+   container logs hs-test 2>&1 | grep gateway
+   docker logs hs-test 2>&1 | grep gateway
+   ```
 
-```bash
-./scripts/sanitize-data-snapshot.sh <path-to-snapshot.tgz>
-```
+2. Check supervisord status interactively:
 
-This script scrubs all secrets and deletes PII directories automatically. See [`docs/fixtures.md`](fixtures.md) for the full workflow including how to take the initial snapshot.
+   ```bash
+   container exec hs-test supervisorctl -c /etc/supervisord.conf status
+   docker exec hs-test supervisorctl -c /etc/supervisord.conf status
+   ```
 
-After re-running the script, verify the fixture passes:
+3. Confirm `HERMES_GATEWAY_ENABLED=1` is set and the entrypoint ran. Look for this line in the logs:
 
-```bash
-uv run pytest tests/test_compat_realistic.py -v
-```
+   ```
+   hermes-entrypoint: gateway enabled — patching supervisord.conf
+   ```
+
+   If it's missing, the env var wasn't set at container start time.
+
+4. **"No messaging platforms enabled"** in the logs is a warning, not an error — the gateway process is running fine, it just has no platforms configured yet. Add a platform key (e.g. `TELEGRAM_BOT_TOKEN`) to enable one.
 
 ---
 
@@ -129,47 +137,7 @@ uv run pytest tests/test_compat_realistic.py -v
 **Fix:** Add `--link-mode=copy` to every `uv pip install` call in the Dockerfile:
 
 ```dockerfile
-RUN uv pip install --link-mode=copy -e ".[dev]"
+RUN uv pip install --link-mode=copy ...
 ```
 
 This is already applied in the project's `Dockerfile`. If you see this error in a custom build stage or a local venv inside a container, add the flag explicitly.
-
----
-
-## Playwright tests auto-skip
-
-**Symptom:** All `tests/browser/` tests are collected but immediately skipped with a message about `HERMES_STATION_E2E_URL` not being set.
-
-**Likely cause:** This is expected behavior. The Playwright browser suite skips automatically when `HERMES_STATION_E2E_URL` is unset so it does not interfere with the default `uv run pytest` run.
-
-**Fix:** If you intend to run the browser suite, boot a container with the pilot admin extension enabled and set the env var:
-
-```bash
-# Boot container with the pilot flag
-container run -d --name hs-test -p 8787:8787 \
-  -e HERMES_WEBUI_PASSWORD=test-admin-pw \
-  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
-  -e OPENROUTER_API_KEY=local-fake-key \
-  -e HERMES_STATION_PILOT_ADMIN_EXTENSION=1 \
-  hermes-station:local
-
-# Install Chromium once (cached at $PLAYWRIGHT_BROWSERS_PATH)
-PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
-  uv run --with playwright python -m playwright install chromium
-
-# Stage 1: parallel-safe read-only tests
-PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
-HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
-HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  uv run --with playwright --with pytest-playwright --with pytest-xdist \
-    pytest tests/browser/ -m "not serial" --no-cov -n auto
-
-# Stage 2: serial mutation tests (must run alone)
-PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
-HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
-HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  uv run --with playwright --with pytest-playwright --with pytest-xdist \
-    pytest tests/browser/ -m serial --no-cov
-```
-
-See [`CLAUDE.md`](../CLAUDE.md) for the full two-stage browser suite invocation.

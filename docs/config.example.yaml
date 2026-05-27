@@ -3,7 +3,7 @@
 # This is the shape that boots cleanly with zero secrets:
 # /health will report status: "ok" on first boot (all intended capabilities
 # are ready; the gateway is idle pending a provider key).
-# The container stays up and the admin UI is reachable at /admin.
+# The container stays up and the WebUI is reachable at /.
 #
 # Drop this at /data/.hermes/config.yaml (or wherever HERMES_CONFIG_PATH
 # points) and fill in secrets via .env / env vars — never inline.
@@ -12,7 +12,7 @@
 # Leave this block commented out on a fresh deploy. The first-boot seeder
 # writes it automatically when OPENROUTER_API_KEY (or ANTHROPIC_API_KEY /
 # OPENAI_API_KEY) is set in the environment. Configure it manually here or
-# via /admin/settings if you prefer a provider the seeder doesn't cover.
+# via the WebUI settings if you prefer a provider the seeder doesn't cover.
 #
 # model:
 #   provider: openrouter

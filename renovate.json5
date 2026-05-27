@@ -9,7 +9,7 @@
     prHourlyLimit: 0,
     prConcurrentLimit: 5,
 
-    // hermes-agent: tracked via pyproject.toml git URL (pep621 manager handles it natively).
+    // hermes-agent: tracked via Dockerfile RUN uv pip install (regex manager below).
     // hermes-webui: tracked via Dockerfile ARG (custom regex manager below).
     customManagers: [
         {
@@ -21,6 +21,16 @@
             ],
             depNameTemplate: "nesquena/hermes-webui",
             datasourceTemplate: "github-tags",
+        },
+        {
+            customType: "regex",
+            description: "Track hermes-agent version in Dockerfile ARG",
+            fileMatch: ["(^|/)Dockerfile$"],
+            matchStrings: [
+                "ARG HERMES_AGENT_VERSION=(?<currentValue>[\\d.]+)",
+            ],
+            depNameTemplate: "hermes-agent",
+            datasourceTemplate: "pypi",
         },
         // One regex manager per pinned binary in scripts/pinned-binaries.tsv.
         // Each row uses tab-separated fields: name<TAB>version<TAB>url_amd64<TAB>...

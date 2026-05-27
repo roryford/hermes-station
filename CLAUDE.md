@@ -1,20 +1,21 @@
 # hermes-station — Claude Code guide
 
+## What this repo is
+
+hermes-station is a container that packages hermes-webui, hermes-agent,
+hindsight, and system tools (chromium, ffmpeg, tesseract, node, MCP servers)
+into a single deployable unit for Railway. There is no Python application
+in this repo — just a Dockerfile, an entrypoint script, supervisord config,
+and a Railway template.
+
 ## Running tests
 
-Always run the **full** test suite — no skipping, no `-k` filters, no `--ignore` (except the two noted below).
+There is no fast host-side unit test run. All meaningful tests require a
+running container. The minimum feedback loop is a container build.
 
-### Quick unit + lint run (no container needed)
-
-```bash
-uv run pytest tests/ --ignore=tests/fixtures --ignore=tests/test_compat_realistic.py -q
-```
-
-### Full test suite (including e2e and toolbelt — requires a running container)
+### Build both images
 
 Use the Apple `container` CLI (not Docker) for local runs.
-
-**1. Build both images:**
 
 > **container CLI 0.12.3 workaround**: two bugs require a staging build context.
 > Bug 1: Dockerfiles > ~15KB crash buildkit before a build starts.
@@ -22,68 +23,67 @@ Use the Apple `container` CLI (not Docker) for local runs.
 > The build uses tar archives as root-level ADD sources to bypass bug 2,
 > and a `/tmp/hs-ctx` staging dir (< 15K files) to bypass the file-count crash.
 
-The heavy system layer (chromium/ffmpeg/tesseract/node + pinned binaries) now
-lives in a base image pulled by the Dockerfile's `FROM`
-(`ghcr.io/roryford/hermes-station-base`, built by `.github/workflows/base-image.yml`).
-It's published multi-arch, so local arm64 builds pull it automatically — no local
-base build needed, and the pinned-binaries scripts no longer go in the staging
-dir. To change base deps: edit `Dockerfile.base`, run the base-image workflow with
-a bumped tag, then update the `BASE_IMAGE` arg in `Dockerfile`.
+The heavy system layer (chromium/ffmpeg/tesseract/node + pinned binaries) lives
+in a base image (`ghcr.io/roryford/hermes-station-base`, built by
+`.github/workflows/base-image.yml`). Published multi-arch — no local base build
+needed. To change base deps: edit `Dockerfile.base`, run the base-image workflow
+with a bumped tag, then update the `BASE_IMAGE` arg in `Dockerfile`.
 
 ```bash
 # Prepare staging dir (first time or after clean)
-mkdir -p /tmp/hs-ctx/hermes_station
-cp pyproject.toml README.md LICENSE uv.lock /tmp/hs-ctx/
+mkdir -p /tmp/hs-ctx
 cp scripts/patch_plugin_manifests.py scripts/hermes-entrypoint.sh /tmp/hs-ctx/
-# __init__.py is staged separately so the deps-cache COPY layer can resolve
-# the package version without busting on every source change.
-cp hermes_station/__init__.py /tmp/hs-ctx/hermes_station/__init__.py
+cp supervisord.conf /tmp/hs-ctx/
+cp .dockerignore /tmp/hs-ctx/
 
 # (Re-)pack source tars — run this before every build when source changes
-COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/hermes_station.tar hermes_station
-COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' -f /tmp/hs-ctx/extension.tar extension
 COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/tests.tar tests
 COPYFILE_DISABLE=1 tar -c -f /tmp/hs-ctx/docs.tar docs
-cp .dockerignore /tmp/hs-ctx/
 
 # Build
 container build -f Dockerfile -t hermes-station:local /tmp/hs-ctx
 container build --target test -f Dockerfile -t hermes-station:test /tmp/hs-ctx
 ```
 
-**2. Boot the runtime container:**
+### Boot the runtime container
+
 ```bash
 container run -d --name hs-test -p 8787:8787 \
   -e HERMES_WEBUI_PASSWORD=test-admin-pw \
-  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
   -e OPENROUTER_API_KEY=local-fake-key \
   hermes-station:local
 ```
-Poll until healthy: `curl -s http://127.0.0.1:8787/health`
 
-**3. Run host-runnable tests (unit + e2e + login smoke):**
+Poll until healthy:
+
+```bash
+until curl -sf http://127.0.0.1:8787/health >/dev/null 2>&1; do sleep 2; done && echo "ready"
+```
+
+### Run host-runnable e2e tests
+
 ```bash
 HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
 HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
-uv run pytest tests/ \
-  --ignore=tests/fixtures \
-  --ignore=tests/test_compat_realistic.py \
-  --ignore=tests/test_container_toolbelt.py \
-  --ignore=tests/test_plugin_manifests.py \
-  -v --no-cov
+uv run --with pytest --with httpx \
+  pytest tests/ \
+    --ignore=tests/fixtures \
+    --ignore=tests/test_container_toolbelt.py \
+    --ignore=tests/test_plugin_manifests.py \
+    --ignore=tests/test_version.py \
+    -v --no-cov
 ```
 
-**4. Run in-container tests (toolbelt + plugin manifests) from inside the test image:**
+### Run in-container tests (toolbelt + plugin manifests)
 
-Note: `host.containers.internal` does NOT resolve in Apple container CLI. Use `192.168.64.1` to reach the host from inside a container.
+Note: `host.containers.internal` does NOT resolve in Apple container CLI.
+Use `192.168.64.1` to reach the host from inside a container.
 
 ```bash
 container run --rm \
   -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
   -e HERMES_STATION_E2E_URL=http://192.168.64.1:8787 \
   -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
   hermes-station:test \
   python -m pytest \
     tests/test_container_toolbelt.py \
@@ -91,76 +91,50 @@ container run --rm \
     -v --no-cov
 ```
 
-**Hindsight sidecar tests** — boot the runtime container with sidecar enabled and port 8888 exposed, then run the test image pointing at the host IP:
+### Hindsight sidecar tests
 
 ```bash
-# Boot (replace step 2) with sidecar + exposed port.
-# HINDSIGHT_API_HOST=0.0.0.0 overrides the default loopback bind so the
-# port-forward from the test container can reach it:
+# Boot with sidecar + exposed port.
+# HINDSIGHT_API_HOST=0.0.0.0 lets the test container reach it via host IP.
 container run -d --name hs-test -p 8787:8787 -p 8888:8888 \
   -e HERMES_WEBUI_PASSWORD=test-admin-pw \
-  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
   -e OPENROUTER_API_KEY=local-fake-key \
   -e HINDSIGHT_SIDECAR=1 \
   -e HINDSIGHT_API_HOST=0.0.0.0 \
   hermes-station:local
 
-# Run from the test image (HTTP tests only — process/log checks need local mode):
 container run --rm \
   -e HERMES_STATION_HINDSIGHT_SIDECAR=1 \
   -e HERMES_STATION_HINDSIGHT_SIDECAR_URL=http://192.168.64.1:8888 \
   -e HERMES_STATION_E2E_URL=http://192.168.64.1:8787 \
   -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
   hermes-station:test \
   python -m pytest tests/test_hindsight_sidecar.py -v --no-cov
 ```
 
-A fake key is sufficient — the API server starts and listens even if LLM auth would fail with 401.
+### Cleanup
 
-**5. Cleanup:**
 ```bash
 container stop hs-test && container rm hs-test
 ```
 
-### Permanently skipped
-
-- `tests/test_compat_realistic.py` — requires `tests/fixtures/data-realistic/.hermes/` which is not committed to the repo.
-
 ### Expected results
 
-Full run: ~820 passed, 0 failed, 0 skipped (excluding `test_compat_realistic.py`).
+Full run (all tests, booted container): all pass, 0 failed, 0 skipped.
 
-### Browser suite (Playwright)
+## Key environment variables
 
-`tests/browser/` drives the pilot admin extension UI through a real browser.
-Auto-skips when `HERMES_STATION_E2E_URL` is unset, so it stays out of the
-default run. Container must be booted with `HERMES_STATION_PILOT_ADMIN_EXTENSION=1`.
+| Variable | Purpose |
+|---|---|
+| `HERMES_WEBUI_PASSWORD` | webui auth password (required) |
+| `OPENROUTER_API_KEY` | LLM provider key |
+| `HERMES_GATEWAY_ENABLED` | `1` to start the messaging platform gateway |
+| `HINDSIGHT_SIDECAR` | `1` to start the hindsight memory sidecar |
+| `HERMES_PATCH_AGENT_VERSION` | Hot-patch hermes-agent to a specific PyPI version at startup |
+| `HERMES_PATCH_WEBUI_VERSION` | Hot-patch hermes-webui to a specific git tag at startup |
 
-```bash
-# Boot container with the pilot flag (replaces step 2 above).
-container run -d --name hs-test -p 8787:8787 \
-  -e HERMES_WEBUI_PASSWORD=test-admin-pw \
-  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
-  -e OPENROUTER_API_KEY=local-fake-key \
-  -e HERMES_STATION_PILOT_ADMIN_EXTENSION=1 \
-  hermes-station:local
+## Bumping upstream versions
 
-# Install Chromium once (cached at $PLAYWRIGHT_BROWSERS_PATH).
-PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
-  uv run --with playwright python -m playwright install chromium
-
-# Stage 1: parallel-safe read-only tests via pytest-xdist.
-PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
-HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
-HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  uv run --with playwright --with pytest-playwright --with pytest-xdist \
-    pytest tests/browser/ -m "not serial" --no-cov -n auto
-
-# Stage 2: serial-only mutation tests (gateway restart). Must run alone.
-PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright \
-HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
-HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  uv run --with playwright --with pytest-playwright --with pytest-xdist \
-    pytest tests/browser/ -m serial --no-cov
-```
+- **hermes-webui**: update `HERMES_WEBUI_VERSION` and `HERMES_WEBUI_SHA` in `Dockerfile` (Renovate tracks this)
+- **hermes-agent**: update `HERMES_AGENT_VERSION` in `Dockerfile` (Renovate tracks this)
+- **Base image**: edit `Dockerfile.base`, run the `base-image.yml` workflow with a bumped tag, update `BASE_IMAGE` in `Dockerfile`

@@ -4,54 +4,49 @@ A guide for new contributors: from a fresh clone to running the full test suite.
 
 ## Prerequisites
 
-- **Python 3.12+**
-- **[uv](https://docs.astral.sh/uv/)** — install once with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **Container runtime** — Apple `container` CLI (macOS) or Docker
+- **`uv`** (optional) — for running host-side tests: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
-## Clone and install
+There is no Python application to set up locally. All meaningful testing requires a container build.
+
+## Clone
 
 ```bash
 git clone https://github.com/roryford/hermes-station.git
 cd hermes-station
-uv sync
 ```
 
-`uv sync` installs all runtime and dev dependencies (pytest, ruff, mypy) into a local `.venv`. No `pip install` or `venv` commands needed.
+## Build the container image
 
-## Unit tests (no container required)
+See [`CLAUDE.md`](CLAUDE.md) for the complete build workflow, including the Apple `container` CLI staging-dir workaround. Quick summary:
+
+**Apple container (requires staging dir):**
 
 ```bash
-uv run pytest tests/ --ignore=tests/fixtures --ignore=tests/test_compat_realistic.py -q
+# Prepare staging dir
+mkdir -p /tmp/hs-ctx
+cp scripts/patch_plugin_manifests.py scripts/hermes-entrypoint.sh /tmp/hs-ctx/
+cp supervisord.conf .dockerignore /tmp/hs-ctx/
+COPYFILE_DISABLE=1 tar -c --exclude '__pycache__' --exclude '*.pyc' -f /tmp/hs-ctx/tests.tar tests
+COPYFILE_DISABLE=1 tar -c -f /tmp/hs-ctx/docs.tar docs
+
+container build -f Dockerfile -t hermes-station:local /tmp/hs-ctx
+container build --target test -f Dockerfile -t hermes-station:test /tmp/hs-ctx
 ```
 
-All tests are hermetic — no ambient services or ports required. Expected: ~820 passed.
-
-Or use the Makefile shortcut:
+**Docker (direct build):**
 
 ```bash
-make test
+docker build -t hermes-station:local .
+docker build --target test -t hermes-station:test .
 ```
 
-## Full e2e suite (requires a container)
-
-The full suite adds toolbelt checks and e2e tests that need a running container.
-
-### 1. Build both images
-
-| Apple container | Docker |
-|---|---|
-| `container build -t hermes-station:local .` | `docker build -t hermes-station:local .` |
-| `container build --target test -t hermes-station:test .` | `docker build --target test -t hermes-station:test .` |
-
-Or: `make build` (uses whichever runtime is on your PATH).
-
-### 2. Boot the runtime container
+## Boot the runtime container
 
 **Apple container:**
 ```bash
 container run -d --name hs-test -p 8787:8787 \
   -e HERMES_WEBUI_PASSWORD=test-admin-pw \
-  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
   -e OPENROUTER_API_KEY=local-fake-key \
   hermes-station:local
 ```
@@ -60,28 +55,33 @@ container run -d --name hs-test -p 8787:8787 \
 ```bash
 docker run -d --name hs-test -p 8787:8787 \
   -e HERMES_WEBUI_PASSWORD=test-admin-pw \
-  -e HERMES_ADMIN_PASSWORD=test-admin-pw \
   -e OPENROUTER_API_KEY=local-fake-key \
   hermes-station:local
 ```
 
-Poll until healthy: `curl -s http://127.0.0.1:8787/health`
+Poll until healthy:
 
-### 3. Run host-runnable tests (unit + e2e + login smoke)
+```bash
+until curl -sf http://127.0.0.1:8787/health >/dev/null 2>&1; do sleep 2; done && echo "ready"
+```
+
+Expected: `"ok"` from `curl http://127.0.0.1:8787/health | jq .status`.
+
+## Run host-runnable e2e tests
 
 ```bash
 HERMES_STATION_E2E_URL=http://127.0.0.1:8787 \
 HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
-uv run pytest tests/ \
-  --ignore=tests/fixtures \
-  --ignore=tests/test_compat_realistic.py \
-  --ignore=tests/test_container_toolbelt.py \
-  --ignore=tests/test_plugin_manifests.py \
-  -v --no-cov
+uv run --with pytest --with httpx \
+  pytest tests/ \
+    --ignore=tests/fixtures \
+    --ignore=tests/test_container_toolbelt.py \
+    --ignore=tests/test_plugin_manifests.py \
+    --ignore=tests/test_version.py \
+    -v --no-cov
 ```
 
-### 4. Run in-container tests (toolbelt + plugin manifests)
+## Run in-container tests
 
 > **Apple container note:** `host.containers.internal` does not resolve. Use `192.168.64.1` to reach the host from inside a container.
 
@@ -91,7 +91,6 @@ container run --rm \
   -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
   -e HERMES_STATION_E2E_URL=http://192.168.64.1:8787 \
   -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
   hermes-station:test \
   python -m pytest tests/test_container_toolbelt.py tests/test_plugin_manifests.py -v --no-cov
 ```
@@ -102,31 +101,20 @@ docker run --rm \
   -e HERMES_STATION_REQUIRE_TOOLBELT=1 \
   -e HERMES_STATION_E2E_URL=http://host.docker.internal:8787 \
   -e HERMES_STATION_E2E_PASSWORD=test-admin-pw \
-  -e HERMES_STATION_E2E_ADMIN_PASSWORD=test-admin-pw \
-  --add-host=host.docker.internal:host-gateway \
   hermes-station:test \
   python -m pytest tests/test_container_toolbelt.py tests/test_plugin_manifests.py -v --no-cov
 ```
 
-### 5. Cleanup
+## Cleanup
 
 ```bash
 container stop hs-test && container rm hs-test   # Apple container
 docker stop hs-test && docker rm hs-test          # Docker
 ```
 
-## One-shot full verification
-
-`scripts/dx-verify.sh` runs all tiers in sequence (lint, unit, build, health checks, in-container suite):
-
-```bash
-bash scripts/dx-verify.sh
-# or
-make verify
-```
-
 ## What's next
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — PR workflow, linting, compat fixtures
-- **[CLAUDE.md](CLAUDE.md)** — full test matrix including the Playwright browser suite, expected pass counts, and the permanently-skipped test
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — PR workflow and checklist
+- **[CLAUDE.md](CLAUDE.md)** — full build and test matrix including the Hindsight sidecar tests
 - **[docs/configuration.md](docs/configuration.md)** — env var reference and first-boot behavior
+- **[docs/architecture.md](docs/architecture.md)** — container structure and process model
