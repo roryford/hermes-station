@@ -1,12 +1,13 @@
 # Secrets management
 
-The admin UI's **Secrets** page (`/admin/settings`) is the single place to
-manage every API key the agent might use — provider keys (Anthropic, OpenAI,
-…), image-generation backends (FAL), web-search backends (Brave, Tavily, …),
-browser automation, and any custom secret you want to expose.
+Secrets (API keys, channel tokens, etc.) can be supplied in two ways:
 
-This page replaces the previous reality of "edit Railway env vars and hope it
-takes effect" with explicit, observable state.
+1. **Railway / Docker env vars** — set in the Railway dashboard Variables tab
+   or via `-e` on `docker run` / `container run`. Picked up on every container
+   start.
+2. **`/data/.hermes/.env`** — a dotenv file written by hermes-webui and read at
+   boot. Values here take precedence over process env vars. Use the WebUI
+   settings panel to manage this file at runtime.
 
 ## The three states
 
@@ -16,102 +17,45 @@ Every secret resolves to one of three states:
 |--------------|-----------------------------------------------|--------|
 | **Auto**     | nothing in `.env` or `admin.disabled_secrets` | Whatever Railway / host environment provides. Unset → unset. |
 | **Override** | `KEY=value` in `$HERMES_HOME/.env`            | Takes precedence over Railway. Use when you need to substitute a different value than what's in Railway. |
-| **Disabled** | `KEY` in `admin.disabled_secrets`             | Actively suppressed: popped from `os.environ` after `.env` merge, so the agent sees nothing even if Railway provides a value. |
-
-The **Source** badge on each row tells you which one is currently in effect:
-
-- `env` — coming from Railway / host
-- `file` — overridden by `.env`
-- `disabled` — actively suppressed
-- `unset` — nowhere
-
-## Shadowing
-
-The `.env` file wins over Railway. If you save an override on the Secrets page
-and Railway *also* sets the same key, the override takes effect and you'll see
-a **⚠ Railway also sets …** warning on the row. This is intentional but
-surprising — left undetected, it's the most common cause of "I added the env
-var to Railway but the agent still uses the old value." Click **Use Railway**
-to drop the override.
+| **Disabled** | `KEY` in `admin.disabled_secrets`             | Actively suppressed: popped from the environment after `.env` merge, so the agent sees nothing even if Railway provides a value. |
 
 ## Common patterns
 
 ### "I added `FAL_KEY` to Railway but the agent doesn't see it"
 
-Most likely cause: a stale value in `.env` is shadowing it. Open the Secrets
-page, find FAL_KEY, click **Use Railway** to drop the override.
+Most likely cause: a stale value in `.env` is shadowing it. Open the WebUI
+settings, find FAL_KEY, and drop the `.env` override (choose "Use Railway").
 
 ### "I want to temporarily disable image generation without touching Railway"
 
-Find FAL_KEY on the Secrets page, click **Disable**. The agent will not see
-the key on the next restart and will report `image_gen` as not ready in
-`/health`. Click **Re-enable** to restore.
+Disable FAL_KEY via the WebUI settings. The agent will not see the key on the
+next restart and will report `image_gen` as not ready in `/health`. Re-enable
+to restore.
 
 ### "I want to rotate a key"
 
-Click **Save override** with the new value. The old value is overwritten in
-`.env` atomically. Restart the agent (the page does this automatically).
+1. Update the value in the Railway dashboard Variables tab.
+2. Restart the service.
 
-### "I have a custom service with its own API key"
-
-Use **Add custom secret** at the bottom of the page. The key gets tracked in
-`admin.custom_secret_keys` so it renders on the page on future visits.
-
-### "I added a variable in Railway but the web UI can't see it"
-
-The web UI subprocess only receives env vars whose name is on an allowlist
-(catalog + channel + provider keys + `admin.custom_secret_keys`). A bare
-Railway variable reaches the agent but not the web UI. Click **Add custom
-secret** and enter the key name to register it — it will then be forwarded to
-the web UI too. See [What the web UI process sees](#what-the-web-ui-process-sees).
+Or override it via the WebUI settings — the new value is written atomically to
+`.env` and the gateway restarts automatically.
 
 ## In-process tools vs sandboxed tools
 
 The agent runs most tools **in-process**: image generation, web search,
-model providers, etc. They read secrets directly from `os.environ` and need
-no special configuration — Railway env vars and `.env` overrides Just Work.
+model providers, etc. They read secrets directly from the environment and need
+no special configuration.
 
 A few tools run in **isolated subprocesses** for safety: the terminal tool,
 code execution, and MCP servers (filesystem, GitHub, …). These do NOT inherit
 the parent's environment by default. To expose a secret to them, list its key
-in `terminal.env_passthrough` in `config.yaml`. The Secrets page exposes this
-as the **"Also expose to sandboxed tools"** checkbox when adding a custom
-secret — leave it unchecked unless you know a sandboxed tool needs the key.
+in `terminal.env_passthrough` in `config.yaml`.
 
-`GITHUB_TOKEN`, `GH_TOKEN`, and other well-known keys are auto-added to
-`terminal.env_passthrough` at boot — see `hermes_station/app.py`.
-
-## What the web UI process sees
-
-The web UI runs as its own subprocess, and it does **not** inherit the full
-environment. It only receives env vars whose **name** is on an allowlist:
-
-- every key in the tool-backend secrets catalog (`KNOWN_SECRETS`): FAL,
-  search/browser backends, voice, memory, observability keys,
-- model-provider credential keys (OpenRouter, Anthropic, OpenAI, xAI,
-  Copilot, …),
-- channel tokens,
-- anything you've registered under `admin.custom_secret_keys`.
-
-This matters when you add a variable **directly in Railway** that isn't one of
-those: the station process (and in-process agent tools) will see it (they read
-`os.environ` directly), but the web UI process will **not**. The fix is to
-register the key name — use **Add custom secret** on the Secrets page (which writes
-`admin.custom_secret_keys`), and it will then be forwarded to the web UI too.
-
-Note this gating is purely **by key name**. Marking a variable as a *sealed
-secret* vs. a plain *variable* in the Railway dashboard makes no difference —
-Railway injects both as ordinary environment variables, and the container has
-no way to tell them apart. The only lever that changes web UI visibility is the
-name-based allowlist above.
-
-Disabled keys (`admin.disabled_secrets`) are also withheld from the web UI,
-matching the agent's behavior.
+`GITHUB_TOKEN` and `GH_TOKEN` are auto-added to `terminal.env_passthrough` at
+boot.
 
 ## Storage on disk
 
 - Overrides: `$HERMES_HOME/.env` (mode 0600, atomic writes)
 - Disabled keys: `admin.disabled_secrets: [LIST]` in `config.yaml`
 - Custom tracked keys: `admin.custom_secret_keys: [LIST]` in `config.yaml`
-
-See [`CONTRACT.md`](./CONTRACT.md) §4 for the on-disk format guarantees.

@@ -1,38 +1,32 @@
 # hermes-station
 
-[Hermes Agent](https://github.com/NousResearch/hermes-agent) is an open-source AI assistant you run on your own infrastructure. You connect it to the LLM provider of your choice and it reaches users over Telegram, Discord, Slack, email, and other channels. hermes-station is the easiest way to self-host it: a single container that bundles the agent, the web chat UI, and a browser-based setup wizard, deployable to Railway or runnable locally with Docker or Apple `container`. Your data and API keys stay on your infrastructure — nothing is routed through a third-party service.
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) is an open-source AI assistant you run on your own infrastructure. You connect it to the LLM provider of your choice and it reaches users over Telegram, Discord, Slack, email, and other channels. hermes-station is the easiest way to self-host it: a single container that bundles the agent and the web chat UI, deployable to Railway or runnable locally with Docker or Apple `container`. Your data and API keys stay on your infrastructure — nothing is routed through a third-party service.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/hermes-station?referralCode=wNX0xW)
 
 ## Why it exists
 
-Upstream Hermes requires manual config file editing and SSH access to get started. hermes-station packages the agent with a browser-based `/admin` setup wizard so you can configure providers and channels without touching YAML. Set two passwords, click deploy, open `/admin` — that's the full onboarding path.
+Upstream Hermes requires manual config file editing and SSH access to get started. hermes-station packages the agent with a FIRST RUN wizard so you can configure providers and channels without touching YAML. Set a password, click deploy, open `/` — that's the full onboarding path.
 
 ## What this is
 
 A single Railway-deployable container that runs:
 
-- `/` — the Hermes WebUI
-- `/admin` — control plane: browser-based provider/channel setup, gateway controls, logs
+- `/` — the Hermes WebUI (chat, settings, provider/channel setup)
 - `/health` — healthcheck
 
-Everything writes to `/data` (single Railway volume) and shares one Hermes identity across WebUI, Telegram, Discord, Slack, and other channels. See `docs/CONTRACT.md` §3 for the full filesystem layout.
-
-![Admin dashboard](docs/screenshots/admin-dashboard.png)
-
-![Admin settings](docs/screenshots/admin-settings.png)
+Everything writes to `/data` (single Railway volume) and shares one Hermes identity across the WebUI, Telegram, Discord, Slack, and other channels. See `docs/architecture.md` for the full filesystem layout.
 
 ## Quick start: Railway
 
 1. Click **Deploy on Railway** above.
-2. Set two required env vars in the Railway dashboard before the first boot:
+2. Set the required env var in the Railway dashboard before the first boot:
    - `HERMES_WEBUI_PASSWORD` — protects the chat UI at `/`
-   - `HERMES_ADMIN_PASSWORD` — protects the control plane at `/admin`
-3. Open `/admin` and use the setup wizard to add an LLM provider.
+3. Open `/` and use the FIRST RUN wizard to add an LLM provider.
 
-To skip the `/admin` provider step, set `OPENROUTER_API_KEY` (or another supported key) as an env var at boot — the auto-seeder writes `model.provider: openrouter` to `config.yaml` on first start.
+To skip the wizard's provider step, set `OPENROUTER_API_KEY` (or another supported key) as an env var at boot — the auto-seeder writes `model.provider: openrouter` to `config.yaml` on first start.
 
-See [`docs/features.md`](docs/features.md) for the full capability catalogue — LLM providers, channels, voice, memory, web search, browser automation, image generation, observability, and MCP tools, with which ones are free. [`docs/configuration.md`](docs/configuration.md) has the full env-var reference.
+See [`docs/features.md`](docs/features.md) for the full capability catalogue — LLM providers, channels, voice, memory, web search, browser automation, image generation, observability, and MCP tools. [`docs/configuration.md`](docs/configuration.md) has the full env-var reference.
 
 ## Quick start: Docker / Apple container
 
@@ -41,7 +35,6 @@ mkdir -p /tmp/hermes-station-data
 
 docker run --rm -d --name hermes-station -p 8787:8787 \
   -e HERMES_WEBUI_PASSWORD=changeme \
-  -e HERMES_ADMIN_PASSWORD=changeme \
   -v /tmp/hermes-station-data:/data \
   ghcr.io/roryford/hermes-station:latest
 
@@ -49,26 +42,25 @@ docker run --rm -d --name hermes-station -p 8787:8787 \
 curl http://127.0.0.1:8787/health | jq .status
 ```
 
-Apple `container` and `docker` are both supported — commands are compatible enough for the run flow used here. Then visit `http://127.0.0.1:8787/admin` to finish setup.
+Apple `container` and `docker` are both supported. Then visit `http://127.0.0.1:8787` to finish setup.
 
 ## Minimum safe config
 
-Before any non-local deploy, set both of these:
+Before any non-local deploy, set:
 
 | Variable | Purpose |
 |---|---|
 | `HERMES_WEBUI_PASSWORD` | Protects the chat UI at `/` |
-| `HERMES_ADMIN_PASSWORD` | Protects the control plane at `/admin` |
 
-Without them, both UIs are open to anyone who can reach the host. After setting these two, capabilities unlock as you add the corresponding provider keys (via `/admin` or env vars).
+Without it, the UI is open to anyone who can reach the host. After setting this, capabilities unlock as you add the corresponding provider keys.
 
 ## First boot
 
-hermes-station is **warn-and-continue on first boot**: the container starts on an empty `/data` with zero secrets, `/health` reports `ok` (all intended capabilities are ready; the gateway is idle pending a provider key), and the FIRST RUN wizard in the WebUI walks you through configuration. `status: "ok"` on first boot is not a crash — it means nothing is misconfigured yet. Nothing is required to get a running process.
+hermes-station is **warn-and-continue on first boot**: the container starts on an empty `/data` with zero secrets, `/health` reports `ok`, and the FIRST RUN wizard in the WebUI walks you through configuration.
 
-Visit `/admin` to add a provider key, or set `OPENROUTER_API_KEY` (etc.) at boot to skip the manual step. A capability listed in `config.yaml` but missing its secret shows up as `ready: false` with a `reason`; the container does **not** exit.
+Visit the WebUI to add a provider key, or set `OPENROUTER_API_KEY` (etc.) at boot to skip the manual step. A capability listed in `config.yaml` but missing its secret shows up as `ready: false` with a `reason`; the container does **not** exit.
 
-See [`docs/configuration.md`](docs/configuration.md) for the first-boot config seeding behavior and the warn-and-continue capability model. A minimal starter `config.yaml` lives at [`docs/config.example.yaml`](docs/config.example.yaml).
+See [`docs/configuration.md`](docs/configuration.md) for the first-boot config seeding behavior. A minimal starter `config.yaml` lives at [`docs/config.example.yaml`](docs/config.example.yaml).
 
 ## Health endpoints
 
@@ -76,18 +68,16 @@ Three endpoints, intended for different consumers:
 
 - `GET /health/live` — process is alive. Cheap; suitable for orchestrator **liveness** probes.
 - `GET /health/ready` — composite ready check. Returns `503` when degraded; suitable for orchestrator **readiness** probes.
-- `GET /health` — full JSON, **always 200**. The body's `status` field carries the verdict (`ok` / `degraded` / `down`) so dashboards can read it without treating non-2xx as fatal.
+- `GET /health` — full JSON, **always 200**. The body's `status` field carries the verdict (`ok` / `degraded` / `down`).
 
-Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no** `OPENROUTER_API_KEY` — the auto-seeder finds nothing to seed, so no `provider:*` row appears:
+Example `/health` body on a fresh boot with **no** `OPENROUTER_API_KEY`:
 
 ```json
 {
   "status": "ok",
   "components": {
-    "control_plane": {"state": "ready"},
     "webui":         {"state": "ready", "pid": 42},
     "gateway":       {"state": "unknown", "platform": null, "connection": "not_configured"},
-    "scheduler":     {"state": "unknown", "enabled": false, "job_count": null, "last_run_at": null, "failed_jobs": null},
     "storage":       {"data_writable": true, "config_readable": true},
     "memory":        {"provider": "holographic", "db_ok": true}
   },
@@ -99,82 +89,31 @@ Example `/health` body on a fresh boot with `HERMES_ADMIN_PASSWORD` set and **no
     "memory:holographic": {"intended": true,  "ready": true}
   },
   "versions": {
-    "hermes_station": "0.2.x",
+    "hermes_station": "0.10.x",
     "hermes_agent":   "0.x.y",
     "hermes_webui":   "v0.51.x",
     "python":         "3.13.x",
     "image_revision": "dev"
-  },
-  "boot_at": "2026-05-15T12:34:56+00:00",
-  "summary": {
-    "image_revision": "dev",
-    "hermes_agent":   "0.x.y",
-    "hermes_webui":   "v0.51.x",
-    "python":         "3.13.x",
-    "platforms":      [],
-    "toolsets":       []
   }
 }
 ```
 
-`status: "ok"` here is correct — no readiness row is `intended: true && ready: false`. `gateway.state: "unknown"` is normal on a fresh boot with no provider configured; the gateway hasn't been asked to start yet. Visit `/admin` to add a provider key and the gateway will start automatically.
-
-Same fresh boot **with `OPENROUTER_API_KEY` set** — the seeder writes `model.provider: openrouter` to `config.yaml` on first start, so a `provider:openrouter` readiness row appears and `status` flips to `ok`:
-
-```json
-{
-  "status": "ok",
-  "components": {
-    "control_plane": {"state": "ready"},
-    "webui":         {"state": "ready", "pid": 42},
-    "gateway":       {"state": "running", "platform": null, "connection": "connected"},
-    "scheduler":     {"state": "unknown", "enabled": false, "job_count": null, "last_run_at": null, "failed_jobs": null},
-    "storage":       {"data_writable": true, "config_readable": true},
-    "memory":        {"provider": "holographic", "db_ok": true}
-  },
-  "readiness": {
-    "discord":             {"intended": false, "ready": false},
-    "provider:openrouter": {"intended": true,  "ready": true,  "source": "process_env"},
-    "web_search":          {"intended": false, "ready": false},
-    "image_gen":           {"intended": false, "ready": false},
-    "github":              {"intended": false, "ready": false},
-    "memory:holographic":  {"intended": true,  "ready": true}
-  },
-  "versions": {
-    "hermes_station": "0.2.x",
-    "hermes_agent":   "0.x.y",
-    "hermes_webui":   "v0.51.x",
-    "python":         "3.13.x",
-    "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd"
-  },
-  "boot_at": "2026-05-15T12:34:56+00:00",
-  "summary": {
-    "image_revision": "a1b2c3d4e5f6789012345678901234567890abcd",
-    "hermes_agent":   "0.x.y",
-    "hermes_webui":   "v0.51.x",
-    "python":         "3.13.x",
-    "platforms":      [],
-    "toolsets":       []
-  }
-}
-```
-
-The exact seeder behavior (precedence, default models, no-clobber) is documented in [`docs/configuration.md`](docs/configuration.md#provider-auto-seed) and pinned by [`tests/test_config_seed_provider.py`](tests/test_config_seed_provider.py).
+`status: "ok"` here is correct — no readiness row is `intended: true && ready: false`. `gateway.state: "unknown"` is normal on a fresh boot with no provider configured.
 
 ## Volume compatibility
 
-hermes-station is engineered to accept an existing Hermes `/data` volume unchanged. The CI compat test (`tests/test_compat.py`) boots the container against a fixture `/data` snapshot and asserts the contract holds. If that test is green for a given upstream version combo, the image is a verified drop-in.
+hermes-station is engineered to accept an existing Hermes `/data` volume unchanged. If a deploy is healthy at `/health`, the volume mounts cleanly.
 
 ## Known limitations
 
-- **Single-operator deploy** — not a multi-tenant SaaS control plane. One identity, one `/data` volume, one operator.
+- **Single-operator deploy** — not a multi-tenant SaaS. One identity, one `/data` volume, one operator.
 - **Readiness is a boot-time snapshot** — the `/health/ready` check reflects state at startup, not live probes against upstream APIs.
 - **Fast-moving upstreams** — hermes-agent ships weekly; hermes-webui ships several releases per day. Pin versions are tracked by Renovate; don't run `:latest` in production without reviewing the bump PR.
-- **Image is intentionally not minimal** — includes Node.js, npm, and the `gh` CLI to support MCP server subprocesses, plus the Python `mcp` package (client-side) so hermes-agent can open `ClientSession` / `StdioServerParameters` connections to those servers. The image is larger than a stripped runtime.
+- **Image is intentionally not minimal** — includes Node.js, npm, and the `gh` CLI to support MCP server subprocesses. The image is larger than a stripped runtime.
 
 ## Support posture
 
-Single-operator deploy, public repo, best for self-hosters comfortable with Docker or Railway. The browser setup flow reduces YAML editing but provider complexity (API keys, channel tokens, webhook URLs) remains. Issues and PRs welcome; no SLA.
+Single-operator deploy, public repo, best for self-hosters comfortable with Docker or Railway. Issues and PRs welcome; no SLA.
 
 ## Advanced / Operator notes
 
@@ -182,7 +121,7 @@ Single-operator deploy, public repo, best for self-hosters comfortable with Dock
 
 Both upstreams move fast (hermes-agent: weekly, hermes-webui: several releases/day). We pin exact versions and let Renovate open weekly batched bump PRs; CI runs the compat test; auto-merge on green.
 
-- `hermes-agent` — pinned in `pyproject.toml` via `git+https://...@<tag>`. Tracked by Renovate's PEP 621 manager.
+- `hermes-agent` — pinned in `Dockerfile` via install args. Tracked by Renovate.
 - `hermes-webui` — pinned in `Dockerfile` via `ARG HERMES_WEBUI_VERSION`. Tracked by Renovate's regex manager (`renovate.json5`).
 
 See `renovate.json5` for the schedule and `.github/workflows/ci.yml` for the gate.
@@ -210,9 +149,6 @@ curl https://your-app/health | jq .versions
 Stdout is JSON, one object per line, with `ts`, `level`, `component`, `event`, `message`, and contextual extras. Pipe to `jq` for filtering:
 
 ```bash
-# Readiness checks only
-container logs hermes-station | jq 'select(.component=="readiness")'
-
 # Just warnings and errors
 container logs hermes-station | jq 'select(.level=="warning" or .level=="error")'
 ```
@@ -220,51 +156,21 @@ container logs hermes-station | jq 'select(.level=="warning" or .level=="error")
 ## Local development
 
 ```bash
-# Bootstrap (installs app + dev deps; run once after cloning)
-uv sync
-
-# Run unit tests
-uv run pytest -q
-
-# Build image
-docker build -t hermes-station:local .
-# (or `container build` — Apple's container CLI is a drop-in)
+# Build image (see CLAUDE.md for the full staging-dir workaround needed with Apple container CLI)
+container build -f Dockerfile -t hermes-station:local /tmp/hs-ctx
 
 # Run with a fresh /data
 mkdir -p /tmp/hermes-station-data
-docker run --rm -d --name hermes-station -p 8787:8787 \
-  -e HERMES_WEBUI_PASSWORD=dev -e HERMES_ADMIN_PASSWORD=dev \
-  -v /tmp/hermes-station-data:/data \
+container run --rm -d --name hermes-station -p 8787:8787 \
+  -e HERMES_WEBUI_PASSWORD=dev \
+  --mount type=bind,source=/tmp/hermes-station-data,target=/data \
   hermes-station:local
 
 # Smoke — status: "ok" on first boot is expected (agent is ready, no provider yet)
 curl http://127.0.0.1:8787/health | jq .status
 ```
 
-## Pilot features
-
-Pilot features are opt-in capabilities, gated by `HERMES_STATION_PILOT_*` env vars and **off by default**. They let us ship and dogfood new functionality before committing to a stable contract. Shapes, env-var names, and behavior may change between any two releases during the pilot phase. Each pilot eventually either flips to default-on, becomes GA (flag-free), or is removed — see [`docs/CONTRACT.md`](docs/CONTRACT.md) §12 for the lifecycle promise.
-
-**Note:** changes to pilot env vars only take effect after a container restart. The webui subprocess captures its environment at boot — flipping a flag on a running container has no effect until the container is restarted.
-
-### Admin UI extension (`HERMES_STATION_PILOT_ADMIN_EXTENSION`)
-
-Adds an "Admin" tab to the webui's settings menu that shows a live, read-only status snapshot of the gateway, webui, configured provider, channels, and memory backend. The extension reuses the same browser session as the chat UI — no separate admin password is needed during the pilot, and the bridge re-validates against the existing webui login on every request.
-
-**Enable:**
-
-```bash
-HERMES_STATION_PILOT_ADMIN_EXTENSION=1
-# then restart the container
-```
-
-**Rollback:**
-
-1. Set `HERMES_STATION_PILOT_ADMIN_EXTENSION=0` (or unset it).
-2. Restart the container.
-3. Hard-refresh the browser (Ctrl+Shift+R / Cmd+Shift+R) to drop the cached extension JS/CSS so the old tab disappears from the settings menu.
-
-Last-resort rollback: downgrade the image to `ghcr.io/roryford/hermes-station:v0.4.3`. v0.4.3 is stateless with respect to this pilot — no `/data` migration is required to move back.
+See [`CLAUDE.md`](CLAUDE.md) for the full local build and test workflow.
 
 ## License
 

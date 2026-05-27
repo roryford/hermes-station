@@ -20,11 +20,10 @@ You can expect an acknowledgement within 3 business days and a resolution or sta
 ## Scope
 
 In-scope:
-- The hermes-station Python control plane and admin UI
 - The Docker image and its build process
-- Authentication, session handling, and cookie security
-- The HTTP proxy and header-injection surface
+- Authentication and session handling in hermes-webui
 - Secret storage and file permission handling
+- The container entrypoint and supervisord configuration
 
 Out of scope (report upstream instead):
 - Vulnerabilities in [hermes-agent](https://github.com/NousResearch/hermes-agent)
@@ -33,4 +32,4 @@ Out of scope (report upstream instead):
 
 ## Deployment hardening notes
 
-The most common misconfiguration is leaving `HERMES_ADMIN_PASSWORD` and `HERMES_WEBUI_PASSWORD` unset. Without these, both UIs are open to anyone who can reach the container. See [`docs/configuration.md`](docs/configuration.md) for hardening guidance.
+The most common misconfiguration is leaving `HERMES_WEBUI_PASSWORD` unset. Without it, the chat UI is open to anyone who can reach the container. See [`docs/configuration.md`](docs/configuration.md) for hardening guidance.

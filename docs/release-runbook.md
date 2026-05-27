@@ -4,10 +4,9 @@ The full path from "merge feature PR" to "verified live on `chat.roryford.com`".
 
 ## Why this is intentionally manual
 
-Production deploys are run by hand (or by the nightly auto-redeploy) so the
-maintainer experiences the same upgrade UX a downstream self-hoster does.
-Don't add CI-driven auto-deploy to `release.yml` — it would hide usability
-issues that real self-hosters would hit.
+Production deploys are run by hand so the maintainer experiences the same upgrade
+UX a downstream self-hoster does. Don't add CI-driven auto-deploy to
+`release.yml` — it would hide usability issues that real self-hosters would hit.
 
 ## Pre-release
 
@@ -23,7 +22,7 @@ scripts/release.sh minor    # or patch / major
 ```
 
 This script:
-- Bumps `pyproject.toml` version
+- Bumps the version in `railway-template.json` and any other version artifacts
 - Commits with `chore: bump to vX.Y.Z`
 - Tags `vX.Y.Z`
 - Pushes the commit + tag
@@ -41,8 +40,7 @@ gh run watch
 ## Deploy to production
 
 > **Important.** `release.yml` builds and publishes the image but does NOT
-> trigger a Railway deploy. Prod must be rolled forward manually (or via
-> the nightly auto-redeploy).
+> trigger a Railway deploy. Prod must be rolled forward manually.
 
 ### The gotcha that bites every time
 
@@ -89,14 +87,11 @@ If the two SHAs match, prod is on the new release.
 
 If something is wrong on prod after the redeploy:
 
-1. **Soft rollback** — flip any pilot/feature flags off via Railway env vars.
-   Restart the service. The previous image is still running until the new
-   image succeeds at health-check, so a flag flip is often enough.
-2. **Image rollback** — point the service at the previous tag explicitly in
+1. **Image rollback** — point the service at the previous tag explicitly in
    the Railway dashboard (Source → Image → `ghcr.io/roryford/hermes-station:vX.Y.(Z-1)`).
    Save and redeploy. `:latest` will still point at the broken release until
    the next image push.
-3. **Last resort** — `gh release delete vX.Y.Z` and force-rebuild `:latest`
+2. **Last resort** — `gh release delete vX.Y.Z` and force-rebuild `:latest`
    from the previous tag's SHA. Only needed if `:latest` itself is poisoned
    and the auto-deploy would otherwise re-roll the bad release.
 
