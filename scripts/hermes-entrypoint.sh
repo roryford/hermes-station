@@ -10,6 +10,9 @@ if [ "$(stat -c %u /data 2>/dev/null)" != "10000" ]; then
     ls -la /data/.hermes/ 2>&1 || echo "hermes-entrypoint: ls /data/.hermes failed"
 fi
 
+# Let Railway's injected PORT win; fall back to the Dockerfile default for local runs.
+export HERMES_WEBUI_PORT="${PORT:-8787}"
+
 # Deprecation warning for users migrating from the old Python control plane.
 if [ -n "${HERMES_GATEWAY_AUTOSTART}" ]; then
     echo "hermes-entrypoint: WARNING: HERMES_GATEWAY_AUTOSTART is no longer supported."
