@@ -84,6 +84,21 @@ jobs:
 
       - name: deploy to staging
         run: |
+          # Step 1: update the service source to re-resolve the :staging digest.
+          # Railway pins the image digest at serviceInstanceUpdate time — without
+          # this call, serviceInstanceDeploy just redeploys the old pinned digest.
+          curl -fsSL https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"mutation Update(\$svc: String!, \$env: String!, \$img: String!) { serviceInstanceUpdate(serviceId: \$svc, environmentId: \$env, input: { source: { image: \$img } }) }\",
+              \"variables\": {
+                \"svc\": \"$RAILWAY_SERVICE_ID\",
+                \"env\": \"$RAILWAY_ENVIRONMENT_ID\",
+                \"img\": \"ghcr.io/roryford/hermes-station:staging\"
+              }
+            }"
+          # Step 2: trigger the deploy with the freshly-resolved digest.
           curl -fsSL https://backboard.railway.com/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
