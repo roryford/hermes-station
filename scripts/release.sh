@@ -12,28 +12,26 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-python3 - "$LEVEL" <<'PYEOF'
-import sys, re, pathlib
-level = sys.argv[1]
-p = pathlib.Path("pyproject.toml")
-text = p.read_text()
-m = re.search(r'^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"', text, re.MULTILINE)
-if not m:
-    sys.exit("could not find version in pyproject.toml")
-major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
+# Derive current version from the latest semver git tag.
+CURRENT="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
+if [[ -z "$CURRENT" ]]; then
+  echo "ERROR: no semver tag found (expected vX.Y.Z)" >&2
+  exit 1
+fi
+
+VERSION="$(python3 - "$LEVEL" "$CURRENT" <<'PYEOF'
+import sys
+level, current = sys.argv[1], sys.argv[2].lstrip("v")
+major, minor, patch = map(int, current.split("."))
 if level == "major":   major, minor, patch = major + 1, 0, 0
 elif level == "minor": major, minor, patch = major, minor + 1, 0
 else:                  major, minor, patch = major, minor, patch + 1
-new_ver = f"{major}.{minor}.{patch}"
-p.write_text(text[:m.start()] + f'version = "{new_ver}"' + text[m.end():])
-print(new_ver)
+print(f"v{major}.{minor}.{patch}")
 PYEOF
-VERSION="v$(python3 -c "import re,pathlib; m=re.search(r'version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text()); print(m.group(1))")"
+)"
 
-git add pyproject.toml
-git commit -m "chore: bump to ${VERSION}"
+echo "Tagging ${CURRENT} → ${VERSION} on $(git rev-parse --short HEAD)"
 git tag "$VERSION"
-git push
 git push origin "$VERSION"
 
 cat <<EOF
