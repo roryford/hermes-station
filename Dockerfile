@@ -94,7 +94,8 @@ CMD ["supervisord", "-n", "-c", "/etc/supervisord.conf"]
 # --- version metadata (kept at bottom so revision changes don't bust deps cache) ---
 ARG RAILWAY_GIT_COMMIT_SHA=
 ARG IMAGE_REVISION=${RAILWAY_GIT_COMMIT_SHA:-dev}
-ENV HERMES_WEBUI_VERSION=${HERMES_WEBUI_VERSION}
+ENV HERMES_WEBUI_VERSION=${HERMES_WEBUI_VERSION} \
+    HERMES_AGENT_VERSION=${HERMES_AGENT_VERSION}
 RUN agent=$(python3 -c "from importlib.metadata import version; print(version('hermes-agent'))" 2>/dev/null || echo n/a) \
     && echo "${IMAGE_REVISION}" > /etc/hermes-station-build \
     && printf '\n=== hermes-station built ===\n  revision: %s\n  webui   : %s\n  agent   : %s\n===========================\n\n' \

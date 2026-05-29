@@ -366,9 +366,14 @@ def test_patch_agent_version_applied() -> None:
 
 
 def test_patch_webui_version_applied() -> None:
+    import stat
+
     target = os.environ.get("HERMES_PATCH_WEBUI_VERSION")
     if not target:
         pytest.skip("HERMES_PATCH_WEBUI_VERSION not set")
     webui = Path("/opt/hermes-webui")
     assert webui.is_dir(), "/opt/hermes-webui missing after patch"
-    assert not os.access(webui, os.W_OK), "/opt/hermes-webui is writable — re-lock failed"
+    # Use stat() to check mode bits directly — os.access(W_OK) always returns True for root.
+    mode = webui.stat().st_mode
+    write_bits = stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
+    assert not (mode & write_bits), f"/opt/hermes-webui is writable (mode={oct(mode)}) — re-lock failed"
