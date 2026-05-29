@@ -22,10 +22,9 @@ scripts/release.sh minor    # or patch / major
 ```
 
 This script:
-- Bumps the version in `railway-template.json` and any other version artifacts
-- Commits with `chore: bump to vX.Y.Z`
-- Tags `vX.Y.Z`
-- Pushes the commit + tag
+- Derives the current version from the latest semver git tag
+- Computes the new version
+- Tags `vX.Y.Z` on the current HEAD and pushes the tag
 
 The tag push triggers `.github/workflows/release.yml`, which:
 - Creates the GitHub release with auto-generated notes
