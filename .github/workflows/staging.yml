@@ -11,6 +11,13 @@ on:
         required: false
         default: main
 
+# Only one staging pipeline runs at a time. A newer push cancels the
+# in-progress run so Railway doesn't queue two competing deploys and cause
+# the earlier run's readiness check to time out waiting for the wrong image.
+concurrency:
+  group: staging
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write  # required for GHCR push
