@@ -12,8 +12,8 @@ WORKDIR /app
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
 # hermes-webui is fetched at build time; it has no pyproject.toml and is run
 # directly as server.py from /opt/hermes-webui at runtime.
-ARG HERMES_WEBUI_VERSION=v0.51.145
-ARG HERMES_WEBUI_SHA=329debcd33969c4386a72f14d91e38c0e82d0b8e
+ARG HERMES_WEBUI_VERSION=v0.51.157
+ARG HERMES_WEBUI_SHA=cf003ae98699263aef05a99291daf10aee717809
 RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
         https://github.com/nesquena/hermes-webui.git /opt/hermes-webui \
     && actual="$(git -C /opt/hermes-webui rev-parse HEAD)"; \
@@ -26,7 +26,7 @@ RUN git clone --depth 1 --branch "${HERMES_WEBUI_VERSION}" \
 # No BuildKit cache mount: Railway's metal builder requires service-specific
 # cache IDs that can't be interpolated from ARG/env vars.
 # Pinned upstream — tracked by Renovate's regex manager (see renovate.json5).
-ARG HERMES_AGENT_VERSION=0.14.0
+ARG HERMES_AGENT_VERSION=0.15.1
 RUN uv pip install --system --link-mode=copy \
         "hermes-agent[messaging]==${HERMES_AGENT_VERSION}" \
         -r /opt/hermes-webui/requirements.txt \
