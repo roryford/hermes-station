@@ -1,5 +1,9 @@
 # hermes-station
 
+> **This project is archived and no longer maintained.**
+>
+> When hermes-station was created, deploying Hermes Agent to Railway required manual configuration and offered no web UI out of the box — this repo filled that gap by bundling the agent, hermes-webui, and a first-run setup wizard into a single deployable container. Upstream has since caught up: NousResearch now publishes an [official Railway template](https://railway.com/deploy/hermes) that runs the agent and web dashboard together in one container, and hermes-webui ships its own Docker Compose setup with built-in password protection and an interactive setup flow. Use one of those instead.
+
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) is an open-source AI assistant you run on your own infrastructure. You connect it to the LLM provider of your choice and it reaches users over Telegram, Discord, Slack, email, and other channels. hermes-station is the easiest way to self-host it: a single container that bundles the agent and the web chat UI, deployable to Railway or runnable locally with Docker or Apple `container`. Your data and API keys stay on your infrastructure — nothing is routed through a third-party service.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/hermes-station?referralCode=wNX0xW)
